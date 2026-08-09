@@ -56,6 +56,25 @@ checking the existing hardware assumptions and documenting the reason.
 - Review the diff and run the relevant checks before merging.
 - Use release tags for known-good firmware, for example `v1.0.0-stable`.
 
+## Selecting the next task
+
+Treat `ROADMAP.md` as a map of goals and dependencies, not as a queue that must
+be executed phase by phase. Do not automatically start the next roadmap phase
+after a merge.
+
+Before proposing or creating a next-task Issue, review what the previous work
+actually established and identify unresolved decisions. Classify the next task
+as one of the following:
+
+- **Decision**: finalize a specification, range, response format, or operating rule.
+- **Implementation**: change code or configuration that follows an accepted decision.
+- **Validation**: deploy or use hardware to observe and record a result.
+
+Only proceed when the task has a focused scope, concrete acceptance criteria,
+and a verification method. The presence of documentation alone does not mean a
+phase is complete: unresolved values, error behavior, or validation methods
+must be settled in a Decision task before dependent implementation begins.
+
 ## Codex working rules
 
 Before editing:
@@ -73,9 +92,11 @@ After editing:
 Use the following task format for GitHub Issues or Codex requests:
 
 ```text
+作業種別: 決定 / 実装 / 検証
 目的:
 対象ファイル:
 変更しない範囲:
+前提・未決事項:
 受け入れ条件:
 検証方法:
 ```
