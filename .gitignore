@@ -1,0 +1,17 @@
+# Local secrets
+secrets.h
+secret.h
+*.local.h
+
+# Arduino and editor artifacts
+build/
+.arduinoIDE/
+.vscode/c_cpp_properties.json
+.vscode/arduino.json
+*.d
+
+# Test output that may contain local configuration
+docs/test-results/local/
+
+# OS files
+.DS_Store
