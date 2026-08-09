@@ -8,4 +8,10 @@ and five-minute deep-sleep cycle are retained from
 Before compiling locally, copy `secrets.example.h` to `secrets.h` and replace
 the placeholders. The local `secrets.h` is ignored by Git.
 
+From the repository root, compile with:
+
+```sh
+./scripts/compile-firmware.sh
+```
+
 This is a baseline only; GAS API replacement is intentionally out of scope.
