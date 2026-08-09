@@ -75,6 +75,11 @@ and a verification method. The presence of documentation alone does not mean a
 phase is complete: unresolved values, error behavior, or validation methods
 must be settled in a Decision task before dependent implementation begins.
 
+Codex may propose the next task and explain the evidence for it, but must not
+create a GitHub Issue or begin implementation without the user's explicit
+approval. Read-only inspection and a proposed task description are allowed
+before that approval.
+
 ## Codex working rules
 
 Before editing:
