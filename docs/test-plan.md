@@ -15,13 +15,18 @@
 
 | ケース | 期待結果 |
 | --- | --- |
-| 正常なJSON | 受理され、シートに1行追加される |
-| JSON不正 | 400相当のエラー |
-| 必須項目欠損 | 400相当のエラー |
-| APIバージョン不一致 | 400相当のエラー |
-| 不正トークン | 401相当のエラー |
-| 範囲外・非有限の数値 | 400相当のエラー |
-| サーバー内部エラー | 500相当のエラー |
+| 正常なJSON | HTTP 200、`{"ok":true}`、シートに1行追加 |
+| JSON不正 | HTTP 200、`{"ok":false,"error":"invalid_json"}`、行を追加しない |
+| 測定値の必須項目欠損 | HTTP 200、`{"ok":false,"error":"invalid_payload"}`、行を追加しない |
+| `api_version`または`token`の必須項目欠損 | それぞれ`invalid_api_version`または`invalid_token`、行を追加しない |
+| APIバージョン不一致 | HTTP 200、`{"ok":false,"error":"invalid_api_version"}`、行を追加しない |
+| 不正トークン | HTTP 200、`{"ok":false,"error":"invalid_token"}`、行を追加しない |
+| 範囲外・非有限の数値 | HTTP 200、`{"ok":false,"error":"invalid_payload"}`、行を追加しない |
+| 各測定値の境界値 | 受理され、シートに1行追加される |
+| `null`、文字列、配列 | `invalid_payload`、行を追加しない |
+| 未知の追加フィールド | 追加フィールドを無視して受理される |
+| シート追記などのサーバー内部エラー | HTTP 200、`{"ok":false,"error":"internal_error"}`を返せること |
+| HTTP非200またはJSON不正の応答 | ESP8266側で失敗扱いにし、成功扱いにしない |
 
 ## ファームウェア
 
