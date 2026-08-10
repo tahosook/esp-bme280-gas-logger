@@ -34,3 +34,15 @@ From the repository root, compile with:
 
 ```sh
 ./scripts/compile-firmware.sh
+```
+
+## Stability features
+
+- **Wi-Fi timeout**: 30 seconds. If the connection fails, the GAS send is
+  skipped and the device enters deep sleep.
+- **HTTPS timeout**: 30 seconds per POST attempt.
+- **Retries**: Up to 3 attempts with a 5-second delay between failures.
+- **No infinite loops**: The device always reaches deep sleep, even on
+  persistent failures. Data loss is acceptable per project policy.
+- **Log format**: All serial output uses `[tag] message` for easy parsing.
+  Tags: `[sensor]`, `[wifi]`, `[gas]`, `[sleep]`.
