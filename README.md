@@ -25,7 +25,7 @@ ESP8266（ESPr Developer）とBME280で測定した温度・気圧・湿度を�
 
 Ambient送信処理を含む移行前のベースラインは
 [`firmware/esp8266_bme280_gas_logger`](firmware/esp8266_bme280_gas_logger/)に
-登録しています。GAS APIへの置き換えは次の段階で行います。
+登録しています。GAS API への置き換えは完了しています。
 
 ## データ仕様
 
