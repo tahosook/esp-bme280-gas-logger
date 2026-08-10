@@ -3,5 +3,5 @@
 
 #define WIFI_SSID "your-wifi-ssid"
 #define WIFI_PASSWORD "your-wifi-password"
-#define AMBIDATA_CHANNELID 0
-#define AMBIDATA_WRITEKEY "your-ambidata-write-key"
+#define GAS_URL "https://script.google.com/macros/s/your-script-id/exec"
+#define GAS_API_TOKEN "your-gas-api-token"

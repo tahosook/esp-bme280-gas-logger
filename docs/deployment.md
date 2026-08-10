@@ -14,6 +14,15 @@ ESP8266の書き込みポートは接続状況で変わるため、固定値と�
 
 Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンはローカル設定ファイルへ記載する。実ファイルは`.gitignore`対象とし、Publicリポジトリへ追加しない。
 
+ファームウェアの`secrets.h`は、`secrets.example.h`をコピーして次の4項目を設定する。
+
+| 定義名 | 設定値 |
+| --- | --- |
+| `WIFI_SSID` | Wi-Fi SSID |
+| `WIFI_PASSWORD` | Wi-Fiパスワード |
+| `GAS_URL` | GAS Webアプリの`/exec` URL |
+| `GAS_API_TOKEN` | GASのScript Propertiesに設定した`API_TOKEN`と同じ値 |
+
 秘密情報を含むファイルを誤ってコミットした場合は、単に削除するだけでなく、該当するパスワードやトークンを無効化・再発行する。
 
 ## GASデプロイ
