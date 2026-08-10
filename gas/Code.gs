@@ -102,7 +102,7 @@ function appendMeasurement_(payload, properties) {
   }
 
   const timestamp = Utilities.formatDate(
-      new Date(), 'Asia/Tokyo', "yyyy-MM-dd'T'HH:mm:ssXXX");
+      new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
   sheet.appendRow([timestamp, payload.temp, payload.press, payload.hum]);
 }
 
