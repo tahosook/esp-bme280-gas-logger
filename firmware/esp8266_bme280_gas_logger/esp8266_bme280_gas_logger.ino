@@ -2,7 +2,7 @@ void setup()
 {
     Serial.begin(115200);
     initBME280_I2C();
-    initAmbidata();
+    initGAS();
 }
 
 void loop()
@@ -19,7 +19,7 @@ void loop()
     Serial.print(hum);
     Serial.println(" %");
 
-    sendAmbidata(temp, hum, press);
+    sendToGAS(temp, press, hum);
 
     ESP.deepSleep(5 * 60 * 1000 * 1000, WAKE_RF_DEFAULT);
 }
