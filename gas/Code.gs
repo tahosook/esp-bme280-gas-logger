@@ -10,6 +10,25 @@ const LIMITS = {
   hum: { min: 0.0, max: 100.0 }
 };
 
+function doGet() {
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const spreadsheetId = properties.getProperty(CONFIG_KEYS.spreadsheetId);
+    const apiToken = properties.getProperty(CONFIG_KEYS.apiToken);
+    const sheetName = properties.getProperty(CONFIG_KEYS.sheetName) || 'Sheet1';
+
+    if (!spreadsheetId || !apiToken) {
+      return readinessResponse_(false);
+    }
+
+    const sheet = SpreadsheetApp.openById(spreadsheetId).getSheetByName(sheetName);
+    return readinessResponse_(!!sheet);
+  } catch (error) {
+    console.error('not_ready');
+    return readinessResponse_(false);
+  }
+}
+
 function doPost(e) {
   let payload;
 
@@ -93,6 +112,13 @@ function successResponse_() {
 
 function errorResponse_(errorCode) {
   return jsonResponse_({ ok: false, error: errorCode });
+}
+
+function readinessResponse_(ready) {
+  if (ready) {
+    return jsonResponse_({ ok: true, ready: true });
+  }
+  return jsonResponse_({ ok: false, ready: false, error: 'not_ready' });
 }
 
 function jsonResponse_(body) {

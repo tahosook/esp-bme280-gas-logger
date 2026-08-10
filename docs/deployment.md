@@ -81,8 +81,16 @@ clasp open-web-app DEPLOYMENT_ID --json
 
 実URLへのテストは、テスト用シートまたは削除してよいテスト行を使う。シェル履歴やCIログへトークンを出さない。
 
+まず、トークンを送らないGETで設定状態を確認する。
+
 ```sh
 read -r GAS_URL
+curl -L -sS -i "$GAS_URL"
+```
+
+設定済みで対象シートへアクセスできる場合は`{"ok":true,"ready":true}`、未設定またはアクセス不能の場合は`{"ok":false,"ready":false,"error":"not_ready"}`を期待する。Ready確認は行を追加しない。
+
+```sh
 read -r -s API_TOKEN
 printf '\n'
 

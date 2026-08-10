@@ -54,6 +54,31 @@ ESP8266から日時は送信しない。
 
 ## 応答
 
+### GET Ready確認
+
+`GET`はデプロイ後の設定確認用に使用する。`SPREADSHEET_ID`、`API_TOKEN`、`SHEET_NAME`が設定され、対象シートへアクセスできる場合だけReadyとする。測定値の追記や秘密情報の返却は行わない。
+
+Ready時：
+
+```json
+{
+  "ok": true,
+  "ready": true
+}
+```
+
+未設定または対象シートへアクセスできない場合：
+
+```json
+{
+  "ok": false,
+  "ready": false,
+  "error": "not_ready"
+}
+```
+
+GETのReady確認が成功しても、POSTのJSON解析・トークン検証・行追記が成功することまでは保証しない。POSTの正常系・異常系テストは別途実施する。
+
 成功時はHTTP 200と次のJSONを返す。
 
 ```json
