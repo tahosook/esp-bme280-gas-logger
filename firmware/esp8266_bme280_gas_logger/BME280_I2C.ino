@@ -23,7 +23,7 @@ int16_t dig_H4;
 int16_t dig_H5;
 int8_t dig_H6;
 
-void initBME280_I2C()
+bool initBME280_I2C()
 {
     uint8_t osrs_t = 1;   //Temperature oversampling x 1
     uint8_t osrs_p = 1;   //Pressure oversampling x 1
@@ -39,10 +39,42 @@ void initBME280_I2C()
 
     Wire.begin();
 
-    writeReg(0xF2, ctrl_hum_reg);
-    writeReg(0xF4, ctrl_meas_reg);
-    writeReg(0xF5, config_reg);
-    readTrim(); //
+    uint8_t chipId = 0;
+    if (!readReg8(0xD0, &chipId))
+    {
+        Serial.println("[bme280] ERROR: read chip ID failed");
+        return false;
+    }
+    if (chipId != 0x60)
+    {
+        Serial.print("[bme280] ERROR: invalid chip ID: 0x");
+        Serial.println(chipId, HEX);
+        return false;
+    }
+
+    if (!writeReg(0xF2, ctrl_hum_reg))
+    {
+        Serial.println("[bme280] ERROR: write ctrl_hum failed");
+        return false;
+    }
+    if (!writeReg(0xF4, ctrl_meas_reg))
+    {
+        Serial.println("[bme280] ERROR: write ctrl_meas failed");
+        return false;
+    }
+    if (!writeReg(0xF5, config_reg))
+    {
+        Serial.println("[bme280] ERROR: write config failed");
+        return false;
+    }
+    if (!readTrim())
+    {
+        Serial.println("[bme280] ERROR: read trim failed");
+        return false;
+    }
+
+    Serial.println("[bme280] initialized");
+    return true;
 }
 
 float getTemperature()
@@ -63,35 +95,34 @@ float getHumidity()
     return hum_cal / 1024.0;
 }
 
-void readTrim()
+bool readTrim()
 {
-    uint8_t data[32], i = 0;
-    Wire.beginTransmission(BME280_ADDRESS);
-    Wire.write(0x88);
-    Wire.endTransmission();
-    Wire.requestFrom(BME280_ADDRESS, 24);
-    while (Wire.available())
+    uint8_t data[32] = {0};
+    uint8_t i = 0;
+
+    if (!readRegs(0x88, data, 24))
     {
-        data[i] = Wire.read();
-        i++;
+        return false;
+    }
+    i = 24;
+
+    if (!readReg8(0xA1, &data[i]))
+    {
+        return false;
+    }
+    i += 1;
+
+    if (!readRegs(0xE1, &data[i], 7))
+    {
+        return false;
+    }
+    i += 7;
+
+    if (i < 32)
+    {
+        return false;
     }
 
-    Wire.beginTransmission(BME280_ADDRESS);
-    Wire.write(0xA1);
-    Wire.endTransmission();
-    Wire.requestFrom(BME280_ADDRESS, 1);
-    data[i] = Wire.read();
-    i++;
-
-    Wire.beginTransmission(BME280_ADDRESS);
-    Wire.write(0xE1);
-    Wire.endTransmission();
-    Wire.requestFrom(BME280_ADDRESS, 7);
-    while (Wire.available())
-    {
-        data[i] = Wire.read();
-        i++;
-    }
     dig_T1 = (data[1] << 8) | data[0];
     dig_T2 = (data[3] << 8) | data[2];
     dig_T3 = (data[5] << 8) | data[4];
@@ -107,35 +138,68 @@ void readTrim()
     dig_H1 = data[24];
     dig_H2 = (data[26] << 8) | data[25];
     dig_H3 = data[27];
-    dig_H4 = (data[28] << 4) | (0x0F & data[29]);
-    dig_H5 = (data[30] << 4) | ((data[29] >> 4) & 0x0F);
+    dig_H4 = (int16_t)(((data[28] << 4) | (0x0F & data[29])) << 4) >> 4;
+    dig_H5 = (int16_t)(((data[30] << 4) | ((data[29] >> 4) & 0x0F)) << 4) >> 4;
     dig_H6 = data[31];
+
+    return true;
 }
 
-void writeReg(uint8_t reg_address, uint8_t data)
+bool writeReg(uint8_t reg_address, uint8_t value)
 {
     Wire.beginTransmission(BME280_ADDRESS);
     Wire.write(reg_address);
-    Wire.write(data);
-    Wire.endTransmission();
+    Wire.write(value);
+    return Wire.endTransmission() == 0;
 }
 
-void readBME280_I2C()
+bool readReg8(uint8_t reg_address, uint8_t *value)
 {
-    int i = 0;
-    uint32_t data[8];
-    Wire.beginTransmission(BME280_ADDRESS);
-    Wire.write(0xF7);
-    Wire.endTransmission();
-    Wire.requestFrom(BME280_ADDRESS, 8);
-    while (Wire.available())
+    if (!readRegs(reg_address, value, 1))
     {
-        data[i] = Wire.read();
-        i++;
+        return false;
     }
+    return true;
+}
+
+bool readRegs(uint8_t reg_address, uint8_t *buffer, uint8_t length)
+{
+    Wire.beginTransmission(BME280_ADDRESS);
+    Wire.write(reg_address);
+    if (Wire.endTransmission() != 0)
+    {
+        return false;
+    }
+
+    uint8_t received = Wire.requestFrom(BME280_ADDRESS, (uint8_t)length);
+    if (received != length)
+    {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < length; i++)
+    {
+        if (!Wire.available())
+        {
+            return false;
+        }
+        buffer[i] = Wire.read();
+    }
+    return true;
+}
+
+bool readBME280_I2C()
+{
+    uint8_t data[8] = {0};
+    if (!readRegs(0xF7, data, 8))
+    {
+        return false;
+    }
+
     pres_raw = (data[0] << 12) | (data[1] << 4) | (data[2] >> 4);
     temp_raw = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4);
     hum_raw = (data[6] << 8) | data[7];
+    return true;
 }
 
 signed long int calibration_T(signed long int adc_T)
