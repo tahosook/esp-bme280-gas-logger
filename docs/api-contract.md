@@ -35,7 +35,11 @@ ESP8266からGAS Webアプリへ、BME280の測定値をJSONで送信する。AP
 - 必須項目が欠損している場合は拒否する。
 - `api_version`はJSONの数値型で、数値としての値`1`だけを受理する。文字列、真偽値、配列などは受理しない。
 - `token`はJSONの文字列型で、GAS側の設定値と完全一致する必要がある。欠損、空文字、不一致は拒否する。
+<<<<<<< HEAD
 - 測定値はJSONの数値型かつ有限値でなければならない。`null`、文字列、配列は`invalid_payload`、`NaN`や`Infinity`はJSON解析時に`invalid_json`として拒否する。
+=======
+- 測定値はJSONの数値型かつ有限値でなければならない。`null`、文字列、配列、`NaN`、`Infinity`は拒否する。
+>>>>>>> codex/decision-driven-workflow
 - 上記の測定値の範囲は境界値を含む。
 - 未知の追加フィールドは無視する。
 - リクエスト本文をJSONとして解析できない場合は拒否する。
@@ -54,6 +58,7 @@ ESP8266から日時は送信しない。
 
 ## 応答
 
+<<<<<<< HEAD
 ### GET Ready確認
 
 `GET`はデプロイ後の設定確認用に使用する。`SPREADSHEET_ID`、`API_TOKEN`、`SHEET_NAME`が設定され、対象シートへアクセスできる場合だけReadyとする。測定値の追記や秘密情報の返却は行わない。
@@ -79,6 +84,8 @@ Ready時：
 
 GETのReady確認が成功しても、POSTのJSON解析・トークン検証・行追記が成功することまでは保証しない。POSTの正常系・異常系テストは別途実施する。
 
+=======
+>>>>>>> codex/decision-driven-workflow
 成功時はHTTP 200と次のJSONを返す。
 
 ```json
@@ -93,10 +100,17 @@ GETのReady確認が成功しても、POSTのJSON解析・トークン検証・�
 
 | `error` | 意味 | 対象 |
 | --- | --- | --- |
+<<<<<<< HEAD
 | `invalid_json` | JSONとして解析できない。`NaN`や`Infinity`のようなJSONで表現できない数値トークンを含む | JSON不正 |
 | `invalid_api_version` | `api_version`が欠損、型不正、または`1`以外 | APIバージョン不一致 |
 | `invalid_token` | `token`が欠損、空文字、型不正、または不一致 | 認証失敗 |
 | `invalid_payload` | 測定値の欠損、型不正、または範囲外 | 入力値不正 |
+=======
+| `invalid_json` | JSONとして解析できない | JSON不正 |
+| `invalid_api_version` | `api_version`が欠損、型不正、または`1`以外 | APIバージョン不一致 |
+| `invalid_token` | `token`が欠損、空文字、型不正、または不一致 | 認証失敗 |
+| `invalid_payload` | 測定値の欠損、型不正、非有限値、または範囲外 | 入力値不正 |
+>>>>>>> codex/decision-driven-workflow
 | `internal_error` | シート追記など、サーバー側の予期しない失敗 | サーバー内部エラー |
 
 ```json
@@ -125,7 +139,11 @@ HTTP 400/401/500は、将来GAS以外の実装へ移行した場合に使用で�
 - 必須項目の欠損が拒否される
 - `api_version`の不一致が拒否される
 - 不正トークンが拒否される
+<<<<<<< HEAD
 - 数値でない値、範囲外の値、JSONで表現できない非有限値が拒否される
+=======
+- 数値でない値、範囲外の値、非有限値が拒否される
+>>>>>>> codex/decision-driven-workflow
 - エラーコードが上記の最終一覧に一致する
 - HTTPステータスに依存せず、レスポンスJSONの`ok`で成功・失敗を判定できる
 
