@@ -3,6 +3,9 @@ secrets.h
 secret.h
 *.local.h
 
+# Local GAS project binding
+gas/.clasp.json
+
 # Arduino and editor artifacts
 build/
 .arduinoIDE/
