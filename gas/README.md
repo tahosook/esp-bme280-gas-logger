@@ -18,7 +18,7 @@ GASエディタの **プロジェクトの設定 → スクリプト プロパ�
 
 本番デプロイのチェックリストとロールバック手順は、[GAS本番デプロイ手順](../docs/deployment.md#gasデプロイ)を使用してください。
 
-1. GASプロジェクトへ`Code.gs`をコピーする。
+1. GASプロジェクトへ`Code.gs`と`appsscript.json`を配置する。`appsscript.json`には`USER_DEPLOYING`と`ANYONE_ANONYMOUS`のWebアプリ設定を含める。
 2. Script Propertiesを設定する。
 3. **デプロイ → 新しいデプロイ → ウェブアプリ** を選択する。
 4. 実行ユーザーはスプレッドシートへ書き込めるアカウントを選択する。
@@ -34,7 +34,7 @@ GASの本番デプロイは、コードと設定を人間が確認してから�
 正常系：
 
 ```sh
-curl -sS -X POST "$GAS_URL" \
+curl -L -sS -X POST "$GAS_URL" \
   -H 'Content-Type: application/json' \
   -d "{\"api_version\":1,\"token\":\"$API_TOKEN\",\"temp\":24.5,\"press\":1012.3,\"hum\":55.8}"
 ```
@@ -45,19 +45,21 @@ curl -sS -X POST "$GAS_URL" \
 
 ```sh
 # JSON不正: invalid_json
-curl -sS -X POST "$GAS_URL" -H 'Content-Type: application/json' -d '{'
+curl -L -sS -X POST "$GAS_URL" -H 'Content-Type: application/json' -d '{'
 
 # APIバージョン不一致: invalid_api_version
-curl -sS -X POST "$GAS_URL" -H 'Content-Type: application/json' \
+curl -L -sS -X POST "$GAS_URL" -H 'Content-Type: application/json' \
   -d "{\"api_version\":2,\"token\":\"$API_TOKEN\",\"temp\":24.5,\"press\":1012.3,\"hum\":55.8}"
 
 # 不正トークン: invalid_token
-curl -sS -X POST "$GAS_URL" -H 'Content-Type: application/json' \
+curl -L -sS -X POST "$GAS_URL" -H 'Content-Type: application/json' \
   -d '{"api_version":1,"token":"wrong-token","temp":24.5,"press":1012.3,"hum":55.8}'
 
 # 範囲外の測定値: invalid_payload
-curl -sS -X POST "$GAS_URL" -H 'Content-Type: application/json' \
+curl -L -sS -X POST "$GAS_URL" -H 'Content-Type: application/json' \
   -d "{\"api_version\":1,\"token\":\"$API_TOKEN\",\"temp\":85.1,\"press\":1012.3,\"hum\":55.8}"
 ```
 
 検証エラーは現行仕様に従い、HTTPステータスではなくJSON本文の`ok:false`と`error`で判定します。
+
+HTTP 302後に405が返る場合は、`/exec` URL、Webアプリデプロイ、匿名アクセス、`doPost(e)`を含むデプロイバージョンを確認してください。

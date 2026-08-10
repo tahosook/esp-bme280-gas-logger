@@ -20,9 +20,9 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
 
 ### 本番デプロイ前の準備
 
-次の作業は、PRの内容と設定値を人間が確認してから行う。GAS本番デプロイはCodexが代行しない。
+次の作業は、対象コードと設定値を人間が確認し、明示的に承認してから行う。
 
-1. [PR #8](https://github.com/tahosook/esp-bme280-gas-logger/pull/8) の実装内容を確認し、`main`へマージする。
+1. 使用するコミットまたはPRの実装内容を確認する。可能なら`main`へマージ済みのコードを使用する。
 2. Googleスプレッドシートを作成し、1行目を次の列順にする。
 
    ```text
@@ -32,7 +32,16 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
 3. スプレッドシートのタイムゾーンを`Asia/Tokyo`に設定する。
 4. Google Apps Scriptプロジェクトを作成し、`gas/Code.gs`の内容を配置する。
 5. GASプロジェクトのタイムゾーンを`Asia/Tokyo`に設定する。
-6. GASエディタの **プロジェクトの設定 → スクリプト プロパティ** で、次の3項目を登録する。値は公開リポジトリ、Issue、ログ、スクリーンショットへ記録しない。
+6. `appsscript.json`にWebアプリ設定があることを確認する。CLIで同期する場合は、次の設定を含める。
+
+   ```json
+   "webapp": {
+     "executeAs": "USER_DEPLOYING",
+     "access": "ANYONE_ANONYMOUS"
+   }
+   ```
+
+7. GASエディタの **プロジェクトの設定 → スクリプト プロパティ** で、次の3項目を登録する。値は公開リポジトリ、Issue、ログ、スクリーンショットへ記録しない。
 
    | 名前 | 設定値 |
    | --- | --- |
@@ -42,7 +51,7 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
 
    Script Propertiesはスクリプト単位で共有される設定値で、コードへ秘密情報を埋め込まずに保存できる。設定後、キー名の誤字、対象シート名、スプレッドシートへの編集権限を確認する。
 
-### Webアプリの本番デプロイ
+### Webアプリの本番デプロイ（GASエディタ）
 
 1. GASエディタ右上の **デプロイ → 新しいデプロイ** を選択する。
 2. 種類で **ウェブアプリ** を選択する。
@@ -54,6 +63,20 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
 
 匿名アクセスを有効にできないGoogle Workspace環境では、このESP8266構成のままでは利用できない。アクセス設定を緩める前に、組織の管理者ポリシーを確認する。トークンは偶発的アクセスの防止用であり、強固な認証ではない。
 
+### Webアプリの本番デプロイ（clasp）
+
+`gas/`ディレクトリに`.clasp.json`があり、対象GASプロジェクトへログイン済みであることを前提とする。
+
+```sh
+cd gas
+clasp push --force
+clasp create-deployment --description "production"
+clasp deployments
+clasp open-web-app DEPLOYMENT_ID --json
+```
+
+`clasp open-web-app --json` がURLを返し、`/exec`で終わることを確認する。`No web app entry point found` と表示された場合、そのデプロイはWebアプリとして作成されていないため、GASエディタの **デプロイ → 新しいデプロイ → ウェブアプリ** から作成する。
+
 ### 本番スモークテスト
 
 実URLへのテストは、テスト用シートまたは削除してよいテスト行を使う。シェル履歴やCIログへトークンを出さない。
@@ -63,7 +86,7 @@ read -r GAS_URL
 read -r -s API_TOKEN
 printf '\n'
 
-curl -sS -i -X POST "$GAS_URL" \
+curl -L -sS -i -X POST "$GAS_URL" \
   -H 'Content-Type: application/json' \
   -d "{\"api_version\":1,\"token\":\"$API_TOKEN\",\"temp\":24.5,\"press\":1012.3,\"hum\":55.8}"
 ```
@@ -79,17 +102,19 @@ curl -sS -i -X POST "$GAS_URL" \
 
 ```sh
 # 不正トークン: invalid_token
-curl -sS -i -X POST "$GAS_URL" \
+curl -L -sS -i -X POST "$GAS_URL" \
   -H 'Content-Type: application/json' \
   -d '{"api_version":1,"token":"wrong-token","temp":24.5,"press":1012.3,"hum":55.8}'
 
 # 範囲外: invalid_payload
-curl -sS -i -X POST "$GAS_URL" \
+curl -L -sS -i -X POST "$GAS_URL" \
   -H 'Content-Type: application/json' \
   -d "{\"api_version\":1,\"token\":\"$API_TOKEN\",\"temp\":85.1,\"press\":1012.3,\"hum\":55.8}"
 ```
 
 異常系はHTTPステータスではなく、本文の`{"ok":false,"error":"..."}`で判定する。テスト後、実施日時（JST）、成功・異常系の結果、使用したデプロイのバージョンを秘密情報なしで`docs/test-results/`へ記録する。
+
+最初にHTTP 302が返るのはGASのContent Serviceによるリダイレクトとして正常である。`-L`で追従する。リダイレクト後にHTTP 405（`Allow: HEAD, GET`）が返る場合は、URLが`/exec`か、デプロイがWebアプリか、匿名アクセスが有効か、`doPost(e)`を含むバージョンをデプロイしたかを確認する。
 
 ### 更新とロールバック
 
