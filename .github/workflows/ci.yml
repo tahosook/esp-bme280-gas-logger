@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci
+  cancel-in-progress: true
+
+jobs:
+  whitespace:
+    name: Whitespace check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: git diff --check
+        run: |
+          git fetch origin main
+          git diff --check origin/main HEAD
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: No secret files tracked
+        run: |
+          tracked=$(git ls-files | grep -E '(^|/)secrets\.h$|(^|/)\.clasp\.json$' || true)
+          if [ -n "$tracked" ]; then
+            echo "::error::Secret files are tracked in git: $tracked"
+            exit 1
+          fi
+          echo "No secret files tracked ✅"
+      - name: secrets.example.h has only placeholders
+        run: |
+          errors=""
+          if ! grep -qE 'WIFI_PASSWORD.*"your-wifi-password"' firmware/esp8266_bme280_gas_logger/secrets.example.h; then
+            errors="$errors WIFI_PASSWORD is not a placeholder"
+          fi
+          if ! grep -qE 'GAS_API_TOKEN.*"your-gas-api-token"' firmware/esp8266_bme280_gas_logger/secrets.example.h; then
+            errors="$errors GAS_API_TOKEN is not a placeholder"
+          fi
+          if ! grep -qE 'GAS_URL.*"your-script-id"' firmware/esp8266_bme280_gas_logger/secrets.example.h; then
+            errors="$errors GAS_URL is not a placeholder"
+          fi
+          if [ -n "$errors" ]; then
+            echo "::error::secrets.example.h contains non-placeholder values:$errors"
+            exit 1
+          fi
+          echo "Only placeholder values ✅"
+
+  gas-api-test:
+    name: GAS API tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run GAS API unit tests
+        run: node scripts/test-gas-api.js
+
+  firmware-compile:
+    name: Compile firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create secrets.h from example
+        run: cp firmware/esp8266_bme280_gas_logger/secrets.example.h firmware/esp8266_bme280_gas_logger/secrets.h
+      - name: Install arduino-cli
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          board-packages: esp8266:esp8266
+          libraries: ArduinoJson
+      - name: Compile firmware
+        run: ./scripts/compile-firmware.sh
+
+  library-doc:
+    name: Required libraries documented
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check README lists required libraries
+        run: |
+          readme=firmware/esp8266_bme280_gas_logger/README.md
+          for lib in ArduinoJson ESP8266WiFi WiFiClientSecure ESP8266HTTPClient Wire; do
+            if ! grep -qi "$lib" "$readme"; then
+              echo "::error::$lib not mentioned in $readme"
+              exit 1
+            fi
+          done
+          echo "All required libraries documented ✅"

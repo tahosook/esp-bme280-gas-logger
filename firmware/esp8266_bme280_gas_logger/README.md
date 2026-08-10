@@ -10,7 +10,7 @@ retained from
 
 - `ArduinoJson` (install via Arduino IDE Library Manager)
 
-`ESP8266WiFi`, `WiFiClientSecure`, and `ESP8266HTTPClient` are bundled with the
+`ESP8266WiFi`, `WiFiClientSecure`, `ESP8266HTTPClient`, and `Wire` are bundled with the
 ESP8266 board package.
 
 ## HTTPS certificate verification
