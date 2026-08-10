@@ -4,12 +4,19 @@
 #include <ArduinoJson.h>
 #include "secrets.h"
 
+// Phase 5: タイムアウトと再試行回数はメインスケッチで定義済み。
+// WIFI_TIMEOUT_MS, HTTP_TIMEOUT_MS, MAX_SEND_RETRIES
 WiFiClientSecure client;
 HTTPClient http;
 
 void initGAS()
 {
-    initWifi();
+    // Wi-Fi接続に失敗しても無限ループせず、ディープスリープへ進む。
+    if (!initWifi())
+    {
+        Serial.println("[wifi] connect failed; skipping GAS send");
+        return;
+    }
 
     // 個人用・簡易構成のため、HTTPS証明書検証を省略する。
     // GAS Web Appはscript.google.comからscript.googleusercontent.comへ
@@ -19,22 +26,29 @@ void initGAS()
     client.setInsecure();
 }
 
-void initWifi()
+bool initWifi()
 {
-    // connect to wifi.
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Serial.print("connecting");
+    Serial.print("[wifi] connecting");
+    unsigned long start = millis();
     while (WiFi.status() != WL_CONNECTED)
     {
+        if (millis() - start >= WIFI_TIMEOUT_MS)
+        {
+            Serial.println();
+            Serial.println("[wifi] FAILED: timeout (30s)");
+            return false;
+        }
         Serial.print(".");
         delay(500);
     }
     Serial.println();
-    Serial.print("connected: ");
+    Serial.print("[wifi] connected: ");
     Serial.println(WiFi.localIP());
+    return true;
 }
 
-void sendToGAS(float temp, float press, float hum)
+bool sendToGAS(float temp, float press, float hum)
 {
     JsonDocument doc;
     doc["api_version"] = 1;
@@ -51,13 +65,15 @@ void sendToGAS(float temp, float press, float hum)
     // 302リダイレクトするため、別ホストへの追従を許可する。
     http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
     http.addHeader("Content-Type", "application/json");
+    // Phase 5: HTTPS通信タイムアウトを30秒に設定
+    http.setTimeout(HTTP_TIMEOUT_MS);
 
     int httpCode = http.POST(payload);
     String response = http.getString();
 
-    Serial.print("HTTP status: ");
+    Serial.print("[gas] HTTP status: ");
     Serial.println(httpCode);
-    Serial.print("Response: ");
+    Serial.print("[gas] response: ");
     Serial.println(response);
 
     // 成否はHTTPステータスではなく、レスポンスJSONのokで判定する。
@@ -72,14 +88,6 @@ void sendToGAS(float temp, float press, float hum)
         }
     }
 
-    if (ok)
-    {
-        Serial.println("GAS send OK");
-    }
-    else
-    {
-        Serial.println("GAS send FAILED");
-    }
-
     http.end();
+    return ok;
 }
