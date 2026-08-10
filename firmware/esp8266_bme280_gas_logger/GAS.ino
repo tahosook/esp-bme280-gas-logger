@@ -53,9 +53,12 @@ bool sendToGAS(float temp, float press, float hum)
     JsonDocument doc;
     doc["api_version"] = 1;
     doc["token"] = GAS_API_TOKEN;
-    doc["temp"] = temp;
-    doc["press"] = press;
-    doc["hum"] = hum;
+    // Phase 5: BME280の湿度は÷1024で算出され2進浮動小数点のため
+    // 小数が多くなる。温度・気圧・湿度すべてを小数点以下2桁に丸めて
+    // スプレッドシートの表示を統一する。
+    doc["temp"] = roundf(temp * 100) / 100;
+    doc["press"] = roundf(press * 100) / 100;
+    doc["hum"] = roundf(hum * 100) / 100;
 
     String payload;
     serializeJson(doc, payload);
