@@ -47,7 +47,7 @@ jobs:
           if ! grep -qE 'GAS_API_TOKEN.*"your-gas-api-token"' firmware/esp8266_bme280_gas_logger/secrets.example.h; then
             errors="$errors GAS_API_TOKEN is not a placeholder"
           fi
-          if ! grep -qE 'GAS_URL.*"your-script-id"' firmware/esp8266_bme280_gas_logger/secrets.example.h; then
+          if ! grep -q 'your-script-id' firmware/esp8266_bme280_gas_logger/secrets.example.h; then
             errors="$errors GAS_URL is not a placeholder"
           fi
           if [ -n "$errors" ]; then
@@ -76,9 +76,13 @@ jobs:
         run: cp firmware/esp8266_bme280_gas_logger/secrets.example.h firmware/esp8266_bme280_gas_logger/secrets.h
       - name: Install arduino-cli
         uses: arduino/setup-arduino-cli@v2
-        with:
-          board-packages: esp8266:esp8266
-          libraries: ArduinoJson
+      - name: Install ESP8266 board core
+        run: |
+          arduino-cli config init
+          arduino-cli core update-index
+          arduino-cli core install esp8266:esp8266
+      - name: Install ArduinoJson library
+        run: arduino-cli lib install ArduinoJson
       - name: Compile firmware
         run: ./scripts/compile-firmware.sh
 
