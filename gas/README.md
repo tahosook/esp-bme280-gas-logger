@@ -49,6 +49,25 @@ curl -L -sS -X POST "$GAS_URL" \
 
 期待値は`{"ok":true}`で、シートに`日時 | temp | press | hum`の1行が追加されます。
 
+## 自動テスト
+
+GASコードのローカル検証は、GASサービスをスタブ化した次のスクリプトで実行できます。
+
+```sh
+node scripts/test-gas-api.js
+```
+
+本番デプロイ後のスモークテストは、URLだけを指定するとReady確認と不正トークン確認を実行します。
+正常POSTは行を追加するため、必要なときだけ`--write`を指定します。トークンは画面に表示されません。
+
+```sh
+GAS_URL='https://script.google.com/macros/s/DEPLOYMENT_ID/exec' \
+  ./scripts/smoke-test-gas.sh
+
+GAS_URL='https://script.google.com/macros/s/DEPLOYMENT_ID/exec' \
+API_TOKEN='local-secret' ./scripts/smoke-test-gas.sh --write
+```
+
 異常系の例：
 
 ```sh
