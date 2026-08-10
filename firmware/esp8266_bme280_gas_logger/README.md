@@ -45,4 +45,4 @@ From the repository root, compile with:
 - **No infinite loops**: The device always reaches deep sleep, even on
   persistent failures. Data loss is acceptable per project policy.
 - **Log format**: All serial output uses `[tag] message` for easy parsing.
-  Tags: `[sensor]`, `[wifi]`, `[gas]`, `[sleep]`.
+  Tags: `[bme280]`, `[sensor]`, `[wifi]`, `[gas]`, `[sleep]`.

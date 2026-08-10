@@ -10,13 +10,27 @@
 void setup()
 {
     Serial.begin(115200);
-    initBME280_I2C();
+    Serial.println("[bme280] initializing");
+    if (!initBME280_I2C())
+    {
+        Serial.println("[sleep] sensor init failed; entering deep sleep (300s)");
+        ESP.deepSleep(5 * 60 * 1000 * 1000, WAKE_RF_DEFAULT);
+        return;
+    }
     initGAS();
 }
 
 void loop()
 {
-    readBME280_I2C();
+    Serial.println("[sensor] reading");
+    if (!readBME280_I2C())
+    {
+        Serial.println("[bme280] read failed");
+        Serial.println("[sleep] sensor read failed; entering deep sleep (300s)");
+        ESP.deepSleep(5 * 60 * 1000 * 1000, WAKE_RF_DEFAULT);
+        return;
+    }
+
     float temp = getTemperature();
     float press = getPressure();
     float hum = getHumidity();
