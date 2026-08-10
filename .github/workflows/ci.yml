@@ -76,6 +76,8 @@ jobs:
         run: cp firmware/esp8266_bme280_gas_logger/secrets.example.h firmware/esp8266_bme280_gas_logger/secrets.h
       - name: Install arduino-cli
         uses: arduino/setup-arduino-cli@v2
+      - name: Add ESP8266 board package URL
+        run: arduino-cli config add board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
       - name: Install ESP8266 board core
         run: |
           arduino-cli config init
