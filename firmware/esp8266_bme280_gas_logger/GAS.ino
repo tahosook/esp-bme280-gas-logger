@@ -67,6 +67,8 @@ bool sendToGAS(float temp, float press, float hum)
     // GASはscript.google.comからscript.googleusercontent.comへ
     // 302リダイレクトするため、別ホストへの追従を許可する。
     http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    // Phase 6: リダイレクト上限を明示的に設定（GASは1回の302リダイレクト）
+    http.setRedirectLimit(3);
     http.addHeader("Content-Type", "application/json");
     // Phase 5: HTTPS通信タイムアウトを30秒に設定
     http.setTimeout(HTTP_TIMEOUT_MS);
