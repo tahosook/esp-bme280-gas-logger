@@ -1,30 +1,74 @@
 # テスト計画
 
-GAS API、日次処理、監視、LINE Bot、本番確認のテスト項目を整理する。
+## 方針
 
----
+検証をGAS API単体、ESP8266ファームウェア、実機統合の順に分ける。実機テストとGASデプロイは人間の確認後に行う。
 
-## テスト方針
+## Phase 0：リポジトリ
 
-- GAS単体、実機統合、本番確認の順に検証する。
-- 秘密情報はテスト記録に含めない。
-- 検証結果は`docs/test-results/`に日付付きで記録する。
-
----
+- `git diff --check`が成功する
+- Publicリポジトリへ秘密情報が含まれていない
+- `main`へ直接変更せず、作業ブランチとPull Requestを使う
+- README、構成、API、デプロイ、テスト方針が文書化されている
 
 ## GAS API単体
 
 | ケース | 期待結果 |
 | --- | --- |
-| 正常なJSON | HTTP 200、 DATAに1行追加 |
-| JSON解析不能 | invalid_json 、追加なし |
-| 必須項目欠損 | invalid_payload 、追加なし |
-| api_version 不一致 | invalid_api_version 、追加なし |
-| トークン不一致 | invalid_token 、追加なし |
-| 範囲外の数値 | invalid_payload 、追加なし |
-| 境界値 | 受理され、DATAに1行追加 |
-| 未知フィールド | 無視されて受理される |
-| 内部エラー | internal_error |
+| 正常なJSON | HTTP 200、`{"ok":true}`、シートに1行追加 |
+| JSON不正（`NaN`、`Infinity`を含む） | HTTP 200、`{"ok":false,"error":"invalid_json"}`、行を追加しない |
+| 測定値の必須項目欠損 | HTTP 200、`{"ok":false,"error":"invalid_payload"}`、行を追加しない |
+| `api_version`または`token`の必須項目欠損 | それぞれ`invalid_api_version`または`invalid_token`、行を追加しない |
+| APIバージョン不一致 | HTTP 200、`{"ok":false,"error":"invalid_api_version"}`、行を追加しない |
+| 不正トークン | HTTP 200、`{"ok":false,"error":"invalid_token"}`、行を追加しない |
+| 範囲外の数値 | HTTP 200、`{"ok":false,"error":"invalid_payload"}`、行を追加しない |
+| 各測定値の境界値 | 受理され、シートに1行追加される |
+| `null`、文字列、配列 | `invalid_payload`、行を追加しない |
+| 未知の追加フィールド | 追加フィールドを無視して受理される |
+| シート追記などのサーバー内部エラー | HTTP 200、`{"ok":false,"error":"internal_error"}`を返せること |
+| HTTP非200またはJSON不正の応答 | ESP8266側で失敗扱いにし、成功扱いにしない |
+
+## ファームウェア
+
+- ESP8266向け設定でコンパイルできる
+- シリアル速度115200で起動ログが読める
+- BME280から温度・気圧・湿度を取得できる
+- JSONの項目名と単位がAPI仕様に一致する
+- HTTPS POSTのステータスと応答本文を出力する
+- 送信後にdeep sleepへ移行する
+
+### Phase 5 安定化
+
+- Wi-Fi接続に30秒タイムアウトがある
+- HTTPS POSTに30秒タイムアウトがある
+- 送信失敗時に最大3回再試行する
+- Wi-Fi切断または送信失敗でも無限ループせずdeep sleepへ進む
+- シリアルログが `[tag] message` 形式で出力される
+
+## 実機統合
+
+人間が以下を確認し、結果を`docs/test-results/`へ秘密情報なしで記録する。
+
+- Wi-Fi接続
+- BME280測定
+- GASへのHTTPS POST
+- スプレッドシートへの行追加
+- Tokyo時刻の記録
+- 5分後のdeep sleep復帰
+- Wi-Fi切断時のタイムアウト
+- GASエラー時のログ
+- BME280未接続/I2C異常時に不正な測定値を送信しない
+- Chip ID不一致時に初期化失敗としてdeep sleepする
+- センサー読取失敗時にGAS送信をスキップする
+
+通信失敗によるデータ欠損は許容する。永続的なオフラインキューは実装しない。
+
+---
+
+## 重複POST
+
+- 同じ測定データが2回POSTされた場合でも、重複排除は行わない。
+- 受信したPOSTはそれぞれ1件のデータとしてDATAに記録する。
 
 ---
 
