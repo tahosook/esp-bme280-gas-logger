@@ -58,9 +58,9 @@ checking the existing hardware assumptions and documenting the reason.
 
 ## Selecting the next task
 
-Treat `ROADMAP.md` as a map of goals and dependencies, not as a queue that must
-be executed phase by phase. Do not automatically start the next roadmap phase
-after a merge.
+Treat `docs/implementation-roadmap.md` as a map of goals and dependencies, not
+as a queue that must be executed phase by phase. Do not automatically start the
+next roadmap phase after a merge.
 
 Before proposing or creating a next-task Issue, review what the previous work
 actually established and identify unresolved decisions. Classify the next task

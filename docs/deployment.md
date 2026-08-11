@@ -32,14 +32,15 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
 次の作業は、対象コードと設定値を人間が確認し、明示的に承認してから行う。
 
 1. 使用するコミットまたはPRの実装内容を確認する。可能なら`main`へマージ済みのコードを使用する。
-2. Googleスプレッドシートを作成し、1行目を次の列順にする。
+2. Googleスプレッドシートを作成し、1行目を次の列順にする。シート名は`DATA`とする（Phase 7で決定）。
 
    ```text
-   日時 | temp | press | hum
+   日時 | temp | press | hum | flag
    ```
 
+   日時はDate値で書き、列の表示形式を`yyyy-MM-dd HH:mm:ss`にする（Phase 7で決定。Phase 8の実装で反映）。
 3. スプレッドシートのタイムゾーンを`Asia/Tokyo`に設定する。
-4. Google Apps Scriptプロジェクトを作成し、`gas/Code.gs`の内容を配置する。
+4. Google Apps Scriptプロジェクトを作成し、`gas/` の内容を配置する。Phase 0〜6 の受信基盤は単一の `Code.gs`。Phase 8 以降はモジュール群（`Router.gs` / `Ingest.gs` / … / `MonthlyAggregation.gs`）をまとめて配置する。
 5. GASプロジェクトのタイムゾーンを`Asia/Tokyo`に設定する。
 6. `appsscript.json`にWebアプリ設定があることを確認する。CLIで同期する場合は、次の設定を含める。
 
@@ -56,7 +57,7 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
    | --- | --- |
    | `SPREADSHEET_ID` | スプレッドシートURLの`/d/`と`/edit`の間にあるID |
    | `API_TOKEN` | 任意の十分に長いランダム文字列 |
-   | `SHEET_NAME` | 追記先シート名。未設定なら`Sheet1` |
+   | `SHEET_NAME` | 追記先シート名。Phase 7の決定により`DATA` |
 
    Script Propertiesはスクリプト単位で共有される設定値で、コードへ秘密情報を埋め込まずに保存できる。設定後、キー名の誤字、対象シート名、スプレッドシートへの編集権限を確認する。
 
@@ -162,6 +163,59 @@ curl -L -sS -i -X POST "$GAS_URL" \
 6. 115200 baudでシリアルログを確認する
 
 ESP8266への書き込みは人間の確認後に実施する。Codexは書き込み完了を、実際のログなしに推測しない。
+
+## 追加機能のセットアップ（Phase 11 / 12 / 15 対応）
+
+以下は監視・LINE・日次集計を有効化する際の追加設定。実装済みのPhase（Phase 8以降）に応じて、
+該当するものを人間が確認・承認してから設定する。
+
+### Script Properties の追加キー（監視・LINE・日次集計）
+
+受信基盤の `SPREADSHEET_ID` / `API_TOKEN` / `SHEET_NAME` に加え、機能に応じて追加する。実値は公開資料へ記載しない。
+
+| キー | 内容 | 対応Phase |
+| --- | --- | --- |
+| `LINE_CHANNEL_SECRET` | LINEチャネルシークレット（Webhook署名検証用） | 12 |
+| `LINE_ACCESS_TOKEN` | LINEアクセストークン（Push/Reply送信用） | 12 |
+| `LINE_USER_ID` | 通知送信先ユーザーID | 12 |
+| `ONHOLD_TIME` | スキップ停止時刻（ISO 8601 文字列で保存） | 12 |
+| `DAILY_LAST_ROW` | Daily集計の前回処理済み行番号（1始まり） | 15 |
+| `MONITOR_STATE_*` | 監視状態（超過/正常など、必要に応じて複数キー） | 11 |
+| `MONITOR_LAST_VALID_*` | 異常値判定の比較元（temp/hum/press ごと） | 11 |
+| `WATCHDOG_NOTIFIED` | ウォッチドッグ通知済みフラグ | 17 |
+
+監視閾値など頻繁に調整する値は、Configシート（Phase 15で採用決定）へ置く。
+
+### LINEチャネル / Webhook設定（Phase 12）
+
+1. LINE Developerコンソールでチャネルを作成し、チャネルシークレットとアクセストークンを取得する。
+2. Webhook URL に GAS Webアプリの `/exec` URL を設定する。
+3. 送信はReply API（`/message/reply`）とPush API（`/message/push`）を使う。無料プランではPushの月200通制限があり、Replyはカウントされない。
+
+### Configシート / Dailyシート（Phase 15）
+
+1. Configシートを作成し、1行目にキー名、2行目以降に値を配置する（採用は決定済み）。未設定キーは **Config.gs に定義されたデフォルト値** へフォールバックする。既定値は下表のとおり。
+
+   | キー | 既定値（決定済み） | 内容 |
+   | --- | --- | --- |
+   | `TEMP_HIGH` | 30.0 | 気温超過しきい値（℃） |
+   | `HUM_HIGH` | 70 | 湿度超過しきい値（%） |
+   | `HEAT_INDEX_HIGH` | 80.0 | 簡易暑さ指数（不快指数DI）超過しきい値 |
+   | `HYSTERESIS_TEMP` | 0.5 | 気温ヒステリシス幅（℃） |
+   | `HYSTERESIS_HUM` | 5 | 湿度ヒステリシス幅（%） |
+   | `HYSTERESIS_HEAT_INDEX` | 0.5 | 簡易暑さ指数ヒステリシス幅 |
+   | `SMOOTH_K` | 2 | 連続超過判定の件数K |
+   | `ANOMALY_TEMP` | 5.0 | 異常値判定の気温変化量（℃） |
+   | `ANOMALY_HUM` | 30 | 異常値判定の湿度変化量（%） |
+   | `ANOMALY_PRESS` | 20 | 異常値判定の気圧変化量（hPa） |
+   | `WATCHDOG_TIMEOUT_MIN` | 4320 | センサー未受信ウォッチドッグのしきい値（分）。4320＝3日 |
+
+2. Dailyシートを作成し、1行目を `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` にする。
+3. 時間主導トリガーを設定し、日付境界+10分程度に日次集計を実行する。
+4. Monthlyシートを作成し、1行目を `年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count` にする。月次トリガー（例: 1日 01:00）で前月分を月次集計する。
+5. ウォッチドッグ用の時間主導トリガー（例: 1日1回）を設定する。DATA最終日時が `WATCHDOG_TIMEOUT_MIN`（既定4320＝3日）を超えると1回だけ通知し、復帰（追記再開）でリセットする。
+
+※LINE設定・Config/Daily/Monthlyシート作成・トリガー設定は人間の承認後に実施する。
 
 ## リリース
 
