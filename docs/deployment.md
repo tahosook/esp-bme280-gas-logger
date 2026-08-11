@@ -32,12 +32,13 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
 次の作業は、対象コードと設定値を人間が確認し、明示的に承認してから行う。
 
 1. 使用するコミットまたはPRの実装内容を確認する。可能なら`main`へマージ済みのコードを使用する。
-2. Googleスプレッドシートを作成し、1行目を次の列順にする。
+2. Googleスプレッドシートを作成し、1行目を次の列順にする。シート名は`DATA`とする（Phase 7で決定）。
 
    ```text
    日時 | temp | press | hum
    ```
 
+   日時はDate値で書き、列の表示形式を`yyyy-MM-dd HH:mm:ss`にする（Phase 7で決定。Phase 8の実装で反映）。
 3. スプレッドシートのタイムゾーンを`Asia/Tokyo`に設定する。
 4. Google Apps Scriptプロジェクトを作成し、`gas/Code.gs`の内容を配置する。
 5. GASプロジェクトのタイムゾーンを`Asia/Tokyo`に設定する。
@@ -56,7 +57,7 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
    | --- | --- |
    | `SPREADSHEET_ID` | スプレッドシートURLの`/d/`と`/edit`の間にあるID |
    | `API_TOKEN` | 任意の十分に長いランダム文字列 |
-   | `SHEET_NAME` | 追記先シート名。未設定なら`Sheet1` |
+   | `SHEET_NAME` | 追記先シート名。Phase 7の決定により`DATA` |
 
    Script Propertiesはスクリプト単位で共有される設定値で、コードへ秘密情報を埋め込まずに保存できる。設定後、キー名の誤字、対象シート名、スプレッドシートへの編集権限を確認する。
 
@@ -189,7 +190,21 @@ ESP8266への書き込みは人間の確認後に実施する。Codexは書き�
 
 ### Configシート / Dailyシート（Phase 15）
 
-1. （採用時）Configシートを作成し、閾値などのキーと値を配置する。
+1. Configシートを作成し、1行目にキー名、2行目以降に値を配置する（採用は決定済み）。未設定キーは Script Properties 内のデフォルト値にフォールバックする。既定値は下表のとおり。
+
+   | キー | 既定値（決定済み） | 内容 |
+   | --- | --- | --- |
+   | `TEMP_HIGH` | 30.0 | 気温超過しきい値（℃） |
+   | `HUM_HIGH` | 70 | 湿度超過しきい値（%） |
+   | `HEAT_INDEX_HIGH` | 80.0 | 簡易暑さ指数（不快指数DI）超過しきい値 |
+   | `HYSTERESIS_TEMP` | 0.5 | 気温ヒステリシス幅（℃） |
+   | `HYSTERESIS_HUM` | 5 | 湿度ヒステリシス幅（%） |
+   | `HYSTERESIS_HEAT_INDEX` | 0.5 | 簡易暑さ指数ヒステリシス幅 |
+   | `SMOOTH_K` | 2 | 連続超過判定の件数K |
+   | `ANOMALY_TEMP` | 5.0 | 異常値判定の気温変化量（℃） |
+   | `ANOMALY_HUM` | 30 | 異常値判定の湿度変化量（%） |
+   | `ANOMALY_PRESS` | 20 | 異常値判定の気圧変化量（hPa） |
+
 2. Dailyシートを作成し、1行目を `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` にする。
 3. 時間主導トリガーを設定し、日付境界+10分程度に日次集計を実行する。
 
