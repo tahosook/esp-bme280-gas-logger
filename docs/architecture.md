@@ -14,17 +14,19 @@ BME280
 ESP8266 / ESPr Developer
   ↓ Wi-Fi / HTTPS POST（5分間隔、最大3回再送）
 GAS Webアプリ（Router → Ingest）
-  ↓ appendRow（重複排除あり）
+  ↓ appendRow（重複排除あり、排他制御）
 DATAシート（生ログ、追記専用）
 
 LINEプラットフォーム
   ↓ Webhook POST（events 配列）
 GAS Webアプリ（Router → LineBot）
+  ↓ 状態変更（排他制御）
+設定・状態ストア
 
 時間主導トリガー（1日1回）
   ↓
 GAS（DailyAggregation）
-  ↓
+  ↓ appendRow（排他制御）
 Dailyシート（1日1行）
 
 時間主導トリガー（月次）
@@ -46,22 +48,22 @@ LINE Push通知（1回・復帰でリセット）
 - **ESP8266ファームウェア**: Wi-Fi接続、測定、JSON生成、HTTPS POST、ログ出力、deep sleepを担当
 - **GAS Web API（1プロジェクト内でモジュール分割）**:
   - `Router.gs`: `doGet`/`doPost` 入口。ペイロードの形でセンサー取り込みかLINEイベントかを振り分け
-  - `Ingest.gs`: JSON検証・トークン照合・数値範囲チェック・重複排除・DATAへの追記
-  - `Monitor.gs`: 直近データ評価、状態遷移（正常⇄超過）判定、通知要否の決定、センサー未受信ウォッチドッグ
-  - `DailyAggregation.gs`: 日次集計（前回処理済み行以降を読み、Dailyへ1日1行）
+  - `Ingest.gs`: JSON検証・トークン照合・数値範囲チェック・重複排除・DATAへの追記・`flag`列固定5列化・Watchdog復帰リセット
+  - `Monitor.gs`: 直近データ評価、状態遷移（正常⇄超過）判定、通知要否の決定、センサー未受信ウォッチドッグ、異常値判定の比較元（直近有効データ）を Script Properties で保持
+  - `DailyAggregation.gs`: 日次集計（前回処理済み行以降を読み、Dailyへ1日1行）。処理済み行番号は Script Properties（`DAILY_LAST_ROW`）で管理し、追記確定時のみ更新する
   - `MonthlyAggregation.gs`: 月次集計（Dailyを読み、Monthlyへ1月1行）
-  - `LineBot.gs`: Webhook署名検証、コマンド解析（状況/スキップ/クリア）、Reply/Push送信
+  - `LineBot.gs`: Webhook署名検証、コマンド解析（状況/スキップ/クリア）、Reply/Push送信（Config/状態変更は排他制御）
   - `Config.gs`: Script Properties / Configシートへのアクセス集約、しきい値デフォルト定義
   - `ErrorLog.gs`: 例外記録のラッパー（秘密情報をログに残さない）
 - **Googleスプレッドシート**:
-  - DATA: `日時 | temp | press | hum` の生ログ（追記専用）。シート名は `DATA`、`日時` は **Date値＋表示形式 `yyyy-MM-dd HH:mm:ss`**
+  - DATA: `日時 | temp | press | hum | flag` の生ログ（追記専用）。シート名は `DATA`、`日時` は **Date値＋表示形式 `yyyy-MM-dd HH:mm:ss`**
   - Daily: `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` の日次集計（1日1行）
   - Monthly: `年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count` の月次集計（1月1行）
 
 ## スプレッドシート設計
 
 - DATA は追記専用。旧方式の日別シート（タブ）・固定行範囲（`AVERAGE(B2:B290)` 等）・TOTALシートは採用しない。
-- シート名は `Sheet1` → `DATA` に変更（決定済み）。`flag` 列は監視の異常値検知（Phase 10/11）実装時に追加、`device_id` 列は複数台化時に追加（ともに未実装）。
+- シート名は `Sheet1` → `DATA` に変更（決定済み）。`flag` 列は Phase 7 で固定追加する。`device_id` 列は複数台化時に追加（未実装）。
 - Daily の `sample_count`（＝その日の anomaly を除いた有効行数。平均・最小・最大を計算した行数と一致）により、欠測・異常値除外を集計結果から把握できる。
 - Configシートを採用する（Phase 15・決定済み）。季節調整する閾値を置き、秘密/コード寄りの値（トークン等）は Script Properties に置く。
 
@@ -75,8 +77,8 @@ LINE Push通知（1回・復帰でリセット）
 - 監視閾値（決定済み）: 気温 **30.0℃** / 湿度 **70%** / 簡易暑さ指数（DI）**80.0** 超過。
 - 平滑化方式（決定済み）: **直近K件連続超過、K=2**（Configで可変）。
 - ヒステリシス幅（決定済み）: 復帰 = 超過しきい値 − 幅（気温 **0.5℃** / 湿度 **5%** / 簡易暑さ指数 **0.5**）。
-- 異常値（急変）判定（決定済み）: 気温 **±5.0℃** / 湿度 **±30%** / 気圧 **±20hPa** の変化を `anomaly` 扱いとして記録し、集計から除外する（受信契約の範囲チェックとは別レイヤー）。
-- センサー未受信ウォッチドッグ: DATAへの追記がしきい値（`WATCHDOG_TIMEOUT_MIN=4320`＝3日）を超えて途絶えたら、時間主導トリガーで判定し1回だけLINE通知する。復帰（追記再開）でリセットし、再び途絶えたら再通知（Phase 17・決定済み）。
+- 異常値（急変）判定（決定済み）: 気温 **±5.0℃** / 湿度 **±30%** / 気圧 **±20hPa** の変化を `anomaly` 扱いとして記録し、集計から除外する（受信契約の範囲チェックとは別レイヤー）。比較元は **直近の異常でない（有効な）受信データ** とし、その値は Script Properties に保持する。キャッシュ未存在時は異常判定をスキップする。
+- センサー未受信ウォッチドッグ: DATAへの追記がしきい値（`WATCHDOG_TIMEOUT_MIN=4320`＝3日）を超えて途絶えたら、時間主導トリガーで判定し1回だけLINE通知する。**復帰リセットは Ingest が DATA 追記成功時に担当**し、再び途絶えたら再通知（Phase 17・決定済み）。
 
 ## 実行サイクル
 
@@ -101,6 +103,10 @@ LINE Push通知（1回・復帰でリセット）
 | `[sleep]` | ディープスリープ開始 |
 
 ## セキュリティと運用上の前提
+
+- センサー受信と LINE Webhook は同じ `doPost` 入口に非同期で到達し得るため、**Spreadsheetへの書き込み/読み取りを伴うクリティカルセクション** で `LockService` を用いる。
+- ロック対象: Ingest の「最終行取得→重複判定→appendRow」、DailyAggregation の「前回行読み出し→集計→appendRow→ポインタ更新」、LineBot の「Config/状態変更→シート書き戻し」。
+- ロックは最小時間で取得し、タイムアウトは **15秒（15000ms）** とする。取得失敗時は `internal_error` で制御する。
 
 GAS WebアプリはESP8266からアクセスできる設定が必要なため、偶発的なアクセスを防ぐ簡易トークンを使用する。
 ファームウェアに含まれるトークンは抽出可能であり、強固な認証とはみなさない。
