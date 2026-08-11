@@ -26,6 +26,18 @@ GAS Webアプリ（Router → LineBot）
 GAS（DailyAggregation）
   ↓
 Dailyシート（1日1行）
+
+時間主導トリガー（月次）
+  ↓
+GAS（MonthlyAggregation）
+  ↓
+Monthlyシート（1月1行）
+
+時間主導トリガー（定期：ウォッチドッグ）
+  ↓
+GAS（Monitor 未受信判定）
+  ↓ 未受信時のみ
+LINE Push通知（1回・復帰でリセット）
 ```
 
 ## コンポーネント
@@ -35,14 +47,16 @@ Dailyシート（1日1行）
 - **GAS Web API（1プロジェクト内でモジュール分割）**:
   - `Router.gs`: `doGet`/`doPost` 入口。ペイロードの形でセンサー取り込みかLINEイベントかを振り分け
   - `Ingest.gs`: JSON検証・トークン照合・数値範囲チェック・重複排除・DATAへの追記
-  - `Monitor.gs`: 直近データ評価、状態遷移（正常⇄超過）判定、通知要否の決定
+  - `Monitor.gs`: 直近データ評価、状態遷移（正常⇄超過）判定、通知要否の決定、センサー未受信ウォッチドッグ
   - `DailyAggregation.gs`: 日次集計（前回処理済み行以降を読み、Dailyへ1日1行）
+  - `MonthlyAggregation.gs`: 月次集計（Dailyを読み、Monthlyへ1月1行）
   - `LineBot.gs`: Webhook署名検証、コマンド解析（状況/スキップ/クリア）、Reply/Push送信
   - `Config.gs`: Script Properties / Configシートへのアクセス集約、しきい値デフォルト定義
   - `ErrorLog.gs`: 例外記録のラッパー（秘密情報をログに残さない）
 - **Googleスプレッドシート**:
   - DATA: `日時 | temp | press | hum` の生ログ（追記専用）。シート名は `DATA`、`日時` は **Date値＋表示形式 `yyyy-MM-dd HH:mm:ss`**
   - Daily: `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` の日次集計（1日1行）
+  - Monthly: `年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count` の月次集計（1月1行）
 
 ## スプレッドシート設計
 
@@ -62,6 +76,7 @@ Dailyシート（1日1行）
 - 平滑化方式（決定済み）: **直近K件連続超過、K=2**（Configで可変）。
 - ヒステリシス幅（決定済み）: 復帰 = 超過しきい値 − 幅（気温 **0.5℃** / 湿度 **5%** / 簡易暑さ指数 **0.5**）。
 - 異常値（急変）判定（決定済み）: 気温 **±5.0℃** / 湿度 **±30%** / 気圧 **±20hPa** の変化を `anomaly` 扱いとして記録し、集計から除外する（受信契約の範囲チェックとは別レイヤー）。
+- センサー未受信ウォッチドッグ: DATAへの追記がしきい値（`WATCHDOG_TIMEOUT_MIN=4320`＝3日）を超えて途絶えたら、時間主導トリガーで判定し1回だけLINE通知する。復帰（追記再開）でリセットし、再び途絶えたら再通知（Phase 17・決定済み）。
 
 ## 実行サイクル
 

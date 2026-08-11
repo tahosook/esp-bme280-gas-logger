@@ -204,11 +204,14 @@ ESP8266への書き込みは人間の確認後に実施する。Codexは書き�
    | `ANOMALY_TEMP` | 5.0 | 異常値判定の気温変化量（℃） |
    | `ANOMALY_HUM` | 30 | 異常値判定の湿度変化量（%） |
    | `ANOMALY_PRESS` | 20 | 異常値判定の気圧変化量（hPa） |
+   | `WATCHDOG_TIMEOUT_MIN` | 4320 | センサー未受信ウォッチドッグのしきい値（分）。4320＝3日 |
 
 2. Dailyシートを作成し、1行目を `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` にする。
 3. 時間主導トリガーを設定し、日付境界+10分程度に日次集計を実行する。
+4. Monthlyシートを作成し、1行目を `年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count` にする。月次トリガー（例: 1日0:10）で前月分を月次集計する。
+5. ウォッチドッグ用の時間主導トリガー（例: 1日1回）を設定する。DATA最終日時が `WATCHDOG_TIMEOUT_MIN`（既定4320＝3日）を超えると1回だけ通知し、復帰（追記再開）でリセットする。
 
-※LINE設定・Config/Dailyシート作成・トリガー設定は人間の承認後に実施する。
+※LINE設定・Config/Daily/Monthlyシート作成・トリガー設定は人間の承認後に実施する。
 
 ## リリース
 

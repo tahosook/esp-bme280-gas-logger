@@ -55,11 +55,19 @@
 - テスト: 実データ集計、Dailyの平均・最小・最大・`sample_count`整合
 - 完了条件: Daily集計が正しく生成される
 
-### 実装T5（Phase 17、任意）：センサー未受信ウォッチドッグ
+### 実装T5（Phase 17）：センサー未受信ウォッチドッグ
 - 対象: `gas/Monitor.gs`
-- 内容: 一定時間DATAへの追記がなければ1回だけ通知
-- テスト: 送信停止時に1回通知、復帰後リセット
+- 内容: DATAへの追記がしきい値（`WATCHDOG_TIMEOUT_MIN=4320`＝3日、Configシートで調整可）を超えて途絶えたら1回だけ通知し、復帰後はリセット。時間主導トリガーで定期評価
+- テスト: 送信停止時に1回通知、継続未受信で再通知なし、復帰後リセット
 - 完了条件: オフライン検知が1回通知で動作
+
+### 実装T6（Phase 18）：月次ロールアップ
+- 対象: `gas/MonthlyAggregation.gs`
+- 内容: 前月のDailyを集計し、Monthlyへ1行追記（`年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count`）
+- テスト: 実データで月1行・集計整合
+- 完了条件: Monthlyが月1行で正しく生成される
+
+※#15 device_id 実運用は見送り（保留）。列追加・複数台運用は当面実施しない。
 
 ---
 
@@ -76,3 +84,7 @@
 ### 検証T3（Phase 16）：Daily集計
 - 対象: `docs/test-results/*`、`docs/test-plan.md`
 - 内容: 数日分データでDailyの平均・最小・最大・`sample_count`が手計算と一致することを確認
+
+### 検証T4（Phase 19）：ウォッチドッグ・月次ロールアップ
+- 対象: `docs/test-results/*`、`docs/test-plan.md`
+- 内容: 未受信で1回通知/復帰リセット、Monthlyの月1行・集計整合（手計算と一致）を確認

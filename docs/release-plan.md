@@ -24,6 +24,7 @@ GAS Web Appの本番リリースおよび旧システム廃止までの全体手
 | v1.2.0 | 環境監視（Monitor.gs） | 10（決定）, 11 |
 | v1.3.0 | LINE Bot（LineBot.gs） | 12, 13 |
 | v1.4.0 | 日次集計（DailyAggregation.gs）・Config/ErrorLog | 14（決定）, 15, 16 |
+| v1.5.0 | ウォッチドッグ・月次ロールアップ（MonthlyAggregation.gs） | 17, 18, 19 |
 
 ---
 
