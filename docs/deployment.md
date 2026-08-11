@@ -163,6 +163,38 @@ curl -L -sS -i -X POST "$GAS_URL" \
 
 ESP8266への書き込みは人間の確認後に実施する。Codexは書き込み完了を、実際のログなしに推測しない。
 
+## 追加機能のセットアップ（Phase 11 / 12 / 15 対応）
+
+以下は監視・LINE・日次集計を有効化する際の追加設定。実装済みのPhase（Phase 8以降）に応じて、
+該当するものを人間が確認・承認してから設定する。
+
+### Script Properties の追加キー（監視・LINE・日次集計）
+
+受信基盤の `SPREADSHEET_ID` / `API_TOKEN` / `SHEET_NAME` に加え、機能に応じて追加する。実値は公開資料へ記載しない。
+
+| キー | 内容 | 対応Phase |
+| --- | --- | --- |
+| `LINE_CHANNEL_SECRET` | LINEチャネルシークレット（Webhook署名検証用） | 12 |
+| `LINE_ACCESS_TOKEN` | LINEアクセストークン（Push/Reply送信用） | 12 |
+| `LINE_USER_ID` | 通知送信先ユーザーID | 12 |
+| `ONHOLD_TIME` | スキップ停止時刻（ISO 8601 文字列で保存） | 12 |
+
+監視閾値など頻繁に調整する値は、Configシート採用時はそちらへ置く（Phase 15 の決定Issueを参照）。
+
+### LINEチャネル / Webhook設定（Phase 12）
+
+1. LINE Developerコンソールでチャネルを作成し、チャネルシークレットとアクセストークンを取得する。
+2. Webhook URL に GAS Webアプリの `/exec` URL を設定する。
+3. 送信はReply API（`/message/reply`）とPush API（`/message/push`）を使う。無料プランではPushの月200通制限があり、Replyはカウントされない。
+
+### Configシート / Dailyシート（Phase 15）
+
+1. （採用時）Configシートを作成し、閾値などのキーと値を配置する。
+2. Dailyシートを作成し、1行目を `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` にする。
+3. 時間主導トリガーを設定し、日付境界+10分程度に日次集計を実行する。
+
+※LINE設定・Config/Dailyシート作成・トリガー設定は人間の承認後に実施する。
+
 ## リリース
 
 実機で安定動作を確認したファームウェアには、例えば次のタグを付ける。

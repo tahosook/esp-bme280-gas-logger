@@ -47,7 +47,11 @@ APIバージョンは`1`から開始し、スプレッドシートの日時はGA
 4. Pull Requestを作成する
 5. 確認後に`main`へマージする
 
-Phaseごとの作業内容は[ROADMAP.md](ROADMAP.md)に記載しています。
+Phaseごとの作業内容は[実装ロードマップ](docs/implementation-roadmap.md)に記載しています。
+
+## ドキュメント
+
+設計・運用・テストの詳細は[docs/README.md](docs/README.md)の目次を起点として参照してください。
 
 ## セットアップとデプロイ
 

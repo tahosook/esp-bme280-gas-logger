@@ -1,24 +1,67 @@
-# GAS環境ロガーシステム 実装ロードマップ
+# ESP8266 BME280 環境ロガー 実装ロードマップ（全体）
 
-本ドキュメントは、GAS / スプレッドシート / LINE 側の実装ロードマップを整理する。
-全体のロードマップ正本は [ROADMAP.md](../ROADMAP.md) であり、本ドキュメントはそのGAS側の詳細版である。
+本ドキュメントは本プロジェクトの実装ロードマップの正本である。
+基盤移行（Phase 0〜6）は完了しており、以降は日次集計・環境監視・LINE Bot の拡張（Phase 7〜17）を計画する。
 
-## 前提：Phase 0〜6 は完了済み
+## 目的
 
-[ROADMAP.md](../ROADMAP.md) の Phase 0〜6（GitHub基盤 / API仕様 / GAS API実装 / Arduino送信処理 / 通信・実機検証 / 安定版化）は完了し、
-動作確認済みのファームウェアは `v1.0.0-stable` としてタグ付けされている。
+ESP8266（ESPr Developer）とBME280で測定している温度・気圧・湿度を、Ambientから
+Googleスプレッドシートへ移行する。個人利用・趣味のプロジェクトとして、無料で維持できる構成を優先する。
 
-- 実機検証記録: `docs/test-results/2026-08-10-phase-6-hardware-test.md`
-- API契約: `docs/api-contract.md`
-- システム構成: `docs/architecture.md`
+## 既存スケッチの原典
 
-この受信基盤の上に日次集計・環境監視・LINE Bot を設計する設計レビュー
-（「仕事部屋環境ロガー：GAS / Spreadsheet / LINE 側 設計レビュー」）を実施し、その結果を本ドキュメントへ反映する。
-以降、Phase 7 からを継続ロードマップとして整理する。
+既存の動作確認済みスケッチは、次の公開リポジトリで管理されている。
 
-## 設計レビューによる確定方針（継続ロードマップの前提）
+https://github.com/tahosook/sketch_ambidata
 
-レビューで確定した設計判断は次の通り。仕様として本ロードマップの前提となる。
+移行先では、このリポジトリのBME280読み取り処理、Wi-Fi接続、ディープスリープ動作を
+ベースラインとして扱う。Ambientへの送信部分だけを段階的に置き換える。
+既存リポジトリのMITライセンスと著作権表示は引き継ぐ。
+
+## 合意済みの方針
+
+- GitHubリポジトリはPublicで運用する。
+- Wi-Fiパスワード、APIトークン、GASの認証トークン、LINE秘密情報は公開しない。
+- データ欠損は許容する。未送信データの永続キューは作らない。
+- APIバージョンは最初から `1` とする。単位は `temp: °C`, `press: hPa`, `hum: %` に固定する。
+- 日時はGAS側で生成し、タイムゾーンは `Asia/Tokyo` とする。
+- 実機書き込みとGASデプロイはユーザーが確認してから行う。
+- 安定版はGitタグで管理する。
+- 追加サービスや有料インフラは使用しない。
+
+## 文書マップ（docs/）
+
+| 文書 | 役割 |
+| --- | --- |
+| [README.md](README.md) | 文書目次 |
+| [api-contract.md](api-contract.md) | センサー受信API契約 |
+| [architecture.md](architecture.md) | システム構成・アーキテクチャ |
+| [deployment.md](deployment.md) | セットアップ・デプロイ手順 |
+| [release-plan.md](release-plan.md) | リリース・ロールバック計画 |
+| [implementation-tasks.md](implementation-tasks.md) | タスク一覧（決定 / 実装 / 検証） |
+| [test-plan.md](test-plan.md) | テスト計画 |
+| [test-results/](test-results/) | 検証記録 |
+
+## 完了済み：Phase 0〜6（基盤移行）
+
+Phase 0〜6 は完了し、動作確認済みのファームウェアは `v1.0.0-stable` としてタグ付けされている。
+実機検証記録: [test-results/2026-08-10-phase-6-hardware-test.md](test-results/2026-08-10-phase-6-hardware-test.md)
+
+| Phase | 内容 | 状態 |
+| --- | --- | --- |
+| 0 | GitHubと開発基盤の整備（Public repo / main / AGENTS / README / .gitignore / secrets.example.h / MIT引継ぎ） | ✅ 完了 |
+| 1 | API仕様の確定（POST: api_version/token/temp/press/hum、列: 日時/temp/press/hum、正常/欠損/異常/不正トークンの扱い） | ✅ 完了 |
+| 2 | GAS APIの実装（doPost・JSON解析・バージョン/トークン/数値・範囲検証・Asia/Tokyo・JSONレスポンス） | ✅ 完了 |
+| 3 | Arduino送信処理の実装（BME280維持・Ambient→GAS送信へ置換・WiFiClientSecure/HTTPClient・ArduinoJson・リダイレクト対応・5分スリープ） | ✅ 完了 |
+| 4 | 通信・実機検証（Wi-Fi / BME280 / HTTPS POST / HTTP200判定 / GASリダイレクト / 追記 / スリープ復帰 / タイムアウト） | ✅ 完了 |
+| 5 | 最小限の安定化（Wi-Fi/HTTPSタイムアウト・再試行・無限ループ回避・ログ形式） | ✅ 完了 |
+| 6 | レビューと安定版化（秘密情報なし・API一致・無限待機なし・リダイレクト上限・センサー保守・実機結果記録 → v1.0.0-stable） | ✅ 完了 |
+
+## 設計レビューによる確定方針（Phase 7以降の前提）
+
+受信基盤の上に日次集計・環境監視・LINE Bot を設計する設計レビュー
+（「仕事部屋環境ロガー：GAS / Spreadsheet / LINE 側 設計レビュー」）を実施し、その結果を本ロードマップへ反映する。
+レビューで確定した設計判断は次の通り。仕様として Phase 7 以降の前提となる。
 
 1. **GASプロジェクトは1つのまま拡張する**。検証済みのESP8266宛先 URL（`/exec`）と Script Properties を維持するため、`.gs` ファイルを機能ごとに分割し、`doPost` 冒頭でペイロードの形（`events` 配列の有無）を見て処理を振り分ける。
 2. **スプレッドシートは「DATA（生ログ追記のみ）＋ Daily（1日1行）」方式**。旧方式の日別シート（タブ）は Google Sheets の1ファイル最大200タブ制約により約7ヶ月で上限に達し、長期運用と矛盾するため採用しない。旧固定行範囲（`AVERAGE(B2:B290)` 等）も採用しない。
@@ -57,6 +100,7 @@
 | 復帰しきい値（ヒステリシス幅） | 10 |
 | 簡易暑さ指数の名称・計算式 | 14 |
 | Configシート採用の要否 | 15 |
+
 
 ---
 
@@ -130,8 +174,6 @@
 | 前提・未決事項 | スキップ停止時刻は `ONHOLD_TIME` を ISO 8601 文字列で保存。秘密情報（LINEトークン等）をログへ出さない |
 | 受け入れ条件 | 署名検証で不正を拒否。各コマンドが期待通り応答し、超過時Pushは1回 |
 | 検証方法 | LINEアプリからの実操作 |
-
----
 
 ## Phase 13：検証 — LINE操作と通知
 

@@ -8,7 +8,7 @@
 
 ## Phase 6 レビュー結果
 
-`docs/ROADMAP.md` の Phase 6 レビュー項目を確認した。
+ロードマップ（`docs/implementation-roadmap.md`）の Phase 6 レビュー項目を確認した。
 
 | レビュー項目 | 結果 | 備考 |
 | --- | --- | --- |
