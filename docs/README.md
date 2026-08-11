@@ -4,11 +4,11 @@
 
 ## 位置づけ
 
-本プロジェクトは、基盤移行（Phase 0〜6、`v1.0.0-stable`）を完了し、以降は日次集計・環境監視・LINE Bot の拡張（Phase 7〜17）を進める。
+本プロジェクトは、基盤移行（Phase 0〜6、`v1.0.0-stable`）を完了し、以降は日次集計・環境監視・LINE Bot の拡張（Phase 7〜19）を進める。
 
 | 文書 | 内容 | 対象 |
 | --- | --- | --- |
-| [implementation-roadmap.md](implementation-roadmap.md) | 実装ロードマップ（正本）。Phase 0-6完了＋Phase 7-17 | 全体 |
+| [implementation-roadmap.md](implementation-roadmap.md) | 実装ロードマップ（正本）。Phase 0-6完了＋Phase 7-19 | 全体 |
 | [api-contract.md](api-contract.md) | センサー受信API契約（POST / 応答 / エラーコード / 重複送信の扱い） | GAS・ファームウェア |
 | [architecture.md](architecture.md) | システム構成・データフロー・モジュール分割・スプレッドシート設計 | 設計 |
 | [deployment.md](deployment.md) | セットアップ・GASデプロイ・URL固定・実機書き込み手順 | 運用 |

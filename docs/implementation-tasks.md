@@ -1,7 +1,7 @@
 # 実装タスク一覧
 
 本一覧は `docs/implementation-roadmap.md` の Phase 7 以降（決定 / 実装 / 検証）に沿ってタスクを整理する。
-1タスク = 1コミット を基本とする。未決の値は決定タスクで確定するまで実装しない（Phase 7 / 10 / 14 / 15 の主要値は決定済み）。
+1タスク = 1コミット を基本とする。未決の値は決定タスクで確定するまで実装しない（Phase 7 / 10 / 14 / 15 / 17 / 18 の主要値は決定済み）。
 
 ---
 
@@ -51,7 +51,7 @@
 
 ### 実装T4（Phase 15）：Config/ErrorLog と DailyAggregation
 - 対象: `gas/Config.gs`、`gas/ErrorLog.gs`、`gas/DailyAggregation.gs`
-- 内容: 設定アクセス集約、例外ログラッパー、前回処理済み行からの差分読み込み日次集計（Daily 1日1行・`sample_count`）
+- 内容: 設定アクセス集約、例外ログラッパー、前回処理済み行からの差分読み込み日次集計（Daily 1日1行・`sample_count`＝anomalyを除いた有効行数）
 - テスト: 実データ集計、Dailyの平均・最小・最大・`sample_count`整合
 - 完了条件: Daily集計が正しく生成される
 

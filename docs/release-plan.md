@@ -7,7 +7,7 @@ GAS Web Appの本番リリースおよび旧システム廃止までの全体手
 ## 1. 前提条件
 
 - **現行稼働状態**: 受信基盤（Phase 0〜6）の GAS Web App が本番稼働中であり、ファームウェアは `v1.0.0-stable` で動作している。
-- **GASプロジェクト構成**: 1つのGASプロジェクトのまま `.gs` ファイルを機能ごとに分割して拡張する（Router / Ingest / Monitor / DailyAggregation / LineBot / Config / ErrorLog）。
+- **GASプロジェクト構成**: 1つのGASプロジェクトのまま `.gs` ファイルを機能ごとに分割して拡張する（Router / Ingest / Monitor / DailyAggregation / MonthlyAggregation / LineBot / Config / ErrorLog）。
 - **URL維持**: ESP8266の宛先URLはビルド時に固定されるため、本番Webアプリの `/exec` URLを変更しない。既存デプロイを同じデプロイIDで更新する（`docs/deployment.md` のURL固定ルールに従う）。
 - **承認プロセス**: 本番デプロイ・LINE設定・実機書き込み・旧システム最終廃止は、人間の承認後に実施する。
 - **手順の整合性**: デプロイ手順は `docs/deployment.md` の本番デプロイ手順と整合させる。
@@ -34,7 +34,7 @@ GAS Web Appの本番リリースおよび旧システム廃止までの全体手
 
 1. **環境準備**: 必要に応じてDailyシート・Configシートを用意する。
 2. **タイムゾーン設定**: タイムゾーンを `Asia/Tokyo` に維持する。
-3. **ソースコード反映**: GASプロジェクトに `gas/` 配下のモジュール（Router / Ingest / Monitor / DailyAggregation / LineBot / Config / ErrorLog）を反映する。
+3. **ソースコード反映**: GASプロジェクトに `gas/` 配下のモジュール（Router / Ingest / Monitor / DailyAggregation / MonthlyAggregation / LineBot / Config / ErrorLog）を反映する。
 4. **プロパティ設定**: Script Properties に必要なキーを設定する（閾値などはConfigシート採用時はそちら）。
 5. **事前検証**: `/dev` のテストデプロイで動作確認を行う。
 6. **本番デプロイ**: 本番は既存の `/exec` デプロイを同じデプロイIDで更新し、URLを維持する。

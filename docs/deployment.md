@@ -40,7 +40,7 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
 
    日時はDate値で書き、列の表示形式を`yyyy-MM-dd HH:mm:ss`にする（Phase 7で決定。Phase 8の実装で反映）。
 3. スプレッドシートのタイムゾーンを`Asia/Tokyo`に設定する。
-4. Google Apps Scriptプロジェクトを作成し、`gas/Code.gs`の内容を配置する。
+4. Google Apps Scriptプロジェクトを作成し、`gas/` の内容を配置する。Phase 0〜6 の受信基盤は単一の `Code.gs`。Phase 8 以降はモジュール群（`Router.gs` / `Ingest.gs` / … / `MonthlyAggregation.gs`）をまとめて配置する。
 5. GASプロジェクトのタイムゾーンを`Asia/Tokyo`に設定する。
 6. `appsscript.json`にWebアプリ設定があることを確認する。CLIで同期する場合は、次の設定を含める。
 
@@ -180,7 +180,7 @@ ESP8266への書き込みは人間の確認後に実施する。Codexは書き�
 | `LINE_USER_ID` | 通知送信先ユーザーID | 12 |
 | `ONHOLD_TIME` | スキップ停止時刻（ISO 8601 文字列で保存） | 12 |
 
-監視閾値など頻繁に調整する値は、Configシート採用時はそちらへ置く（Phase 15 の決定Issueを参照）。
+監視閾値など頻繁に調整する値は、Configシート（Phase 15で採用決定）へ置く。
 
 ### LINEチャネル / Webhook設定（Phase 12）
 
