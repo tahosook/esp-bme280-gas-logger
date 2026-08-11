@@ -48,11 +48,7 @@ function fixedDate(iso) {
 
 function runEvaluate(temp, hum, press) {
   const measurement = { temp, hum, press };
-  const before = context.PropertiesService.getScriptProperties();
-  const result = context.updateMonitorState_(measurement);
-  const after = context.PropertiesService.getScriptProperties();
-  console.log('prop identity', before===after, before.store===after.store, before.store.size);
-  return result;
+  return context.updateMonitorState_(measurement);
 }
 
 function stateEqual(actual, expected) {
@@ -63,33 +59,27 @@ function stateEqual(actual, expected) {
 
 context.Date = fixedDate('2026-08-10T01:00:00Z');
 let result = runEvaluate(29.0, 69.0, 1009.0);
-console.log('debug baseline', JSON.stringify(result.states));
 assert.ok(!stateEqual(result.states, { temp: true, hum: true, discomfortIndex: true }), 'no alert below thresholds');
 assert.strictEqual(result.notification, null, 'no notification below thresholds');
 
 result = runEvaluate(31.0, 72.0, 1007.0);
-console.log('debug over1', JSON.stringify(result.states), Array.from(propertiesStore.entries()));
 assert.ok(stateEqual(result.states, { temp: false, hum: false, discomfortIndex: false }), 'no alert on first over due to smoothing');
 assert.strictEqual(result.notification, null, 'do not notify on first over due to smoothing');
 
 result = runEvaluate(31.5, 73.0, 1006.5);
-console.log('debug over2', JSON.stringify(result.states), Array.from(propertiesStore.entries()));
 assert.ok(stateEqual(result.states, { temp: true, hum: true, discomfortIndex: true }), 'alert after consecutive over');
 assert.ok(result.notification && result.notification.text.includes('超過しました'), 'notify after consecutive over');
 
 context.Date = fixedDate('2026-08-10T02:00:00Z');
 result = runEvaluate(29.3, 65.0, 1008.0);
-console.log('debug recover', JSON.stringify(result.states), Array.from(propertiesStore.entries()));
-assert.ok(stateEqual(result.states, { temp: false, hum: false, discomfortIndex: true }), 'recover temp/hum only');
+assert.ok(stateEqual(result.states, { temp: false, hum: false, discomfortIndex: true }), 'recover temp/hum');
 assert.strictEqual(result.notification, null, 'no notification while normal');
 
 result = runEvaluate(31.1, 71.5, 1007.0);
-console.log('debug realert', JSON.stringify(result.states), Array.from(propertiesStore.entries()));
-assert.ok(stateEqual(result.states, { temp: false, hum: false, discomfortIndex: true }), 'partial re-alert after recovery');
-assert.strictEqual(result.notification, null, 'no notification because discomfortIndex remains alerted');
+assert.ok(stateEqual(result.states, { temp: false, hum: false, discomfortIndex: true }), 'temp/hum need consecutive over after recovery');
+assert.strictEqual(result.notification, null, 'no notification because DI still alerted');
 
 result = runEvaluate(31.1, 71.5, 1007.0);
-console.log('debug repeat', JSON.stringify(result.states), Array.from(propertiesStore.entries()));
 assert.ok(stateEqual(result.states, { temp: true, hum: true, discomfortIndex: true }), 'remain alert on repeat');
 assert.strictEqual(result.notification, null, 'do not notify repeatedly');
 

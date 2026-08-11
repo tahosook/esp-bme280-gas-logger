@@ -11,7 +11,22 @@ const LIMITS = {
 };
 
 function doPost(e) {
+  if (isLineWebhook_(e)) {
+    return handleLineWebhook_(e);
+  }
   return handleSensorPost_(e);
+}
+
+function isLineWebhook_(e) {
+  if (!e || !e.postData || typeof e.postData.contents !== 'string') {
+    return false;
+  }
+  try {
+    const payload = JSON.parse(e.postData.contents);
+    return Array.isArray(payload.events);
+  } catch (error) {
+    return false;
+  }
 }
 
 function doGet() {
