@@ -219,6 +219,55 @@ function buildMonitorNotification_(states, overallAlert, previousAlert, conditio
   };
 }
 
+function checkWatchdog() {
+  const result = runWatchdogCheck_();
+  if (result && result.notified && result.notification &&
+      typeof pushMonitorNotification_ === 'function') {
+    try {
+      pushMonitorNotification_(result.notification.text);
+    } catch (err) {
+      if (typeof logError_ === 'function') {
+        logError_('watchdog', 'line_push', 'push_failed', err);
+      }
+    }
+  }
+  return result;
+}
+
+function runWatchdogCheck_() {
+  const properties = PropertiesService.getScriptProperties();
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+  const timeoutMinutes = Number(config.WATCHDOG_TIMEOUT_MIN) || 4320;
+
+  const lastValid = loadLastValidMeasurement_(properties);
+  if (!lastValid || !lastValid.timestamp) {
+    return { timeout: false, notified: false };
+  }
+
+  const lastTime = new Date(lastValid.timestamp).getTime();
+  const now = Date.now();
+  const elapsedMinutes = (now - lastTime) / (1000 * 60);
+
+  if (elapsedMinutes > timeoutMinutes) {
+    const watchdogNotified = properties.getProperty('WATCHDOG_NOTIFIED');
+    if (!watchdogNotified) {
+      properties.setProperty('WATCHDOG_NOTIFIED', 'true');
+      const daysOffline = (elapsedMinutes / (60 * 24)).toFixed(1);
+      return {
+        timeout: true,
+        notified: true,
+        notification: {
+          text: `センサー未受信：約${daysOffline}日間データの更新がありません。`
+        }
+      };
+    }
+    return { timeout: true, notified: false };
+  } else {
+    properties.deleteProperty('WATCHDOG_NOTIFIED');
+    return { timeout: false, notified: false };
+  }
+}
+
 function resetMonitorStates_() {
   const properties = PropertiesService.getScriptProperties();
   const defaults = {

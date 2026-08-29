@@ -3,7 +3,8 @@ const SCRIPT_PROPERTY_KEYS = {
   apiToken: 'API_TOKEN',
   sheetName: 'SHEET_NAME',
   lineChannelSecret: 'LINE_CHANNEL_SECRET',
-  lineChannelAccessToken: 'LINE_CHANNEL_ACCESS_TOKEN'
+  lineChannelAccessToken: 'LINE_CHANNEL_ACCESS_TOKEN',
+  lineUserId: 'LINE_USER_ID'
 };
 
 const DEFAULT_CONFIG = {

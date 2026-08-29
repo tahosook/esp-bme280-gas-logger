@@ -11,6 +11,11 @@ const LIMITS = {
 };
 
 function doPost(e) {
+  const headers = e && e.headers ? e.headers : {};
+  if (headers['X-Line-Signature'] || headers['x-line-signature'] ||
+      (e && e.parameter && (e.parameter['X-Line-Signature'] || e.parameter['x-line-signature']))) {
+    return handleLineWebhook_(e);
+  }
   return handleSensorPost_(e);
 }
 
