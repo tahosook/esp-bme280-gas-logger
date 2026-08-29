@@ -101,15 +101,11 @@ function checkAndAppendMeasurement_(payload, properties) {
 
       const elapsedSec = (now.getTime() - lastTimestamp.getTime()) / 1000;
 
-      const roundedTemp = Math.round(payload.temp * 100) / 100;
-      const roundedPress = Math.round(payload.press * 100) / 100;
-      const roundedHum = Math.round(payload.hum * 100) / 100;
-
       const isDuplicate = elapsedSec >= 0 &&
           elapsedSec <= SENSOR_DUPLICATION_WINDOW_SECONDS &&
-          Math.abs(lastTemp - roundedTemp) < 1e-9 &&
-          Math.abs(lastPress - roundedPress) < 1e-9 &&
-          Math.abs(lastHum - roundedHum) < 1e-9;
+          lastTemp === payload.temp &&
+          lastPress === payload.press &&
+          lastHum === payload.hum;
 
       if (isDuplicate) {
         return;

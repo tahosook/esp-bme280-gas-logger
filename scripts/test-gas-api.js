@@ -160,6 +160,41 @@ assert.deepStrictEqual(responseBody(context.doPost(duplicateRequest)),
   { ok: true }, 'response after duplication window');
 assert.deepStrictEqual(rows.length, 3, 'same values append after duplication window');
 
+context.Date = createMockDate('2026-08-10T01:46:00Z');
+const preciseRequest = {
+  postData: {
+    contents: JSON.stringify({
+      api_version: 1,
+      token: 'test-token',
+      temp: 24.561,
+      press: 1012.341,
+      hum: 55.871
+    })
+  }
+};
+assert.deepStrictEqual(responseBody(context.doPost(preciseRequest)),
+  { ok: true }, 'high-precision measurement response');
+assert.deepStrictEqual(rows.length, 4, 'high-precision measurement appends');
+
+assert.deepStrictEqual(responseBody(context.doPost(preciseRequest)),
+  { ok: true }, 'high-precision duplicate response');
+assert.deepStrictEqual(rows.length, 4, 'high-precision duplicate does not append');
+
+const distinctPreciseRequest = {
+  postData: {
+    contents: JSON.stringify({
+      api_version: 1,
+      token: 'test-token',
+      temp: 24.5619,
+      press: 1012.3419,
+      hum: 55.8719
+    })
+  }
+};
+assert.deepStrictEqual(responseBody(context.doPost(distinctPreciseRequest)),
+  { ok: true }, 'distinct high-precision measurement response');
+assert.deepStrictEqual(rows.length, 5, 'distinct high-precision measurement appends');
+
 const rowCount = rows.length;
 const cases = [
   ['invalid JSON', { postData: { contents: '{' } }, 'invalid_json'],
@@ -194,7 +229,7 @@ assert.deepStrictEqual(rows.length, rowCount, 'invalid requests must not append 
 context.Date = createMockDate('2026-08-10T03:42:10Z');
 assert.deepStrictEqual(responseBody(context.doPost(validRequest)),
   { ok: true }, 'non-duplicate response after timeout');
-assert.deepStrictEqual(rows.length, 4, 'new row appended after duplication timeout');
+assert.deepStrictEqual(rows.length, 6, 'new row appended after duplication timeout');
 
 properties.delete('API_TOKEN');
 assert.deepStrictEqual(responseBody(context.doGet()),
