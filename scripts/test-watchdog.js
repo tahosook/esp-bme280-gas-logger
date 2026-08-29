@@ -30,6 +30,8 @@ function createMockEnvironment(options = {}) {
   ];
 
   const configValues = options.configValues || [];
+  let lockAcquired = false;
+  let lockReleased = false;
 
   const dataSheetMock = {
     getLastRow() {
@@ -132,8 +134,12 @@ function createMockEnvironment(options = {}) {
     LockService: {
       getScriptLock() {
         return {
-          waitLock() {},
-          releaseLock() {}
+          waitLock() {
+            lockAcquired = true;
+          },
+          releaseLock() {
+            lockReleased = true;
+          }
         };
       }
     },
@@ -154,7 +160,8 @@ function createMockEnvironment(options = {}) {
   return {
     context,
     propertiesStore,
-    dataRows
+    dataRows,
+    getLockStatus: () => ({ lockAcquired, lockReleased })
   };
 }
 
@@ -176,7 +183,7 @@ function fixedDate(isoString) {
 console.log('Running Watchdog tests...');
 
 // ----------------------------------------------------
-// Test 1: Recent data (within 3 days) -> No alert
+// Test 1: Recent data (within 3 days) -> No alert, lock acquired/released
 // ----------------------------------------------------
 {
   const env = createMockEnvironment({
@@ -195,11 +202,15 @@ console.log('Running Watchdog tests...');
   assert.strictEqual(result.notification, null);
   assert.ok(!env.propertiesStore.get('WATCHDOG_NOTIFIED'), 'WATCHDOG_NOTIFIED should remain unset');
 
-  console.log('  ✓ Test 1: Recent data within timeout passed');
+  const lockStatus = env.getLockStatus();
+  assert.ok(lockStatus.lockAcquired, 'Lock should be acquired during checkWatchdog');
+  assert.ok(lockStatus.lockReleased, 'Lock should be released during checkWatchdog');
+
+  console.log('  ✓ Test 1: Recent data within timeout and locking passed');
 }
 
 // ----------------------------------------------------
-// Test 2: Offline超过 3 days (4320 mins) -> Notifies once
+// Test 2: Offline 3 days (4320 mins) -> Notifies once
 // ----------------------------------------------------
 {
   const env = createMockEnvironment({
@@ -248,7 +259,57 @@ console.log('Running Watchdog tests...');
 }
 
 // ----------------------------------------------------
-// Test 4: Recovery on new measurement (Ingest) -> Resets watchdog & monitor state
+// Test 4: Normal ingestion does NOT reset monitor consecutive state
+// ----------------------------------------------------
+{
+  const env = createMockEnvironment({
+    dataRows: [
+      ['日時', 'temp', 'press', 'hum', 'flag'],
+      [new Date('2026-08-14T09:55:00Z'), 31.0, 1012.0, 55.0, '']
+    ]
+  });
+
+  // Ingest reading 1: temp 31.0 (>30.0 threshold) -> consecutive 1, no alert yet
+  env.context.Date = fixedDate('2026-08-14T10:00:00Z');
+  env.context.handleSensorPost_({
+    postData: {
+      contents: JSON.stringify({
+        api_version: 1,
+        token: 'test-token',
+        temp: 31.0,
+        press: 1012.0,
+        hum: 55.0
+      })
+    }
+  });
+
+  let monitorState = env.context.getMonitorStateForTest_();
+  assert.strictEqual(monitorState.temp.consecutive, 1, 'Consecutive should be 1 after first high temp');
+  assert.strictEqual(monitorState.temp.alert, false, 'Should not alert on K=1');
+
+  // Ingest reading 2: temp 31.5 (>30.0 threshold) -> consecutive should reach 2 and alert!
+  env.context.Date = fixedDate('2026-08-14T10:05:00Z');
+  env.context.handleSensorPost_({
+    postData: {
+      contents: JSON.stringify({
+        api_version: 1,
+        token: 'test-token',
+        temp: 31.5,
+        press: 1012.0,
+        hum: 55.0
+      })
+    }
+  });
+
+  monitorState = env.context.getMonitorStateForTest_();
+  assert.strictEqual(monitorState.temp.consecutive, 2, 'Consecutive should advance to 2 across normal readings');
+  assert.strictEqual(monitorState.temp.alert, true, 'Monitor should alert on K=2 without being cleared by watchdog reset');
+
+  console.log('  ✓ Test 4: Normal ingestion preserves monitor consecutive count passed');
+}
+
+// ----------------------------------------------------
+// Test 5: Recovery on new measurement after actual watchdog notification
 // ----------------------------------------------------
 {
   const env = createMockEnvironment({
@@ -281,20 +342,20 @@ console.log('Running Watchdog tests...');
   assert.strictEqual(env.dataRows.length, 3, 'New measurement row should be appended');
   assert.ok(!env.propertiesStore.get('WATCHDOG_NOTIFIED'), 'WATCHDOG_NOTIFIED should be reset');
 
-  // Verify monitor states were also reset to false
+  // Verify monitor states were reset to false on actual recovery
   const monitorState = env.context.getMonitorStateForTest_();
-  assert.strictEqual(monitorState.temp.alert, false, 'Monitor alert state should be reset on recovery');
+  assert.strictEqual(monitorState.temp.alert, false, 'Monitor alert state should be reset on actual recovery');
 
   // Now checkWatchdog again right after recovery
   const watchdogResult = env.context.checkWatchdog();
   assert.strictEqual(watchdogResult.timeout, false, 'Watchdog should not timeout after recovery');
   assert.strictEqual(watchdogResult.notified, false);
 
-  console.log('  ✓ Test 4: Recovery reset on Ingest passed');
+  console.log('  ✓ Test 5: Recovery reset on Ingest passed');
 }
 
 // ----------------------------------------------------
-// Test 5: Re-offline after recovery -> Notifies again
+// Test 6: Re-offline after recovery -> Notifies again
 // ----------------------------------------------------
 {
   const env = createMockEnvironment({
@@ -312,11 +373,11 @@ console.log('Running Watchdog tests...');
   assert.strictEqual(result.notified, true, 'Should notify again after recovery');
   assert.strictEqual(env.propertiesStore.get('WATCHDOG_NOTIFIED'), 'true');
 
-  console.log('  ✓ Test 5: Re-offline alert passed');
+  console.log('  ✓ Test 6: Re-offline alert passed');
 }
 
 // ----------------------------------------------------
-// Test 6: Custom WATCHDOG_TIMEOUT_MIN from Config sheet
+// Test 7: Custom WATCHDOG_TIMEOUT_MIN from Config sheet
 // ----------------------------------------------------
 {
   const env = createMockEnvironment({
@@ -337,11 +398,11 @@ console.log('Running Watchdog tests...');
   assert.strictEqual(result.timeout, true, 'Should respect custom Config timeout');
   assert.strictEqual(result.notified, true);
 
-  console.log('  ✓ Test 6: Custom config threshold passed');
+  console.log('  ✓ Test 7: Custom config threshold passed');
 }
 
 // ----------------------------------------------------
-// Test 7: Empty / Header-only DATA sheet
+// Test 8: Empty / Header-only DATA sheet
 // ----------------------------------------------------
 {
   const env = createMockEnvironment({
@@ -355,7 +416,7 @@ console.log('Running Watchdog tests...');
   assert.strictEqual(result.timeout, false, 'No error on header-only sheet');
   assert.strictEqual(result.notified, false);
 
-  console.log('  ✓ Test 7: Header-only DATA sheet handling passed');
+  console.log('  ✓ Test 8: Header-only DATA sheet handling passed');
 }
 
 console.log('\nAll Watchdog tests passed successfully!');

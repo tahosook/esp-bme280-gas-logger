@@ -257,80 +257,91 @@ function runWatchdogCheck_() {
     throw error;
   }
 
-  const lastRow = dataSheet.getLastRow();
-  if (lastRow < 2) {
-    return {
-      timeout: false,
-      notified: false,
-      notification: null,
-      elapsedMinutes: null
-    };
-  }
+  const lock = LockService.getScriptLock();
+  const timeoutMs = (typeof getMergedConfig_ === 'function' && getMergedConfig_().INGEST_LOCK_TIMEOUT_MS) || 15000;
+  lock.waitLock(timeoutMs);
 
-  const lastRowValues = dataSheet.getRange(lastRow, 1, 1, 1).getValues()[0];
-  const lastTimestamp = lastRowValues[0];
-  let lastDate;
-  if (Object.prototype.toString.call(lastTimestamp) === '[object Date]') {
-    lastDate = lastTimestamp;
-  } else if (lastTimestamp) {
-    lastDate = new Date(lastTimestamp);
-  }
+  try {
+    const lastRow = dataSheet.getLastRow();
+    if (lastRow < 2) {
+      return {
+        timeout: false,
+        notified: false,
+        notification: null,
+        elapsedMinutes: null
+      };
+    }
 
-  if (!lastDate || isNaN(lastDate.getTime())) {
-    return {
-      timeout: false,
-      notified: false,
-      notification: null,
-      elapsedMinutes: null
-    };
-  }
+    const lastRowValues = dataSheet.getRange(lastRow, 1, 1, 1).getValues()[0];
+    const lastTimestamp = lastRowValues[0];
+    let lastDate;
+    if (Object.prototype.toString.call(lastTimestamp) === '[object Date]') {
+      lastDate = lastTimestamp;
+    } else if (lastTimestamp) {
+      lastDate = new Date(lastTimestamp);
+    }
 
-  const now = new Date();
-  const elapsedMinutes = (now.getTime() - lastDate.getTime()) / (1000 * 60);
+    if (!lastDate || isNaN(lastDate.getTime())) {
+      return {
+        timeout: false,
+        notified: false,
+        notification: null,
+        elapsedMinutes: null
+      };
+    }
 
-  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
-  const timeoutMinutes = getConfigNumber_(config, ['WATCHDOG_TIMEOUT_MIN'], 4320);
+    const now = new Date();
+    const elapsedMinutes = (now.getTime() - lastDate.getTime()) / (1000 * 60);
 
-  if (elapsedMinutes < timeoutMinutes) {
-    return {
-      timeout: false,
-      notified: false,
-      notification: null,
+    const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+    const timeoutMinutes = getConfigNumber_(config, ['WATCHDOG_TIMEOUT_MIN'], 4320);
+
+    if (elapsedMinutes < timeoutMinutes) {
+      return {
+        timeout: false,
+        notified: false,
+        notification: null,
+        elapsedMinutes: elapsedMinutes
+      };
+    }
+
+    const alreadyNotified = properties.getProperty(MONITOR_PROPERTIES.watchdogNotified) === 'true';
+    if (alreadyNotified) {
+      return {
+        timeout: true,
+        notified: false,
+        notification: null,
+        elapsedMinutes: elapsedMinutes
+      };
+    }
+
+    const daysOffline = (elapsedMinutes / (60 * 24)).toFixed(1);
+    const notification = {
+      text: `センサー未受信：約${daysOffline}日間（${Math.round(elapsedMinutes)}分）データが途絶えています。`,
+      lastTimestamp: lastDate,
       elapsedMinutes: elapsedMinutes
     };
-  }
 
-  const alreadyNotified = properties.getProperty(MONITOR_PROPERTIES.watchdogNotified) === 'true';
-  if (alreadyNotified) {
+    properties.setProperty(MONITOR_PROPERTIES.watchdogNotified, 'true');
+
     return {
       timeout: true,
-      notified: false,
-      notification: null,
+      notified: true,
+      notification: notification,
       elapsedMinutes: elapsedMinutes
     };
+  } finally {
+    lock.releaseLock();
   }
-
-  const daysOffline = (elapsedMinutes / (60 * 24)).toFixed(1);
-  const notification = {
-    text: `センサー未受信：約${daysOffline}日間（${Math.round(elapsedMinutes)}分）データが途絶えています。`,
-    lastTimestamp: lastDate,
-    elapsedMinutes: elapsedMinutes
-  };
-
-  properties.setProperty(MONITOR_PROPERTIES.watchdogNotified, 'true');
-
-  return {
-    timeout: true,
-    notified: true,
-    notification: notification,
-    elapsedMinutes: elapsedMinutes
-  };
 }
 
 function resetWatchdogState_() {
   const properties = PropertiesService.getScriptProperties();
-  properties.deleteProperty(MONITOR_PROPERTIES.watchdogNotified);
-  resetMonitorStates_();
+  const wasNotified = properties.getProperty(MONITOR_PROPERTIES.watchdogNotified) === 'true';
+  if (wasNotified) {
+    properties.deleteProperty(MONITOR_PROPERTIES.watchdogNotified);
+    resetMonitorStates_();
+  }
 }
 
 function getMonitorStateForTest_() {
