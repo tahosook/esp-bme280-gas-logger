@@ -36,7 +36,7 @@ function updateMonitorState_(measurement) {
 
   const currentStates = loadMonitorStates_(properties);
   const lastValid = loadLastValidMeasurement_(properties);
-  const anomaly = detectAnomaly_(conditions, lastValid);
+  const anomaly = detectAnomaly_(conditions, lastValid, getAnomalyLimits_());
 
   if (!anomaly) {
     saveLastValidMeasurement_(properties, conditions);
@@ -59,6 +59,15 @@ function updateMonitorState_(measurement) {
     states,
     notification,
     anomaly
+  };
+}
+
+function getAnomalyLimits_() {
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+  return {
+    temp: getConfigNumber_(config, ['ANOMALY_TEMP'], 5.0),
+    hum: getConfigNumber_(config, ['ANOMALY_HUM'], 30.0),
+    press: getConfigNumber_(config, ['ANOMALY_PRESS'], 20.0)
   };
 }
 
@@ -161,7 +170,7 @@ function evaluateConditionState_(current, value, threshold, smoothing) {
   return { consecutive, alert };
 }
 
-function detectAnomaly_(current, lastValid) {
+function detectAnomaly_(current, lastValid, limits) {
   if (!lastValid) {
     return false;
   }
@@ -170,11 +179,12 @@ function detectAnomaly_(current, lastValid) {
   const deltaHum = Math.abs(current.hum - lastValid.hum);
   const deltaPress = Math.abs(current.press - lastValid.press);
 
-  const limits = {
+  const defaultLimits = {
     temp: 5.0,
     hum: 30.0,
     press: 20.0
   };
+  limits = limits || defaultLimits;
 
   if (deltaTemp > limits.temp || deltaHum > limits.hum || deltaPress > limits.press) {
     return true;

@@ -18,6 +18,7 @@ const properties = new Map([
 const rows = [];
 const numberFormats = [];
 let monitorCalls = 0;
+const flags = [];
 const sheet = {
   appendRow(row) {
     rows.push(row);
@@ -33,6 +34,9 @@ const sheet = {
       },
       setNumberFormat(format) {
         numberFormats.push(format);
+      },
+      setValue(value) {
+        flags.push(value);
       }
     };
   }
@@ -102,6 +106,7 @@ const context = {
   },
   updateMonitorState_() {
     monitorCalls += 1;
+    return { anomaly: monitorCalls === 5 };
   }
 };
 
@@ -237,6 +242,7 @@ assert.deepStrictEqual(responseBody(context.doPost(validRequest)),
   { ok: true }, 'non-duplicate response after timeout');
 assert.deepStrictEqual(rows.length, 6, 'new row appended after duplication timeout');
 assert.strictEqual(monitorCalls, 5, 'monitor runs for each new measurement');
+assert.deepStrictEqual(flags, ['anomaly'], 'anomaly flag is persisted in DATA');
 
 properties.delete('API_TOKEN');
 assert.deepStrictEqual(responseBody(context.doGet()),

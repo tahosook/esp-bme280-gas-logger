@@ -55,7 +55,9 @@ function maskSecret_(text) {
   let masked = text;
   for (const key of SENSITIVE_KEYS) {
     const escapedKey = key.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
-    const pattern = new RegExp(escapedKey + '(?:\\s*[:=]\\s*\\S+)?', 'gi');
+    const pattern = key.toLowerCase() === 'authorization'
+      ? new RegExp(escapedKey + '\\s*[:=]\\s*(?:\\S+\\s+)?\\S+', 'gi')
+      : new RegExp(escapedKey + '(?:\\s*[:=]\\s*\\S+)?', 'gi');
     masked = masked.replace(pattern, '***');
   }
   return masked;

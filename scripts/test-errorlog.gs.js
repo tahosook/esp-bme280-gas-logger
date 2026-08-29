@@ -43,9 +43,10 @@ assert.strictEqual(context.getErrorLogForTest_().length, 0, 'empty log initially
 
 context.logError_('ingest', 'DATA', 'invalid_token', new Error('token mismatch'));
 context.logError_('linebot', 'reply', 'send_failed', new Error('accessToken expired'));
+context.logError_('linebot', 'reply', 'send_failed', new Error('Authorization: Bearer super-secret-token'));
 
 const log = context.getErrorLogForTest_();
-assert.strictEqual(log.length, 2, 'two entries logged');
+assert.strictEqual(log.length, 3, 'three entries logged');
 assert.strictEqual(log[0].operation, 'ingest', 'operation recorded');
 assert.strictEqual(log[0].target, 'DATA', 'target recorded');
 assert.strictEqual(log[0].errorCode, 'invalid_token', 'errorCode recorded');
@@ -54,6 +55,7 @@ assert.ok(log[0].timestamp, 'timestamp recorded');
 const lastEntry = log[1];
 assert.ok(!lastEntry.message.includes('accessToken'), 'secret masked in message');
 assert.ok(lastEntry.message.includes('***') || lastEntry.message.includes('expired'), 'secret masked or message preserved');
+assert.ok(!log[2].message.includes('super-secret-token'), 'authorization credential masked');
 
 context.clearErrorLog_();
 assert.strictEqual(context.getErrorLogForTest_().length, 0, 'cleared');

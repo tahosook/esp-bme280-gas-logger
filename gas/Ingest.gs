@@ -24,18 +24,7 @@ function handleSensorPost_(e) {
       return errorResponse_('invalid_token');
     }
 
-    const appended = checkAndAppendMeasurement_(payload, properties);
-    if (appended && typeof updateMonitorState_ === 'function') {
-      try {
-        updateMonitorState_(payload);
-      } catch (error) {
-        if (typeof logError_ === 'function') {
-          logError_('ingest', 'monitor', 'monitor_update_failed', error);
-        } else {
-          console.error('monitor_update_failed');
-        }
-      }
-    }
+    checkAndAppendMeasurement_(payload, properties);
     return successResponse_();
   } catch (error) {
     console.error('internal_error');
@@ -103,29 +92,39 @@ function checkAndAppendMeasurement_(payload, properties) {
       const hasValidTimestamp = Object.prototype.toString.call(lastTimestamp) === '[object Date]' &&
           !isNaN(lastTimestamp.getTime());
 
-      if (!hasValidTimestamp) {
-        sheet.appendRow([now, payload.temp, payload.press, payload.hum, '']);
-        const lastAppendedRow = sheet.getLastRow();
-        sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
-        return true;
-      }
+      if (hasValidTimestamp) {
+        const elapsedSec = (now.getTime() - lastTimestamp.getTime()) / 1000;
 
-      const elapsedSec = (now.getTime() - lastTimestamp.getTime()) / 1000;
+        const isDuplicate = elapsedSec >= 0 &&
+            elapsedSec <= SENSOR_DUPLICATION_WINDOW_SECONDS &&
+            lastTemp === payload.temp &&
+            lastPress === payload.press &&
+            lastHum === payload.hum;
 
-      const isDuplicate = elapsedSec >= 0 &&
-          elapsedSec <= SENSOR_DUPLICATION_WINDOW_SECONDS &&
-          lastTemp === payload.temp &&
-          lastPress === payload.press &&
-          lastHum === payload.hum;
-
-      if (isDuplicate) {
-        return false;
+        if (isDuplicate) {
+          return false;
+        }
       }
     }
 
     sheet.appendRow([now, payload.temp, payload.press, payload.hum, '']);
     const lastAppendedRow = sheet.getLastRow();
     sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+
+    if (typeof updateMonitorState_ === 'function') {
+      try {
+        const monitorResult = updateMonitorState_(payload);
+        if (monitorResult && monitorResult.anomaly) {
+          sheet.getRange(lastAppendedRow, 5).setValue('anomaly');
+        }
+      } catch (error) {
+        if (typeof logError_ === 'function') {
+          logError_('ingest', 'monitor', 'monitor_update_failed', error);
+        } else {
+          console.error('monitor_update_failed');
+        }
+      }
+    }
     return true;
   } finally {
     lock.releaseLock();
