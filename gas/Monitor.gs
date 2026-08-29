@@ -1,6 +1,7 @@
 const MONITOR_PROPERTIES = {
   statePrefix: 'MONITOR_STATE_',
-  lastValidPrefix: 'MONITOR_LAST_VALID_'
+  lastValidPrefix: 'MONITOR_LAST_VALID_',
+  watchdogNotified: 'WATCHDOG_NOTIFIED'
 };
 
 const DEFAULT_THRESHOLDS = {
@@ -228,6 +229,108 @@ function resetMonitorStates_() {
   };
 
   saveMonitorStates_(properties, defaults);
+}
+
+function checkWatchdog() {
+  return runWatchdogCheck_();
+}
+
+function runWatchdogCheck_() {
+  const properties = PropertiesService.getScriptProperties();
+  const spreadsheetId = properties.getProperty('SPREADSHEET_ID');
+  if (!spreadsheetId) {
+    const error = new Error('missing spreadsheet configuration');
+    if (typeof logError_ === 'function') {
+      logError_('monitor_watchdog', 'Config', 'missing_spreadsheet_id', error);
+    }
+    throw error;
+  }
+
+  const sheetName = properties.getProperty('SHEET_NAME') || 'DATA';
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  const dataSheet = spreadsheet.getSheetByName(sheetName);
+  if (!dataSheet) {
+    const error = new Error('DATA sheet not found');
+    if (typeof logError_ === 'function') {
+      logError_('monitor_watchdog', sheetName, 'data_sheet_not_found', error);
+    }
+    throw error;
+  }
+
+  const lastRow = dataSheet.getLastRow();
+  if (lastRow < 2) {
+    return {
+      timeout: false,
+      notified: false,
+      notification: null,
+      elapsedMinutes: null
+    };
+  }
+
+  const lastRowValues = dataSheet.getRange(lastRow, 1, 1, 1).getValues()[0];
+  const lastTimestamp = lastRowValues[0];
+  let lastDate;
+  if (Object.prototype.toString.call(lastTimestamp) === '[object Date]') {
+    lastDate = lastTimestamp;
+  } else if (lastTimestamp) {
+    lastDate = new Date(lastTimestamp);
+  }
+
+  if (!lastDate || isNaN(lastDate.getTime())) {
+    return {
+      timeout: false,
+      notified: false,
+      notification: null,
+      elapsedMinutes: null
+    };
+  }
+
+  const now = new Date();
+  const elapsedMinutes = (now.getTime() - lastDate.getTime()) / (1000 * 60);
+
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+  const timeoutMinutes = getConfigNumber_(config, ['WATCHDOG_TIMEOUT_MIN'], 4320);
+
+  if (elapsedMinutes < timeoutMinutes) {
+    return {
+      timeout: false,
+      notified: false,
+      notification: null,
+      elapsedMinutes: elapsedMinutes
+    };
+  }
+
+  const alreadyNotified = properties.getProperty(MONITOR_PROPERTIES.watchdogNotified) === 'true';
+  if (alreadyNotified) {
+    return {
+      timeout: true,
+      notified: false,
+      notification: null,
+      elapsedMinutes: elapsedMinutes
+    };
+  }
+
+  const daysOffline = (elapsedMinutes / (60 * 24)).toFixed(1);
+  const notification = {
+    text: `センサー未受信：約${daysOffline}日間（${Math.round(elapsedMinutes)}分）データが途絶えています。`,
+    lastTimestamp: lastDate,
+    elapsedMinutes: elapsedMinutes
+  };
+
+  properties.setProperty(MONITOR_PROPERTIES.watchdogNotified, 'true');
+
+  return {
+    timeout: true,
+    notified: true,
+    notification: notification,
+    elapsedMinutes: elapsedMinutes
+  };
+}
+
+function resetWatchdogState_() {
+  const properties = PropertiesService.getScriptProperties();
+  properties.deleteProperty(MONITOR_PROPERTIES.watchdogNotified);
+  resetMonitorStates_();
 }
 
 function getMonitorStateForTest_() {

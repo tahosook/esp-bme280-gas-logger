@@ -12,6 +12,7 @@ GASエディタの **プロジェクトの設定 → スクリプト プロパ�
 | `API_TOKEN` | ESP8266と共有する簡易トークン |
 | `SHEET_NAME` | 追記先シート名。省略時は`DATA` |
 | `DAILY_LAST_ROW` | 日次集計の前回処理済み行番号（1始まり） |
+| `WATCHDOG_NOTIFIED` | センサー未受信ウォッチドッグ通知済みフラグ |
 
 スプレッドシートとGASプロジェクトのタイムゾーンは`Asia/Tokyo`に設定します。コード側でも日時を`Asia/Tokyo`で文字列化し、`yyyy-MM-dd HH:mm:ss`（例：`2026-08-10 01:42:09`）としてから追記します。
 
@@ -25,7 +26,7 @@ GASエディタの **プロジェクトの設定 → スクリプト プロパ�
 4. 実行ユーザーはスプレッドシートへ書き込めるアカウントを選択する。
 5. アクセスできるユーザーをESP8266からの匿名HTTPS POSTが可能な設定にする。
 6. 発行された`/exec` URLをローカルの秘密情報設定へ保存する。
-7. 必要に応じて時間主導トリガー（例: 毎日 00:10）で `aggregateDaily` を実行するよう設定する。
+7. 必要に応じて時間主導トリガー（例: 毎日 00:10）で `aggregateDaily`、定期（例: 1日1回）で `checkWatchdog` を実行するよう設定する。
 
 GASの本番デプロイは、コードと設定を人間が確認してから実施します。
 
@@ -61,6 +62,7 @@ node scripts/test-config-monitor.gs.js
 node scripts/test-errorlog.gs.js
 node scripts/test-monitor.gs.js
 node scripts/test-daily-aggregation.js
+node scripts/test-watchdog.js
 ```
 
 本番デプロイ後のスモークテストは、URLだけを指定するとReady確認と不正トークン確認を実行します。
