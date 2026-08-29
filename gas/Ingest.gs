@@ -111,6 +111,16 @@ function checkAndAppendMeasurement_(payload, properties) {
     const lastAppendedRow = sheet.getLastRow();
     sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
 
+    if (typeof resetWatchdogState_ === 'function') {
+      try {
+        resetWatchdogState_();
+      } catch (error) {
+        if (typeof logError_ === 'function') {
+          logError_('ingest', 'watchdog', 'watchdog_reset_failed', error);
+        }
+      }
+    }
+
     if (typeof updateMonitorState_ === 'function') {
       try {
         const monitorResult = updateMonitorState_(payload);
