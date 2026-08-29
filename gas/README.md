@@ -21,7 +21,7 @@ GASエディタの **プロジェクトの設定 → スクリプト プロパ�
 
 本番デプロイのチェックリストとロールバック手順は、[GAS本番デプロイ手順](../docs/deployment.md#gasデプロイ)を使用してください。
 
-1. GASプロジェクトへ`Code.gs`、`Router.gs`、`Ingest.gs`、`Config.gs`、`ErrorLog.gs`、`Monitor.gs`、`DailyAggregation.gs`、`MonthlyAggregation.gs`と`appsscript.json`を配置する。`appsscript.json`には`USER_DEPLOYING`と`ANYONE_ANONYMOUS`のWebアプリ設定を含める。
+1. GASプロジェクトへ`Router.gs`、`Ingest.gs`、`Config.gs`、`ErrorLog.gs`、`Monitor.gs`、`DailyAggregation.gs`、`MonthlyAggregation.gs`、`SetupTriggers.gs`と`appsscript.json`を配置する。`appsscript.json`には`USER_DEPLOYING`と`ANYONE_ANONYMOUS`のWebアプリ設定を含める。`doGet`・`doPost`・`jsonResponse_`は`Router.gs`に実装されている（`Code.gs`は削除済み）。
 2. Script Propertiesを設定する。
 3. **デプロイ → 新しいデプロイ → ウェブアプリ** を選択する。
 4. 実行ユーザーはスプレッドシートへ書き込めるアカウントを選択する。
