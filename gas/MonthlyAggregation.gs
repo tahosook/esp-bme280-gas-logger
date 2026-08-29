@@ -84,7 +84,10 @@ function runMonthlyAggregation_() {
         continue;
       }
 
-      // 当月以降のデータは未確定として今回の集計から除外
+      // Dailyシートは時系列昇順の追記専用（append-only）を前提とする。
+      // 当月以降のデータは未確定（月途中）のため集計対象外とし、走査を打ち切る。
+      // これにより、ポインタ（MONTHLY_LAST_ROW）は前月確定分の最終行まで進み、
+      // 翌月以降の実行時に今回保留した未確定データ以降を差分読み込みできる。
       if (currentYearMonth && rowYearMonth >= currentYearMonth) {
         break;
       }

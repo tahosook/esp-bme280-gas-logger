@@ -374,4 +374,70 @@ console.log('Running MonthlyAggregation tests...');
   console.log('  ✓ Test 5: No new rows handling passed');
 }
 
+// ----------------------------------------------------
+// Test 6: Multi-stage execution (Mid-month unfinalized data preserved and aggregated in following month)
+// ----------------------------------------------------
+{
+  const env = createMockEnvironment({
+    dailyRows: [
+      ['日付', 'temp_avg', 'temp_min', 'temp_max', 'hum_avg', 'hum_min', 'hum_max', 'press_avg', 'press_min', 'press_max', 'sample_count', 'alert_count'],
+      // 2026-06 (row 2-3)
+      ['2026-06-15', 20.0, 18.0, 22.0, 50.0, 45.0, 55.0, 1010.0, 1008.0, 1012.0, 280, 0],
+      ['2026-06-20', 24.0, 20.0, 28.0, 60.0, 50.0, 70.0, 1012.0, 1010.0, 1014.0, 288, 0],
+      // 2026-07 (row 4-6)
+      ['2026-07-01', 25.0, 22.0, 28.0, 65.0, 55.0, 75.0, 1008.0, 1005.0, 1010.0, 285, 0],
+      ['2026-07-15', 30.0, 26.0, 34.0, 70.0, 60.0, 80.0, 1005.0, 1000.0, 1009.0, 288, 0],
+      ['2026-07-31', 29.0, 24.0, 32.0, 69.0, 58.0, 78.0, 1007.0, 1002.0, 1011.0, 286, 0],
+      // 2026-08 mid-month (row 7-8)
+      ['2026-08-01', 28.0, 23.0, 31.0, 62.0, 52.0, 72.0, 1010.0, 1006.0, 1013.0, 288, 0],
+      ['2026-08-10', 32.0, 27.0, 35.0, 68.0, 58.0, 78.0, 1008.0, 1004.0, 1011.0, 288, 0]
+    ]
+  });
+
+  // --- Stage 1: Current date is 2026-08-10 ---
+  env.context.Date = fixedDate('2026-08-10T01:00:00Z');
+  const resultStage1 = env.context.aggregateMonthly();
+
+  assert.strictEqual(resultStage1.appendedMonths, 2, 'Stage 1: June and July should be appended');
+  assert.strictEqual(env.monthlyRows.length, 3, 'Stage 1: Monthly sheet should have 2 months');
+  assert.strictEqual(env.monthlyRows[1][0], '2026-06');
+  assert.strictEqual(env.monthlyRows[2][0], '2026-07');
+  assert.strictEqual(env.propertiesStore.get('MONTHLY_LAST_ROW'), '6', 'Stage 1: Pointer advances to row 6 (July 31)');
+
+  // --- Stage 2: Time moves to 2026-09-01 (next month), and more Daily data was added ---
+  env.dailyRows.push(
+    // 2026-08 late month (row 9-10)
+    ['2026-08-20', 30.0, 25.0, 33.0, 65.0, 55.0, 75.0, 1009.0, 1005.0, 1012.0, 288, 0],
+    ['2026-08-31', 26.0, 21.0, 29.0, 61.0, 51.0, 71.0, 1011.0, 1007.0, 1014.0, 288, 0],
+    // 2026-09 (row 11, current month unfinalized)
+    ['2026-09-01', 25.0, 20.0, 28.0, 60.0, 50.0, 70.0, 1010.0, 1006.0, 1013.0, 288, 0]
+  );
+
+  env.context.Date = fixedDate('2026-09-01T01:00:00Z');
+  const resultStage2 = env.context.aggregateMonthly();
+
+  assert.strictEqual(resultStage2.appendedMonths, 1, 'Stage 2: August should now be appended');
+  assert.strictEqual(env.monthlyRows.length, 4, 'Stage 2: Monthly sheet now has 3 months total');
+
+  const monthAugust = env.monthlyRows[3];
+  assert.strictEqual(monthAugust[0], '2026-08', 'Stage 2: Appended month is 2026-08');
+  // August days: 8/1 (28.0), 8/10 (32.0), 8/20 (30.0), 8/31 (26.0) -> avg: (28+32+30+26)/4 = 29.0
+  assert.strictEqual(monthAugust[1], 29.0, 'August temp_avg across all 4 days');
+  assert.strictEqual(monthAugust[2], 21.0, 'August temp_min min(23, 27, 25, 21)');
+  assert.strictEqual(monthAugust[3], 35.0, 'August temp_max max(31, 35, 33, 29)');
+  // hum avg: (62+68+65+61)/4 = 64.0
+  assert.strictEqual(monthAugust[4], 64.0, 'August hum_avg');
+  assert.strictEqual(monthAugust[5], 51.0, 'August hum_min min(52, 58, 55, 51)');
+  assert.strictEqual(monthAugust[6], 78.0, 'August hum_max max(72, 78, 75, 71)');
+  // press avg: (1010+1008+1009+1011)/4 = 1009.5
+  assert.strictEqual(monthAugust[7], 1009.5, 'August press_avg');
+  assert.strictEqual(monthAugust[8], 1004.0, 'August press_min min(1006, 1004, 1005, 1007)');
+  assert.strictEqual(monthAugust[9], 1014.0, 'August press_max max(1013, 1011, 1012, 1014)');
+  assert.strictEqual(monthAugust[10], 4, 'August days_count should be 4 days');
+
+  assert.strictEqual(env.propertiesStore.get('MONTHLY_LAST_ROW'), '10', 'Stage 2: Pointer advances to row 10 (August 31)');
+
+  console.log('  ✓ Test 6: Multi-stage execution with mid-month cutoff passed');
+}
+
 console.log('\nAll MonthlyAggregation tests passed successfully!');
