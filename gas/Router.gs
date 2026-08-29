@@ -1,9 +1,25 @@
+const CONFIG_KEYS = {
+  spreadsheetId: 'SPREADSHEET_ID',
+  apiToken: 'API_TOKEN',
+  sheetName: 'SHEET_NAME'
+};
+
+const LIMITS = {
+  temp: { min: -40.0, max: 85.0 },
+  press: { min: 300.0, max: 1100.0 },
+  hum: { min: 0.0, max: 100.0 }
+};
+
+function doPost(e) {
+  return handleSensorPost_(e);
+}
+
 function doGet() {
   try {
     const properties = PropertiesService.getScriptProperties();
-    const spreadsheetId = properties.getProperty('SPREADSHEET_ID');
-    const apiToken = properties.getProperty('API_TOKEN');
-    const sheetName = properties.getProperty('SHEET_NAME') || 'DATA';
+    const spreadsheetId = properties.getProperty(CONFIG_KEYS.spreadsheetId);
+    const apiToken = properties.getProperty(CONFIG_KEYS.apiToken);
+    const sheetName = properties.getProperty(CONFIG_KEYS.sheetName) || 'DATA';
 
     if (!spreadsheetId || !apiToken) {
       return readinessResponse_(false);
@@ -15,6 +31,14 @@ function doGet() {
     console.error('not_ready');
     return readinessResponse_(false);
   }
+}
+
+function successResponse_() {
+  return jsonResponse_({ ok: true });
+}
+
+function errorResponse_(errorCode) {
+  return jsonResponse_({ ok: false, error: errorCode });
 }
 
 function readinessResponse_(ready) {

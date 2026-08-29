@@ -10,7 +10,7 @@ GASエディタの **プロジェクトの設定 → スクリプト プロパ�
 | --- | --- |
 | `SPREADSHEET_ID` | 追記先スプレッドシートのID |
 | `API_TOKEN` | ESP8266と共有する簡易トークン |
-| `SHEET_NAME` | 追記先シート名。省略時は`Sheet1` |
+| `SHEET_NAME` | 追記先シート名。省略時は`DATA` |
 
 スプレッドシートとGASプロジェクトのタイムゾーンは`Asia/Tokyo`に設定します。コード側でも日時を`Asia/Tokyo`で文字列化し、`yyyy-MM-dd HH:mm:ss`（例：`2026-08-10 01:42:09`）としてから追記します。
 
@@ -18,7 +18,7 @@ GASエディタの **プロジェクトの設定 → スクリプト プロパ�
 
 本番デプロイのチェックリストとロールバック手順は、[GAS本番デプロイ手順](../docs/deployment.md#gasデプロイ)を使用してください。
 
-1. GASプロジェクトへ`Code.gs`と`appsscript.json`を配置する。`appsscript.json`には`USER_DEPLOYING`と`ANYONE_ANONYMOUS`のWebアプリ設定を含める。
+1. GASプロジェクトへ`Code.gs`、`Router.gs`、`Ingest.gs`と`appsscript.json`を配置する。`appsscript.json`には`USER_DEPLOYING`と`ANYONE_ANONYMOUS`のWebアプリ設定を含める。
 2. Script Propertiesを設定する。
 3. **デプロイ → 新しいデプロイ → ウェブアプリ** を選択する。
 4. 実行ユーザーはスプレッドシートへ書き込めるアカウントを選択する。
@@ -47,7 +47,7 @@ curl -L -sS -X POST "$GAS_URL" \
   -d "{\"api_version\":1,\"token\":\"$API_TOKEN\",\"temp\":24.5,\"press\":1012.3,\"hum\":55.8}"
 ```
 
-期待値は`{"ok":true}`で、シートに`日時 | temp | press | hum`の1行が追加されます。
+期待値は`{"ok":true}`で、シートに`日時 | temp | press | hum | flag`の1行が追加されます。
 
 ## 自動テスト
 

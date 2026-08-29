@@ -2,23 +2,55 @@
 
 const fs = require('fs');
 const vm = require('vm');
+const assert = require('assert');
 
-const source = fs.readFileSync(
-  `${__dirname}/../gas/Code.gs`,
-  'utf8'
-);
+const source = [
+  fs.readFileSync(`${__dirname}/../gas/Code.gs`, 'utf8'),
+  fs.readFileSync(`${__dirname}/../gas/Router.gs`, 'utf8'),
+  fs.readFileSync(`${__dirname}/../gas/Ingest.gs`, 'utf8')
+].join('\n');
 
 const properties = new Map([
   ['SPREADSHEET_ID', 'test-spreadsheet'],
   ['API_TOKEN', 'test-token'],
-  ['SHEET_NAME', 'Measurements']
+  ['SHEET_NAME', 'DATA']
 ]);
 const rows = [];
+const numberFormats = [];
 const sheet = {
   appendRow(row) {
     rows.push(row);
+  },
+  getLastRow() {
+    return rows.length;
+  },
+  getRange() {
+    return {
+      getValues() {
+        const row = rows[rows.length - 1] || [null, null, null, null, null];
+        return [row];
+      },
+      setNumberFormat(format) {
+        numberFormats.push(format);
+      }
+    };
   }
 };
+
+function createMockDate(fixedTime) {
+  const base = new Date(fixedTime);
+  return class extends Date {
+    constructor(...args) {
+      if (args.length === 0) {
+        return new Date(base.getTime());
+      }
+      return new Date(...args);
+    }
+    static now() {
+      return base.getTime();
+    }
+  };
+}
 
 const context = {
   console,
@@ -41,14 +73,9 @@ const context = {
       }
       return {
         getSheetByName(name) {
-          return name === 'Measurements' ? sheet : null;
+          return name === 'DATA' ? sheet : null;
         }
       };
-    }
-  },
-  Utilities: {
-    formatDate() {
-      return '2026-08-10 01:42:09';
     }
   },
   ContentService: {
@@ -63,48 +90,110 @@ const context = {
         }
       };
     }
+  },
+  LockService: {
+    getScriptLock() {
+      return {
+        waitLock(ms) {},
+        releaseLock() {}
+      };
+    }
   }
 };
 
 vm.createContext(context);
-vm.runInContext(source, context, { filename: 'gas/Code.gs' });
+vm.runInContext(source, context, { filename: 'gas/*.gs' });
 
 function responseBody(response) {
   return JSON.parse(response.getContent());
 }
 
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-function assertDeepEqual(actual, expected, message) {
-  assert(JSON.stringify(actual) === JSON.stringify(expected),
-    `${message}: got ${JSON.stringify(actual)}`);
-}
-
-assertDeepEqual(responseBody(context.doGet()),
+assert.deepStrictEqual(responseBody(context.doGet()),
   { ok: true, ready: true }, 'ready response');
+
+context.Date = createMockDate('2026-08-10T01:42:09Z');
+
+rows.push(['日時', 'temp', 'press', 'hum', 'flag']);
 
 const validRequest = {
   postData: {
     contents: JSON.stringify({
       api_version: 1,
       token: 'test-token',
-      temp: 24.5,
-      press: 1012.3,
-      hum: 55.8,
-      ignored: 'extra field'
+      temp: 24.56,
+      press: 1012.34,
+      hum: 55.87
     })
   }
 };
-assertDeepEqual(responseBody(context.doPost(validRequest)),
+
+assert.deepStrictEqual(responseBody(context.doPost(validRequest)),
   { ok: true }, 'valid response');
-assertDeepEqual(rows[0], ['2026-08-10 01:42:09', 24.5, 1012.3, 55.8],
-  'saved row');
-assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(rows[0][0]),
-  'timestamp format');
+assert.deepStrictEqual(rows.length, 2, 'first measurement appends after header');
+assert.deepStrictEqual(rows[1].length, 5, 'saved row has 5 columns');
+assert.deepStrictEqual(rows[1][4], '', 'flag is empty');
+assert.deepStrictEqual(numberFormats[0], 'yyyy-MM-dd HH:mm:ss', 'timestamp format');
+assert(rows[1][0] instanceof Date, 'timestamp is Date');
+
+const duplicateRequest = {
+  postData: {
+    contents: JSON.stringify({
+      api_version: 1,
+      token: 'test-token',
+      temp: 24.56,
+      press: 1012.34,
+      hum: 55.87
+    })
+  }
+};
+assert.deepStrictEqual(responseBody(context.doPost(duplicateRequest)),
+  { ok: true }, 'duplicate response');
+assert.deepStrictEqual(rows.length, 2, 'duplicate request does not append row');
+
+context.Date = createMockDate('2026-08-10T01:45:09Z');
+assert.deepStrictEqual(responseBody(context.doPost(duplicateRequest)),
+  { ok: true }, 'duplicate response at 180-second boundary');
+assert.deepStrictEqual(rows.length, 2, 'duplicate at 180 seconds does not append row');
+
+context.Date = createMockDate('2026-08-10T01:45:10Z');
+assert.deepStrictEqual(responseBody(context.doPost(duplicateRequest)),
+  { ok: true }, 'response after duplication window');
+assert.deepStrictEqual(rows.length, 3, 'same values append after duplication window');
+
+context.Date = createMockDate('2026-08-10T01:46:00Z');
+const preciseRequest = {
+  postData: {
+    contents: JSON.stringify({
+      api_version: 1,
+      token: 'test-token',
+      temp: 24.561,
+      press: 1012.341,
+      hum: 55.871
+    })
+  }
+};
+assert.deepStrictEqual(responseBody(context.doPost(preciseRequest)),
+  { ok: true }, 'high-precision measurement response');
+assert.deepStrictEqual(rows.length, 4, 'high-precision measurement appends');
+
+assert.deepStrictEqual(responseBody(context.doPost(preciseRequest)),
+  { ok: true }, 'high-precision duplicate response');
+assert.deepStrictEqual(rows.length, 4, 'high-precision duplicate does not append');
+
+const distinctPreciseRequest = {
+  postData: {
+    contents: JSON.stringify({
+      api_version: 1,
+      token: 'test-token',
+      temp: 24.5619,
+      press: 1012.3419,
+      hum: 55.8719
+    })
+  }
+};
+assert.deepStrictEqual(responseBody(context.doPost(distinctPreciseRequest)),
+  { ok: true }, 'distinct high-precision measurement response');
+assert.deepStrictEqual(rows.length, 5, 'distinct high-precision measurement appends');
 
 const rowCount = rows.length;
 const cases = [
@@ -132,13 +221,18 @@ function validRequestPayload() {
 }
 
 for (const [name, request, error] of cases) {
-  assertDeepEqual(responseBody(context.doPost(request)),
+  assert.deepStrictEqual(responseBody(context.doPost(request)),
     { ok: false, error }, `${name} response`);
 }
-assert(rows.length === rowCount, 'invalid requests must not append rows');
+assert.deepStrictEqual(rows.length, rowCount, 'invalid requests must not append rows');
+
+context.Date = createMockDate('2026-08-10T03:42:10Z');
+assert.deepStrictEqual(responseBody(context.doPost(validRequest)),
+  { ok: true }, 'non-duplicate response after timeout');
+assert.deepStrictEqual(rows.length, 6, 'new row appended after duplication timeout');
 
 properties.delete('API_TOKEN');
-assertDeepEqual(responseBody(context.doGet()),
+assert.deepStrictEqual(responseBody(context.doGet()),
   { ok: false, ready: false, error: 'not_ready' }, 'not-ready response');
 
 console.log('GAS API tests passed');
