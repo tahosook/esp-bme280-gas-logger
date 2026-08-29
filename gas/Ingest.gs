@@ -87,6 +87,18 @@ function checkAndAppendMeasurement_(payload, properties) {
       const lastPress = lastValues[2];
       const lastHum = lastValues[3];
 
+      // DATA row 1 is normally a header. Ignore any non-date row so the first
+      // measurement can be appended without attempting timestamp arithmetic.
+      const hasValidTimestamp = Object.prototype.toString.call(lastTimestamp) === '[object Date]' &&
+          !isNaN(lastTimestamp.getTime());
+
+      if (!hasValidTimestamp) {
+        sheet.appendRow([now, payload.temp, payload.press, payload.hum, '']);
+        const lastAppendedRow = sheet.getLastRow();
+        sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+        return;
+      }
+
       const elapsedSec = (now.getTime() - lastTimestamp.getTime()) / 1000;
 
       const roundedTemp = Math.round(payload.temp * 100) / 100;
