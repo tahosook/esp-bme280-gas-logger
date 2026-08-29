@@ -30,8 +30,9 @@ function evaluateMonitorConditions_(measurement) {
 function updateMonitorState_(measurement) {
   const conditions = evaluateMonitorConditions_(measurement);
   const properties = PropertiesService.getScriptProperties();
-  const thresholds = Object.assign({}, DEFAULT_THRESHOLDS);
-  const smoothing = Object.assign({}, DEFAULT_SMOOTHING);
+  const monitorConfig = getMonitorConfig_();
+  const thresholds = monitorConfig.thresholds;
+  const smoothing = monitorConfig.smoothing;
 
   const currentStates = loadMonitorStates_(properties);
   const lastValid = loadLastValidMeasurement_(properties);
@@ -59,6 +60,39 @@ function updateMonitorState_(measurement) {
     notification,
     anomaly
   };
+}
+
+function getMonitorConfig_() {
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+  return {
+    thresholds: {
+      temp: {
+        over: getConfigNumber_(config, ['TEMP_HIGH', 'MONITOR_TEMP_OVER'], DEFAULT_THRESHOLDS.temp.over),
+        hysteresis: getConfigNumber_(config, ['HYSTERESIS_TEMP', 'MONITOR_TEMP_HYSTERESIS'], DEFAULT_THRESHOLDS.temp.hysteresis)
+      },
+      hum: {
+        over: getConfigNumber_(config, ['HUM_HIGH', 'MONITOR_HUM_OVER'], DEFAULT_THRESHOLDS.hum.over),
+        hysteresis: getConfigNumber_(config, ['HYSTERESIS_HUM', 'MONITOR_HUM_HYSTERESIS'], DEFAULT_THRESHOLDS.hum.hysteresis)
+      },
+      discomfortIndex: {
+        over: getConfigNumber_(config, ['HEAT_INDEX_HIGH', 'MONITOR_DI_OVER'], DEFAULT_THRESHOLDS.discomfortIndex.over),
+        hysteresis: getConfigNumber_(config, ['HYSTERESIS_HEAT_INDEX', 'MONITOR_DI_HYSTERESIS'], DEFAULT_THRESHOLDS.discomfortIndex.hysteresis)
+      }
+    },
+    smoothing: {
+      consecutiveK: getConfigNumber_(config, ['SMOOTH_K', 'MONITOR_CONSECUTIVE_K'], DEFAULT_SMOOTHING.consecutiveK)
+    }
+  };
+}
+
+function getConfigNumber_(config, keys, fallback) {
+  for (const key of keys) {
+    const value = Number(config[key]);
+    if (isFinite(value)) {
+      return value;
+    }
+  }
+  return fallback;
 }
 
 function loadMonitorStates_(properties) {

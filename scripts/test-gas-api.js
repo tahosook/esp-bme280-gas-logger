@@ -17,6 +17,7 @@ const properties = new Map([
 ]);
 const rows = [];
 const numberFormats = [];
+let monitorCalls = 0;
 const sheet = {
   appendRow(row) {
     rows.push(row);
@@ -98,6 +99,9 @@ const context = {
         releaseLock() {}
       };
     }
+  },
+  updateMonitorState_() {
+    monitorCalls += 1;
   }
 };
 
@@ -134,6 +138,7 @@ assert.deepStrictEqual(rows[1].length, 5, 'saved row has 5 columns');
 assert.deepStrictEqual(rows[1][4], '', 'flag is empty');
 assert.deepStrictEqual(numberFormats[0], 'yyyy-MM-dd HH:mm:ss', 'timestamp format');
 assert(rows[1][0] instanceof Date, 'timestamp is Date');
+assert.strictEqual(monitorCalls, 1, 'monitor runs after appended measurement');
 
 const duplicateRequest = {
   postData: {
@@ -149,6 +154,7 @@ const duplicateRequest = {
 assert.deepStrictEqual(responseBody(context.doPost(duplicateRequest)),
   { ok: true }, 'duplicate response');
 assert.deepStrictEqual(rows.length, 2, 'duplicate request does not append row');
+assert.strictEqual(monitorCalls, 1, 'monitor does not run for duplicate measurement');
 
 context.Date = createMockDate('2026-08-10T01:45:09Z');
 assert.deepStrictEqual(responseBody(context.doPost(duplicateRequest)),
@@ -230,6 +236,7 @@ context.Date = createMockDate('2026-08-10T03:42:10Z');
 assert.deepStrictEqual(responseBody(context.doPost(validRequest)),
   { ok: true }, 'non-duplicate response after timeout');
 assert.deepStrictEqual(rows.length, 6, 'new row appended after duplication timeout');
+assert.strictEqual(monitorCalls, 5, 'monitor runs for each new measurement');
 
 properties.delete('API_TOKEN');
 assert.deepStrictEqual(responseBody(context.doGet()),

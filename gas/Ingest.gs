@@ -24,7 +24,18 @@ function handleSensorPost_(e) {
       return errorResponse_('invalid_token');
     }
 
-    checkAndAppendMeasurement_(payload, properties);
+    const appended = checkAndAppendMeasurement_(payload, properties);
+    if (appended && typeof updateMonitorState_ === 'function') {
+      try {
+        updateMonitorState_(payload);
+      } catch (error) {
+        if (typeof logError_ === 'function') {
+          logError_('ingest', 'monitor', 'monitor_update_failed', error);
+        } else {
+          console.error('monitor_update_failed');
+        }
+      }
+    }
     return successResponse_();
   } catch (error) {
     console.error('internal_error');
@@ -96,7 +107,7 @@ function checkAndAppendMeasurement_(payload, properties) {
         sheet.appendRow([now, payload.temp, payload.press, payload.hum, '']);
         const lastAppendedRow = sheet.getLastRow();
         sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
-        return;
+        return true;
       }
 
       const elapsedSec = (now.getTime() - lastTimestamp.getTime()) / 1000;
@@ -108,13 +119,14 @@ function checkAndAppendMeasurement_(payload, properties) {
           lastHum === payload.hum;
 
       if (isDuplicate) {
-        return;
+        return false;
       }
     }
 
     sheet.appendRow([now, payload.temp, payload.press, payload.hum, '']);
     const lastAppendedRow = sheet.getLastRow();
     sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+    return true;
   } finally {
     lock.releaseLock();
   }

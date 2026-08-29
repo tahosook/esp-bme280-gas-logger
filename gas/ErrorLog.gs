@@ -14,8 +14,9 @@ const SENSITIVE_KEYS = [
 ];
 
 function logError_(operation, target, errorCode, error) {
+  let safeErrorCode = 'unknown';
   try {
-    const safeErrorCode = typeof errorCode === 'string' ? errorCode : String(errorCode || 'unknown');
+    safeErrorCode = typeof errorCode === 'string' ? errorCode : String(errorCode || 'unknown');
     const safeMessage = error instanceof Error ? error.message : String(error || 'no_message');
 
     const entry = {
@@ -43,7 +44,7 @@ function logError_(operation, target, errorCode, error) {
     properties.setProperty(ERROR_LOG_PROPERTIES.errorLog, JSON.stringify(log));
     console.error(JSON.stringify({ operation, target, errorCode: safeErrorCode }));
   } catch (loggingError) {
-        console.error(JSON.stringify({ operation: 'logError_failed', target, errorCode: safeErrorCode }));
+    console.error(JSON.stringify({ operation: 'logError_failed', target, errorCode: safeErrorCode }));
   }
 }
 
@@ -53,8 +54,9 @@ function maskSecret_(text) {
   }
   let masked = text;
   for (const key of SENSITIVE_KEYS) {
-    const pattern = new RegExp('(?i)(' + key + ')[:=]\\s*(\\S+)', 'g');
-    masked = masked.replace(pattern, '$1:***');
+    const escapedKey = key.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+    const pattern = new RegExp(escapedKey + '(?:\\s*[:=]\\s*\\S+)?', 'gi');
+    masked = masked.replace(pattern, '***');
   }
   return masked;
 }

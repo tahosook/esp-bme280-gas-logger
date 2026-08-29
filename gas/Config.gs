@@ -24,7 +24,12 @@ const DEFAULT_CONFIG = {
 function getMergedConfig_() {
   const config = Object.assign({}, DEFAULT_CONFIG);
   const scriptProps = PropertiesService.getScriptProperties().getProperties();
-  for (const key of Object.keys(DEFAULT_CONFIG)) {
+  const supportedKeys = new Set(Object.keys(DEFAULT_CONFIG).concat([
+    'TEMP_HIGH', 'HUM_HIGH', 'HEAT_INDEX_HIGH',
+    'HYSTERESIS_TEMP', 'HYSTERESIS_HUM', 'HYSTERESIS_HEAT_INDEX',
+    'SMOOTH_K', 'ANOMALY_TEMP', 'ANOMALY_HUM', 'ANOMALY_PRESS'
+  ]));
+  for (const key of supportedKeys) {
     if (Object.prototype.hasOwnProperty.call(scriptProps, key)) {
       try {
         config[key] = JSON.parse(scriptProps[key]);

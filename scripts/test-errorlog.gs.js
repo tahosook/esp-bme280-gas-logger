@@ -11,6 +11,7 @@ const propertiesStore = new Map();
 const context = {
   console,
   JSON,
+  Error,
   RegExp,
   PropertiesService: {
     getScriptProperties() {
@@ -38,7 +39,7 @@ function responseBody(response) {
 }
 
 context.clearErrorLog_();
-assert.deepStrictEqual(context.getErrorLogForTest_(), [], 'empty log initially');
+assert.strictEqual(context.getErrorLogForTest_().length, 0, 'empty log initially');
 
 context.logError_('ingest', 'DATA', 'invalid_token', new Error('token mismatch'));
 context.logError_('linebot', 'reply', 'send_failed', new Error('accessToken expired'));
@@ -55,6 +56,6 @@ assert.ok(!lastEntry.message.includes('accessToken'), 'secret masked in message'
 assert.ok(lastEntry.message.includes('***') || lastEntry.message.includes('expired'), 'secret masked or message preserved');
 
 context.clearErrorLog_();
-assert.deepStrictEqual(context.getErrorLogForTest_(), [], 'cleared');
+assert.strictEqual(context.getErrorLogForTest_().length, 0, 'cleared');
 
 console.log('ErrorLog tests passed');
