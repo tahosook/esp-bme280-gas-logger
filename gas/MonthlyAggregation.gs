@@ -12,7 +12,8 @@ function aggregateMonthly() {
 
 function runMonthlyAggregation_() {
   const properties = PropertiesService.getScriptProperties();
-  const spreadsheetId = properties.getProperty('SPREADSHEET_ID');
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
   if (!spreadsheetId) {
     const error = new Error('missing spreadsheet configuration');
     if (typeof logError_ === 'function') {

@@ -12,7 +12,9 @@ function aggregateDaily() {
 
 function runDailyAggregation_() {
   const properties = PropertiesService.getScriptProperties();
-  const spreadsheetId = properties.getProperty('SPREADSHEET_ID');
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
   if (!spreadsheetId) {
     const error = new Error('missing spreadsheet configuration');
     if (typeof logError_ === 'function') {
@@ -21,7 +23,7 @@ function runDailyAggregation_() {
     throw error;
   }
 
-  const dataSheetName = properties.getProperty('SHEET_NAME') || DATA_SHEET_NAME;
+  const dataSheetName = properties.getProperty(sheetNameKey) || DATA_SHEET_NAME;
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
   const dataSheet = spreadsheet.getSheetByName(dataSheetName);
   if (!dataSheet) {

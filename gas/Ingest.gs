@@ -1,5 +1,3 @@
-const SENSOR_DUPLICATION_WINDOW_SECONDS = 180;
-
 function handleSensorPost_(e) {
   let payload;
 
@@ -73,8 +71,12 @@ function checkAndAppendMeasurement_(payload, properties) {
     throw new Error('sheet not found');
   }
 
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : (typeof DEFAULT_CONFIG !== 'undefined' ? DEFAULT_CONFIG : {});
+  const lockTimeoutMs = config.INGEST_LOCK_TIMEOUT_MS || 15000;
+  const dupWindowSec = typeof config.SENSOR_DUPLICATION_WINDOW_SECONDS === 'number' ? config.SENSOR_DUPLICATION_WINDOW_SECONDS : 180;
+
   const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
+  lock.waitLock(lockTimeoutMs);
 
   try {
     const lastRow = sheet.getLastRow();
@@ -96,7 +98,7 @@ function checkAndAppendMeasurement_(payload, properties) {
         const elapsedSec = (now.getTime() - lastTimestamp.getTime()) / 1000;
 
         const isDuplicate = elapsedSec >= 0 &&
-            elapsedSec <= SENSOR_DUPLICATION_WINDOW_SECONDS &&
+            elapsedSec <= dupWindowSec &&
             lastTemp === payload.temp &&
             lastPress === payload.press &&
             lastHum === payload.hum;
