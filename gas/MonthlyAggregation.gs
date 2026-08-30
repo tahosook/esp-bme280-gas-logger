@@ -68,82 +68,7 @@ function runMonthlyAggregation_() {
     const now = new Date();
     const currentYearMonth = formatYearMonthTokyo_(now);
 
-    const monthlyBuckets = new Map();
-    let lastConfirmedRow = lastProcessedRow;
-
-    for (let i = 0; i < dailyValues.length; i += 1) {
-      const currentRowNumber = startRow + i;
-      const row = dailyValues[i];
-      const dateVal = row[0];
-
-      if (!dateVal) {
-        continue;
-      }
-
-      const rowYearMonth = formatYearMonthTokyo_(dateVal);
-      if (!rowYearMonth) {
-        continue;
-      }
-
-      // Dailyシートは時系列昇順の追記専用（append-only）を前提とする。
-      // 当月以降のデータは未確定（月途中）のため集計対象外とし、走査を打ち切る。
-      // これにより、ポインタ（MONTHLY_LAST_ROW）は前月確定分の最終行まで進み、
-      // 翌月以降の実行時に今回保留した未確定データ以降を差分読み込みできる。
-      if (currentYearMonth && rowYearMonth >= currentYearMonth) {
-        break;
-      }
-
-      lastConfirmedRow = currentRowNumber;
-
-      const tempAvg = row[1];
-      const tempMin = row[2];
-      const tempMax = row[3];
-      const humAvg = row[4];
-      const humMin = row[5];
-      const humMax = row[6];
-      const pressAvg = row[7];
-      const pressMin = row[8];
-      const pressMax = row[9];
-
-      const isValidValues = typeof tempAvg === 'number' && isFinite(tempAvg) &&
-        typeof tempMin === 'number' && isFinite(tempMin) &&
-        typeof tempMax === 'number' && isFinite(tempMax) &&
-        typeof humAvg === 'number' && isFinite(humAvg) &&
-        typeof humMin === 'number' && isFinite(humMin) &&
-        typeof humMax === 'number' && isFinite(humMax) &&
-        typeof pressAvg === 'number' && isFinite(pressAvg) &&
-        typeof pressMin === 'number' && isFinite(pressMin) &&
-        typeof pressMax === 'number' && isFinite(pressMax);
-
-      if (!isValidValues) {
-        continue;
-      }
-
-      if (!monthlyBuckets.has(rowYearMonth)) {
-        monthlyBuckets.set(rowYearMonth, {
-          tempAvgs: [],
-          tempMins: [],
-          tempMaxs: [],
-          humAvgs: [],
-          humMins: [],
-          humMaxs: [],
-          pressAvgs: [],
-          pressMins: [],
-          pressMaxs: []
-        });
-      }
-
-      const bucket = monthlyBuckets.get(rowYearMonth);
-      bucket.tempAvgs.push(tempAvg);
-      bucket.tempMins.push(tempMin);
-      bucket.tempMaxs.push(tempMax);
-      bucket.humAvgs.push(humAvg);
-      bucket.humMins.push(humMin);
-      bucket.humMaxs.push(humMax);
-      bucket.pressAvgs.push(pressAvg);
-      bucket.pressMins.push(pressMin);
-      bucket.pressMaxs.push(pressMax);
-    }
+    const { monthlyBuckets, lastConfirmedRow } = processMonthlyDataRows_(dailyValues, startRow, currentYearMonth, lastProcessedRow);
 
     const existingMonthlyDates = getExistingMonthlyDates_(monthlySheet);
     const sortedYearMonths = Array.from(monthlyBuckets.keys()).sort();
@@ -156,37 +81,11 @@ function runMonthlyAggregation_() {
       }
 
       const bucket = monthlyBuckets.get(yearMonth);
-      const daysCount = bucket.tempAvgs.length;
+      const rowData = buildMonthlyRowData_(yearMonth, bucket);
 
-      if (daysCount === 0) {
+      if (!rowData) {
         continue;
       }
-
-      const tempAvg = roundTwoDecimals_(calcAvg_(bucket.tempAvgs));
-      const tempMin = Math.min(...bucket.tempMins);
-      const tempMax = Math.max(...bucket.tempMaxs);
-
-      const humAvg = roundTwoDecimals_(calcAvg_(bucket.humAvgs));
-      const humMin = Math.min(...bucket.humMins);
-      const humMax = Math.max(...bucket.humMaxs);
-
-      const pressAvg = roundTwoDecimals_(calcAvg_(bucket.pressAvgs));
-      const pressMin = Math.min(...bucket.pressMins);
-      const pressMax = Math.max(...bucket.pressMaxs);
-
-      const rowData = [
-        yearMonth,
-        tempAvg,
-        tempMin,
-        tempMax,
-        humAvg,
-        humMin,
-        humMax,
-        pressAvg,
-        pressMin,
-        pressMax,
-        daysCount
-      ];
 
       monthlySheet.appendRow(rowData);
       appendedCount += 1;
@@ -262,4 +161,116 @@ function formatYearMonthTokyo_(dateInput) {
   const year = tokyoTime.getUTCFullYear();
   const month = String(tokyoTime.getUTCMonth() + 1).padStart(2, '0');
   return `${year}-${month}`;
+}
+
+function processMonthlyDataRows_(dailyValues, startRow, currentYearMonth, lastProcessedRow) {
+  const monthlyBuckets = new Map();
+  let lastConfirmedRow = lastProcessedRow;
+
+  for (let i = 0; i < dailyValues.length; i += 1) {
+    const currentRowNumber = startRow + i;
+    const row = dailyValues[i];
+    const dateVal = row[0];
+
+    if (!dateVal) {
+      continue;
+    }
+
+    const rowYearMonth = formatYearMonthTokyo_(dateVal);
+    if (!rowYearMonth) {
+      continue;
+    }
+
+    // Dailyシートは時系列昇順の追記専用（append-only）を前提とする。
+    // 当月以降のデータは未確定（月途中）のため集計対象外とし、走査を打ち切る。
+    if (currentYearMonth && rowYearMonth >= currentYearMonth) {
+      break;
+    }
+
+    lastConfirmedRow = currentRowNumber;
+
+    const tempAvg = row[1];
+    const tempMin = row[2];
+    const tempMax = row[3];
+    const humAvg = row[4];
+    const humMin = row[5];
+    const humMax = row[6];
+    const pressAvg = row[7];
+    const pressMin = row[8];
+    const pressMax = row[9];
+
+    const isValidValues = typeof tempAvg === 'number' && isFinite(tempAvg) &&
+      typeof tempMin === 'number' && isFinite(tempMin) &&
+      typeof tempMax === 'number' && isFinite(tempMax) &&
+      typeof humAvg === 'number' && isFinite(humAvg) &&
+      typeof humMin === 'number' && isFinite(humMin) &&
+      typeof humMax === 'number' && isFinite(humMax) &&
+      typeof pressAvg === 'number' && isFinite(pressAvg) &&
+      typeof pressMin === 'number' && isFinite(pressMin) &&
+      typeof pressMax === 'number' && isFinite(pressMax);
+
+    if (!isValidValues) {
+      continue;
+    }
+
+    if (!monthlyBuckets.has(rowYearMonth)) {
+      monthlyBuckets.set(rowYearMonth, {
+        tempAvgs: [],
+        tempMins: [],
+        tempMaxs: [],
+        humAvgs: [],
+        humMins: [],
+        humMaxs: [],
+        pressAvgs: [],
+        pressMins: [],
+        pressMaxs: []
+      });
+    }
+
+    const bucket = monthlyBuckets.get(rowYearMonth);
+    bucket.tempAvgs.push(tempAvg);
+    bucket.tempMins.push(tempMin);
+    bucket.tempMaxs.push(tempMax);
+    bucket.humAvgs.push(humAvg);
+    bucket.humMins.push(humMin);
+    bucket.humMaxs.push(humMax);
+    bucket.pressAvgs.push(pressAvg);
+    bucket.pressMins.push(pressMin);
+    bucket.pressMaxs.push(pressMax);
+  }
+
+  return { monthlyBuckets, lastConfirmedRow };
+}
+
+function buildMonthlyRowData_(yearMonth, bucket) {
+  const daysCount = bucket.tempAvgs.length;
+  if (daysCount === 0) {
+    return null;
+  }
+
+  const tempAvg = roundTwoDecimals_(calcAvg_(bucket.tempAvgs));
+  const tempMin = Math.min(...bucket.tempMins);
+  const tempMax = Math.max(...bucket.tempMaxs);
+
+  const humAvg = roundTwoDecimals_(calcAvg_(bucket.humAvgs));
+  const humMin = Math.min(...bucket.humMins);
+  const humMax = Math.max(...bucket.humMaxs);
+
+  const pressAvg = roundTwoDecimals_(calcAvg_(bucket.pressAvgs));
+  const pressMin = Math.min(...bucket.pressMins);
+  const pressMax = Math.max(...bucket.pressMaxs);
+
+  return [
+    yearMonth,
+    tempAvg,
+    tempMin,
+    tempMax,
+    humAvg,
+    humMin,
+    humMax,
+    pressAvg,
+    pressMin,
+    pressMax,
+    daysCount
+  ];
 }

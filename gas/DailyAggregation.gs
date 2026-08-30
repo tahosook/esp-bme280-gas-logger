@@ -70,68 +70,7 @@ function runDailyAggregation_() {
     const now = new Date();
     const todayStr = formatDateTokyo_(now);
 
-    const dailyBuckets = new Map();
-    let lastConfirmedRow = lastProcessedRow;
-
-    for (let i = 0; i < dataValues.length; i += 1) {
-      const currentRowNumber = startRow + i;
-      const row = dataValues[i];
-      const timestamp = row[0];
-      const temp = row[1];
-      const press = row[2];
-      const hum = row[3];
-      const flag = row[4];
-
-      if (!timestamp) {
-        continue;
-      }
-
-      const rowDateStr = formatDateTokyo_(timestamp);
-      if (!rowDateStr) {
-        continue;
-      }
-
-      // 当日以降のデータは未確定として今回の集計から除外
-      if (todayStr && rowDateStr >= todayStr) {
-        break;
-      }
-
-      lastConfirmedRow = currentRowNumber;
-
-      const flagStr = String(flag || '').trim().toLowerCase();
-      const isAnomaly = flagStr === 'anomaly';
-      const isAlert = flagStr === 'alert';
-
-      if (!dailyBuckets.has(rowDateStr)) {
-        dailyBuckets.set(rowDateStr, {
-          temps: [],
-          presses: [],
-          hums: [],
-          alertCount: 0
-        });
-      }
-
-      const bucket = dailyBuckets.get(rowDateStr);
-
-      if (isAlert) {
-        bucket.alertCount += 1;
-      }
-
-      // anomaly 行は平均・最小・最大・sample_count から除外
-      if (isAnomaly) {
-        continue;
-      }
-
-      const isValidTemp = typeof temp === 'number' && isFinite(temp);
-      const isValidPress = typeof press === 'number' && isFinite(press);
-      const isValidHum = typeof hum === 'number' && isFinite(hum);
-
-      if (isValidTemp && isValidPress && isValidHum) {
-        bucket.temps.push(temp);
-        bucket.presses.push(press);
-        bucket.hums.push(hum);
-      }
-    }
+    const { dailyBuckets, lastConfirmedRow } = processDailyDataRows_(dataValues, startRow, todayStr, lastProcessedRow);
 
     // 既存のDailyシートに存在する日付を取得し、二重集計を防止
     const existingDailyDates = getExistingDailyDates_(dailySheet);
@@ -145,39 +84,12 @@ function runDailyAggregation_() {
       }
 
       const bucket = dailyBuckets.get(dateStr);
-      const sampleCount = bucket.temps.length;
+      const rowData = buildDailyRowData_(dateStr, bucket);
 
-      // 有効データが存在しない日は0埋めせず追記をスキップ
-      if (sampleCount === 0) {
+      // 有効データが存在しない日は追記をスキップ
+      if (!rowData) {
         continue;
       }
-
-      const tempAvg = roundTwoDecimals_(calcAvg_(bucket.temps));
-      const tempMin = Math.min(...bucket.temps);
-      const tempMax = Math.max(...bucket.temps);
-
-      const humAvg = roundTwoDecimals_(calcAvg_(bucket.hums));
-      const humMin = Math.min(...bucket.hums);
-      const humMax = Math.max(...bucket.hums);
-
-      const pressAvg = roundTwoDecimals_(calcAvg_(bucket.presses));
-      const pressMin = Math.min(...bucket.presses);
-      const pressMax = Math.max(...bucket.presses);
-
-      const rowData = [
-        dateStr,
-        tempAvg,
-        tempMin,
-        tempMax,
-        humAvg,
-        humMin,
-        humMax,
-        pressAvg,
-        pressMin,
-        pressMax,
-        sampleCount,
-        bucket.alertCount
-      ];
 
       dailySheet.appendRow(rowData);
       appendedCount += 1;
@@ -285,4 +197,105 @@ function calcAvg_(numbers) {
 
 function roundTwoDecimals_(num) {
   return Math.round(num * 100) / 100;
+}
+
+function processDailyDataRows_(dataValues, startRow, todayStr, lastProcessedRow) {
+  const dailyBuckets = new Map();
+  let lastConfirmedRow = lastProcessedRow;
+
+  for (let i = 0; i < dataValues.length; i += 1) {
+    const currentRowNumber = startRow + i;
+    const row = dataValues[i];
+    const timestamp = row[0];
+    const temp = row[1];
+    const press = row[2];
+    const hum = row[3];
+    const flag = row[4];
+
+    if (!timestamp) {
+      continue;
+    }
+
+    const rowDateStr = formatDateTokyo_(timestamp);
+    if (!rowDateStr) {
+      continue;
+    }
+
+    // 当日以降のデータは未確定として今回の集計から除外
+    if (todayStr && rowDateStr >= todayStr) {
+      break;
+    }
+
+    lastConfirmedRow = currentRowNumber;
+
+    const flagStr = String(flag || '').trim().toLowerCase();
+    const isAnomaly = flagStr === 'anomaly';
+    const isAlert = flagStr === 'alert';
+
+    if (!dailyBuckets.has(rowDateStr)) {
+      dailyBuckets.set(rowDateStr, {
+        temps: [],
+        presses: [],
+        hums: [],
+        alertCount: 0
+      });
+    }
+
+    const bucket = dailyBuckets.get(rowDateStr);
+
+    if (isAlert) {
+      bucket.alertCount += 1;
+    }
+
+    // anomaly 行は平均・最小・最大・sample_count から除外
+    if (isAnomaly) {
+      continue;
+    }
+
+    const isValidTemp = typeof temp === 'number' && isFinite(temp);
+    const isValidPress = typeof press === 'number' && isFinite(press);
+    const isValidHum = typeof hum === 'number' && isFinite(hum);
+
+    if (isValidTemp && isValidPress && isValidHum) {
+      bucket.temps.push(temp);
+      bucket.presses.push(press);
+      bucket.hums.push(hum);
+    }
+  }
+
+  return { dailyBuckets, lastConfirmedRow };
+}
+
+function buildDailyRowData_(dateStr, bucket) {
+  const sampleCount = bucket.temps.length;
+  if (sampleCount === 0) {
+    return null;
+  }
+
+  const tempAvg = roundTwoDecimals_(calcAvg_(bucket.temps));
+  const tempMin = Math.min(...bucket.temps);
+  const tempMax = Math.max(...bucket.temps);
+
+  const humAvg = roundTwoDecimals_(calcAvg_(bucket.hums));
+  const humMin = Math.min(...bucket.hums);
+  const humMax = Math.max(...bucket.hums);
+
+  const pressAvg = roundTwoDecimals_(calcAvg_(bucket.presses));
+  const pressMin = Math.min(...bucket.presses);
+  const pressMax = Math.max(...bucket.presses);
+
+  return [
+    dateStr,
+    tempAvg,
+    tempMin,
+    tempMax,
+    humAvg,
+    humMin,
+    humMax,
+    pressAvg,
+    pressMin,
+    pressMax,
+    sampleCount,
+    bucket.alertCount
+  ];
 }
