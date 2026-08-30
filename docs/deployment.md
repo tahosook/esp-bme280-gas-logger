@@ -176,10 +176,11 @@ ESP8266への書き込みは人間の確認後に実施する。Codexは書き�
 | キー | 内容 | 対応Phase |
 | --- | --- | --- |
 | `LINE_CHANNEL_SECRET` | LINEチャネルシークレット（Webhook署名検証用） | 12 |
-| `LINE_ACCESS_TOKEN` | LINEアクセストークン（Push/Reply送信用） | 12 |
+| `LINE_CHANNEL_ACCESS_TOKEN` | LINEアクセストークン（Push/Reply送信用） | 12 |
 | `LINE_USER_ID` | 通知送信先ユーザーID | 12 |
-| `ONHOLD_TIME` | スキップ停止時刻（ISO 8601 文字列で保存） | 12 |
+| `MONITOR_SKIP_UNTIL` | スキップ解除時刻（UNIXミリ秒エポックタイム） | 12 / 24 |
 | `DAILY_LAST_ROW` | Daily集計の前回処理済み行番号（1始まり） | 15 |
+| `MONTHLY_LAST_ROW` | Monthly集計の前回処理済み行番号（1始まり） | 18 |
 | `MONITOR_STATE_*` | 監視状態（超過/正常など、必要に応じて複数キー） | 11 |
 | `MONITOR_LAST_VALID_*` | 異常値判定の比較元（temp/hum/press ごと） | 11 |
 | `WATCHDOG_NOTIFIED` | ウォッチドッグ通知済みフラグ | 17 |
@@ -208,6 +209,7 @@ ESP8266への書き込みは人間の確認後に実施する。Codexは書き�
    | `ANOMALY_TEMP` | 5.0 | 異常値判定の気温変化量（℃） |
    | `ANOMALY_HUM` | 30 | 異常値判定の湿度変化量（%） |
    | `ANOMALY_PRESS` | 20 | 異常値判定の気圧変化量（hPa） |
+   | `SKIP_UNTIL_HOUR` | 8 | LINEスキップ解除時刻（JSTの時、0〜23。既定は翌朝8:00） |
    | `WATCHDOG_TIMEOUT_MIN` | 4320 | センサー未受信ウォッチドッグのしきい値（分）。4320＝3日 |
 
 2. Dailyシートを作成し、1行目を `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` にする。

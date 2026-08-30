@@ -14,6 +14,10 @@ const DEFAULT_SMOOTHING = {
   consecutiveK: 2
 };
 
+// ==========================================
+// 1. 評価・判定（純粋ロジック）
+// ==========================================
+
 function evaluateMonitorConditions_(measurement) {
   const temp = measurement.temp;
   const hum = measurement.hum;
@@ -27,6 +31,80 @@ function evaluateMonitorConditions_(measurement) {
     press: measurement.press
   };
 }
+
+function evaluateConditionState_(current, value, threshold, smoothing) {
+  const isOver = value > threshold.over;
+  const isRecovered = value <= threshold.over - threshold.hysteresis;
+  let consecutive = current.consecutive || 0;
+  let alert = current.alert || false;
+
+  if (isOver) {
+    consecutive += 1;
+  } else {
+    consecutive = 0;
+  }
+
+  if (isRecovered) {
+    alert = false;
+  } else if (consecutive >= (smoothing.consecutiveK || 2)) {
+    alert = true;
+  }
+
+  return { consecutive, alert };
+}
+
+function detectAnomaly_(current, lastValid, limits) {
+  if (!lastValid) {
+    return false;
+  }
+
+  const deltaTemp = Math.abs(current.temp - lastValid.temp);
+  const deltaHum = Math.abs(current.hum - lastValid.hum);
+  const deltaPress = Math.abs(current.press - lastValid.press);
+
+  const defaultLimits = {
+    temp: 5.0,
+    hum: 30.0,
+    press: 20.0
+  };
+  limits = limits || defaultLimits;
+
+  if (deltaTemp > limits.temp || deltaHum > limits.hum || deltaPress > limits.press) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildMonitorNotification_(states, overallAlert, previousAlert, conditions, anomaly) {
+  if (!overallAlert) {
+    return null;
+  }
+
+  if (previousAlert) {
+    return null;
+  }
+
+  const lines = [
+    '室温監視：超過しました。',
+    `temp=${conditions.temp.toFixed(2)}℃ hum=${conditions.hum.toFixed(2)}% DI=${conditions.discomfortIndex.toFixed(2)}`
+  ];
+
+  if (anomaly) {
+    lines.push('※ 急変と判定されたため参考値です。');
+  }
+
+  lines.push('（公式WBGTではなく自宅用目安です）');
+
+  return {
+    text: lines.join('\n'),
+    payload: conditions
+  };
+}
+
+// ==========================================
+// 2. 状態遷移・オーケストレーション（I/O + ロジック）
+// ==========================================
 
 function updateMonitorState_(measurement) {
   const conditions = evaluateMonitorConditions_(measurement);
@@ -150,75 +228,6 @@ function saveLastValidMeasurement_(properties, conditions) {
   properties.setProperty(MONITOR_PROPERTIES.lastValidPrefix + 'payload', JSON.stringify(conditions));
 }
 
-function evaluateConditionState_(current, value, threshold, smoothing) {
-  const isOver = value > threshold.over;
-  const isRecovered = value <= threshold.over - threshold.hysteresis;
-  let consecutive = current.consecutive || 0;
-  let alert = current.alert || false;
-
-  if (isOver) {
-    consecutive += 1;
-  } else {
-    consecutive = 0;
-  }
-
-  if (isRecovered) {
-    alert = false;
-  } else if (consecutive >= (smoothing.consecutiveK || 2)) {
-    alert = true;
-  }
-
-  return { consecutive, alert };
-}
-
-function detectAnomaly_(current, lastValid, limits) {
-  if (!lastValid) {
-    return false;
-  }
-
-  const deltaTemp = Math.abs(current.temp - lastValid.temp);
-  const deltaHum = Math.abs(current.hum - lastValid.hum);
-  const deltaPress = Math.abs(current.press - lastValid.press);
-
-  const defaultLimits = {
-    temp: 5.0,
-    hum: 30.0,
-    press: 20.0
-  };
-  limits = limits || defaultLimits;
-
-  if (deltaTemp > limits.temp || deltaHum > limits.hum || deltaPress > limits.press) {
-    return true;
-  }
-
-  return false;
-}
-
-function buildMonitorNotification_(states, overallAlert, previousAlert, conditions, anomaly) {
-  if (!overallAlert) {
-    return null;
-  }
-
-  if (previousAlert) {
-    return null;
-  }
-
-  const lines = [
-    '室温監視：超過しました。',
-    `temp=${conditions.temp.toFixed(2)}℃ hum=${conditions.hum.toFixed(2)}% DI=${conditions.discomfortIndex.toFixed(2)}`
-  ];
-
-  if (anomaly) {
-    lines.push('※ 急変と判定されたため参考値です。');
-  }
-
-  lines.push('（公式WBGTではなく自宅用目安です）');
-
-  return {
-    text: lines.join('\n'),
-    payload: conditions
-  };
-}
 
 function resetMonitorStates_() {
   const properties = PropertiesService.getScriptProperties();
@@ -248,7 +257,9 @@ function checkWatchdog() {
 
 function runWatchdogCheck_() {
   const properties = PropertiesService.getScriptProperties();
-  const spreadsheetId = properties.getProperty('SPREADSHEET_ID');
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
   if (!spreadsheetId) {
     const error = new Error('missing spreadsheet configuration');
     if (typeof logError_ === 'function') {
@@ -257,7 +268,7 @@ function runWatchdogCheck_() {
     throw error;
   }
 
-  const sheetName = properties.getProperty('SHEET_NAME') || 'DATA';
+  const sheetName = properties.getProperty(sheetNameKey) || 'DATA';
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
   const dataSheet = spreadsheet.getSheetByName(sheetName);
   if (!dataSheet) {
