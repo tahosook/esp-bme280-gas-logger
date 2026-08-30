@@ -29,62 +29,48 @@
 
 ---
 
-## 実装タスク
+## 実装タスク（✅ 全完了）
 
-### 実装T1（Phase 8）：Router/Ingest 分割と重複排除
+### 実装T1（Phase 8）：Router/Ingest 分割と重複排除（✅ 完了）
 - 対象: `gas/Router.gs`、`gas/Ingest.gs`
-- 内容: `doPost` 前段にペイロード振り分けを追加。既存 `validatePayload_` / `appendMeasurement_` を移設し、最終行参照による重複排除を追加
-- テスト: 正常POST、重複POST（窓内は1行のみ）、不正POST
-- 完了条件: 重複排除付き取り込みが期待通り動く
+- 状態: 完了（PR #18 / #19）
 
-### 実装T2（Phase 11）：Monitor.gs
+### 実装T2（Phase 11）：Monitor.gs（✅ 完了）
 - 対象: `gas/Monitor.gs`
-- 内容: 状態遷移（正常⇄超過）、ヒステリシス、平滑化、各条件の独立OR評価、Script Propertiesによる状態保持
-- テスト: 超過遷移で1回通知、継続超過で非通知、復帰→再超過で再通知
-- 完了条件: 通知の重複抑制と復帰後の再通知が動作
+- 状態: 完了（PR #19）
 
-### 実装T3（Phase 12）：LineBot.gs
+### 実装T3（Phase 12）：LineBot.gs（✅ 完了）
 - 対象: `gas/LineBot.gs`
-- 内容: `X-Line-Signature` 署名検証、状況 / スキップ / クリア、Reply/Push送信
-- テスト: 各コマンド応答、不正シグネチャ拒否
-- 完了条件: LINEで操作が完結し、秘密情報がログに出ない
+- 状態: 完了（PR #23）
 
-### 実装T4（Phase 15）：Config/ErrorLog と DailyAggregation
+### 実装T4（Phase 15）：Config/ErrorLog と DailyAggregation（✅ 完了）
 - 対象: `gas/Config.gs`、`gas/ErrorLog.gs`、`gas/DailyAggregation.gs`
-- 内容: 設定アクセス集約、例外ログラッパー、前回処理済み行からの差分読み込み日次集計（Daily 1日1行・`sample_count`＝anomalyを除いた有効行数）
-- テスト: 実データ集計、Dailyの平均・最小・最大・`sample_count`整合
-- 完了条件: Daily集計が正しく生成される
+- 状態: 完了（PR #20）
 
-### 実装T5（Phase 17）：センサー未受信ウォッチドッグ
+### 実装T5（Phase 17）：センサー未受信ウォッチドッグ（✅ 完了）
 - 対象: `gas/Monitor.gs`
-- 内容: DATAへの追記がしきい値（`WATCHDOG_TIMEOUT_MIN=4320`＝3日、Configシートで調整可）を超えて途絶えたら1回だけ通知し、復帰後はリセット。時間主導トリガーで定期評価
-- テスト: 送信停止時に1回通知、継続未受信で再通知なし、復帰後リセット
-- 完了条件: オフライン検知が1回通知で動作
+- 状態: 完了（PR #21）
 
-### 実装T6（Phase 18）：月次ロールアップ
+### 実装T6（Phase 18）：月次ロールアップ（✅ 完了）
 - 対象: `gas/MonthlyAggregation.gs`
-- 内容: 前月のDailyを集計し、Monthlyへ1行追記（`年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count`）
-- テスト: 実データで月1行・集計整合
-- 完了条件: Monthlyが月1行で正しく生成される
+- 状態: 完了（PR #22）
 
 ※#15 device_id 実運用は見送り（保留）。列追加・複数台運用は当面実施しない。
 
 ---
 
-## 検証タスク
+## 検証タスク（✅ 全完了）
 
-### 検証T1（Phase 9）：重複排除の実機・API検証
-- 対象: `docs/test-results/*`、`docs/test-plan.md`
-- 内容: 意図的に同一リクエストを短時間で複数回送り、DATAに1行のみ、`{"ok":true}`が毎回返ることを確認
+検証結果記録: [test-results/2026-08-30-phase-13-18-validation.md](test-results/2026-08-30-phase-13-18-validation.md)
 
-### 検証T2（Phase 13）：LINE操作と通知
-- 対象: `docs/test-results/*`、`docs/test-plan.md`
-- 内容: LINEから状況 / スキップ / クリアを操作し、閾値を一時的に低くしてPushが1回だけ飛ぶことを確認
+### 検証T1（Phase 9）：重複排除の実機・API検証（✅ 完了）
+- 状態: ユニットテストおよび実機POSTにて検証完了
 
-### 検証T3（Phase 16）：Daily集計
-- 対象: `docs/test-results/*`、`docs/test-plan.md`
-- 内容: 数日分データでDailyの平均・最小・最大・`sample_count`が手計算と一致することを確認
+### 検証T2（Phase 13）：LINE操作と通知（✅ 完了）
+- 状態: 実機LINEアプリからの状況・スキップ・クリア・ヘルプおよびPushテスト完了
 
-### 検証T4（Phase 19）：ウォッチドッグ・月次ロールアップ
-- 対象: `docs/test-results/*`、`docs/test-plan.md`
-- 内容: 未受信で1回通知/復帰リセット、Monthlyの月1行・集計整合（手計算と一致）を確認
+### 検証T3（Phase 16）：Daily集計（✅ 完了）
+- 状態: 自動集計および単体テスト完了
+
+### 検証T4（Phase 19）：ウォッチドッグ・月次ロールアップ（✅ 完了）
+- 状態: aggregateMonthly手動実行およびウォッチドッグ単体・自動化設定完了
