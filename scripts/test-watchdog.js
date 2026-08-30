@@ -210,7 +210,7 @@ console.log('Running Watchdog tests...');
 }
 
 // ----------------------------------------------------
-// Test 2: Offline 3 days (4320 mins) -> Notifies once
+// Test 2: Offline 3 days (4320 mins) -> Notifies once & triggers pushMonitorNotification_
 // ----------------------------------------------------
 {
   const env = createMockEnvironment({
@@ -220,6 +220,12 @@ console.log('Running Watchdog tests...');
     ]
   });
 
+  let pushedText = null;
+  env.context.pushMonitorNotification_ = function(text) {
+    pushedText = text;
+    return true;
+  };
+
   // Current time: 3 days + 1 hour (4380 minutes) later
   env.context.Date = fixedDate('2026-08-13T01:00:00Z');
 
@@ -228,6 +234,7 @@ console.log('Running Watchdog tests...');
   assert.strictEqual(result.notified, true, 'Should notify on first timeout');
   assert.ok(result.notification && result.notification.text.includes('センサー未受信'), 'Notification text check');
   assert.strictEqual(env.propertiesStore.get('WATCHDOG_NOTIFIED'), 'true', 'WATCHDOG_NOTIFIED should be set to true');
+  assert.ok(pushedText && pushedText.includes('センサー未受信'), 'pushMonitorNotification_ should be called');
 
   console.log('  ✓ Test 2: Timeout trigger passed');
 }

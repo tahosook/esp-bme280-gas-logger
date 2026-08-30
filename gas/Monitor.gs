@@ -232,7 +232,18 @@ function resetMonitorStates_() {
 }
 
 function checkWatchdog() {
-  return runWatchdogCheck_();
+  const result = runWatchdogCheck_();
+  if (result && result.notified && result.notification &&
+      typeof pushMonitorNotification_ === 'function') {
+    try {
+      pushMonitorNotification_(result.notification.text);
+    } catch (err) {
+      if (typeof logError_ === 'function') {
+        logError_('watchdog', 'line_push', 'push_failed', err);
+      }
+    }
+  }
+  return result;
 }
 
 function runWatchdogCheck_() {

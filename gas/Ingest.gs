@@ -127,6 +127,16 @@ function checkAndAppendMeasurement_(payload, properties) {
         if (monitorResult && monitorResult.anomaly) {
           sheet.getRange(lastAppendedRow, 5).setValue('anomaly');
         }
+        if (monitorResult && monitorResult.notification &&
+            typeof pushMonitorNotification_ === 'function') {
+          try {
+            pushMonitorNotification_(monitorResult.notification.text);
+          } catch (err) {
+            if (typeof logError_ === 'function') {
+              logError_('ingest', 'line_push', 'push_failed', err);
+            }
+          }
+        }
       } catch (error) {
         if (typeof logError_ === 'function') {
           logError_('ingest', 'monitor', 'monitor_update_failed', error);
