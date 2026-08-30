@@ -305,6 +305,33 @@ function runTests() {
     console.log('  ✓ Test 9: Missing LINE_USER_ID handling passed');
   }
 
+  // 10. doPost routing & reply without headers (GAS runtime simulation)
+  {
+    const { context, fetchedUrls } = createGasContext({
+      LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+      MONITOR_LAST_VALID_payload: JSON.stringify({ temp: 26.0, hum: 60.0, discomfortIndex: 75.0, timestamp: new Date().toISOString() })
+    });
+    const body = JSON.stringify({
+      events: [
+        {
+          type: 'message',
+          replyToken: 'token-no-headers',
+          message: { type: 'text', text: 'status' }
+        }
+      ]
+    });
+    // Request without headers (as happens in GAS environment)
+    const req = {
+      postData: { contents: body }
+    };
+    const res = vm.runInContext('doPost(e)', vm.createContext(Object.assign({}, context, { e: req })));
+    const resObj = JSON.parse(res.content);
+    assert.strictEqual(resObj.ok, true, 'Test 10 Failed: expected ok: true');
+    assert.strictEqual(fetchedUrls.length, 1, 'Test 10 Failed: reply should be sent');
+    assert.strictEqual(fetchedUrls[0].url, 'https://api.line.me/v2/bot/message/reply');
+    console.log('  ✓ Test 10: GAS runtime without headers routes and replies passed');
+  }
+
   console.log('\nAll LineBot tests passed successfully!');
 }
 

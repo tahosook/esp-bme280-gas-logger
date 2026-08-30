@@ -11,11 +11,27 @@ const LIMITS = {
 };
 
 function doPost(e) {
+  if (!e || !e.postData || typeof e.postData.contents !== 'string') {
+    return errorResponse_('invalid_json');
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(e.postData.contents);
+  } catch (error) {
+    return errorResponse_('invalid_json');
+  }
+
   const headers = e && e.headers ? e.headers : {};
-  if (headers['X-Line-Signature'] || headers['x-line-signature'] ||
-      (e && e.parameter && (e.parameter['X-Line-Signature'] || e.parameter['x-line-signature']))) {
+  const hasLineHeader = !!(headers['X-Line-Signature'] || headers['x-line-signature'] ||
+    (e && e.parameter && (e.parameter['X-Line-Signature'] || e.parameter['x-line-signature'])));
+
+  const isLinePayload = payload && (Array.isArray(payload.events) || typeof payload.destination === 'string');
+
+  if (hasLineHeader || isLinePayload) {
     return handleLineWebhook_(e);
   }
+
   return handleSensorPost_(e);
 }
 

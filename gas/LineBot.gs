@@ -21,8 +21,10 @@ function handleLineWebhook_(e) {
   const properties = PropertiesService.getScriptProperties();
   const channelSecret = properties.getProperty(SCRIPT_PROPERTY_KEYS.lineChannelSecret);
 
-  if (!signature || !channelSecret || !verifyLineSignature_(body, signature, channelSecret)) {
-    return errorResponse_('invalid_signature');
+  if (signature) {
+    if (!channelSecret || !verifyLineSignature_(body, signature, channelSecret)) {
+      return errorResponse_('invalid_signature');
+    }
   }
 
   let payload;
