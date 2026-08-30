@@ -14,6 +14,9 @@ GASエディタの **プロジェクトの設定 → スクリプト プロパ�
 | `DAILY_LAST_ROW` | 日次集計の前回処理済み行番号（1始まり） |
 | `MONTHLY_LAST_ROW` | 月次集計の前回処理済み行番号（1始まり） |
 | `WATCHDOG_NOTIFIED` | センサー未受信ウォッチドッグ通知済みフラグ |
+| `LINE_CHANNEL_SECRET` | LINE Developers のチャネルシークレット（署名検証用） |
+| `LINE_CHANNEL_ACCESS_TOKEN` | LINE Developers のチャネルアクセストークン（長期） |
+| `LINE_USER_ID` | LINE Push通知先のユーザーID |
 
 スプレッドシートとGASプロジェクトのタイムゾーンは`Asia/Tokyo`に設定します。コード側でも日時を`Asia/Tokyo`で文字列化し、`yyyy-MM-dd HH:mm:ss`（例：`2026-08-10 01:42:09`）としてから追記します。
 
@@ -21,7 +24,7 @@ GASエディタの **プロジェクトの設定 → スクリプト プロパ�
 
 本番デプロイのチェックリストとロールバック手順は、[GAS本番デプロイ手順](../docs/deployment.md#gasデプロイ)を使用してください。
 
-1. GASプロジェクトへ`Router.gs`、`Ingest.gs`、`Config.gs`、`ErrorLog.gs`、`Monitor.gs`、`DailyAggregation.gs`、`MonthlyAggregation.gs`、`SetupTriggers.gs`と`appsscript.json`を配置する。`appsscript.json`には`USER_DEPLOYING`と`ANYONE_ANONYMOUS`のWebアプリ設定を含める。`doGet`・`doPost`・`jsonResponse_`は`Router.gs`に実装されている（`Code.gs`は削除済み）。
+1. GASプロジェクトへ`Router.gs`、`Ingest.gs`、`Config.gs`、`ErrorLog.gs`、`Monitor.gs`、`DailyAggregation.gs`、`MonthlyAggregation.gs`、`LineBot.gs`、`SetupTriggers.gs`と`appsscript.json`を配置する。`appsscript.json`には`USER_DEPLOYING`と`ANYONE_ANONYMOUS`のWebアプリ設定を含める。`doGet`・`doPost`・`jsonResponse_`は`Router.gs`に実装されている（`Code.gs`は削除済み）。
 2. Script Propertiesを設定する。
 3. **デプロイ → 新しいデプロイ → ウェブアプリ** を選択する。
 4. 実行ユーザーはスプレッドシートへ書き込めるアカウントを選択する。
@@ -71,6 +74,7 @@ node scripts/test-monitor.gs.js
 node scripts/test-daily-aggregation.js
 node scripts/test-watchdog.js
 node scripts/test-monthly-aggregation.js
+node scripts/test-line-bot.js
 ```
 
 本番デプロイ後のスモークテストは、URLだけを指定するとReady確認と不正トークン確認を実行します。
