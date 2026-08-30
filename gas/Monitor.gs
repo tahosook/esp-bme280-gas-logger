@@ -220,6 +220,17 @@ function buildMonitorNotification_(states, overallAlert, previousAlert, conditio
   };
 }
 
+function resetMonitorStates_() {
+  const properties = PropertiesService.getScriptProperties();
+  const defaults = {
+    temp: { consecutive: 0, alert: false },
+    hum: { consecutive: 0, alert: false },
+    discomfortIndex: { consecutive: 0, alert: false }
+  };
+
+  saveMonitorStates_(properties, defaults);
+}
+
 function checkWatchdog() {
   const result = runWatchdogCheck_();
   if (result && result.notified && result.notification &&
@@ -333,17 +344,6 @@ function runWatchdogCheck_() {
   } finally {
     lock.releaseLock();
   }
-}
-
-function resetMonitorStates_() {
-  const properties = PropertiesService.getScriptProperties();
-  const defaults = {
-    temp: { consecutive: 0, alert: false },
-    hum: { consecutive: 0, alert: false },
-    discomfortIndex: { consecutive: 0, alert: false }
-  };
-
-  saveMonitorStates_(properties, defaults);
 }
 
 function resetWatchdogState_() {
