@@ -89,3 +89,42 @@ function triggerExists_(fnName) {
     return t.getHandlerFunction() === fnName;
   });
 }
+
+/**
+ * LINE Bot の設定確認・OAuth権限承認・Push送信テスト関数。
+ * GAS エディタの関数選択から「testLineBotConnection」を選んで「実行」する。
+ * 初回実行時に Google からの権限承認（UrlFetchApp 等）ポップアップが表示される。
+ */
+function testLineBotConnection() {
+  var properties = PropertiesService.getScriptProperties();
+  var secret = properties.getProperty('LINE_CHANNEL_SECRET');
+  var token = properties.getProperty('LINE_CHANNEL_ACCESS_TOKEN');
+  var userId = properties.getProperty('LINE_USER_ID');
+
+  Logger.log('=== LINE Bot 設定確認 ===');
+  Logger.log('LINE_CHANNEL_SECRET: ' + (secret ? '設定あり (先頭4文字: ' + secret.substring(0, 4) + '...)' : '未設定 ❌'));
+  Logger.log('LINE_CHANNEL_ACCESS_TOKEN: ' + (token ? '設定あり (文字数: ' + token.length + ')' : '未設定 ❌'));
+  Logger.log('LINE_USER_ID: ' + (userId ? '設定あり (' + userId + ')' : '未設定 ❌'));
+
+  if (!token) {
+    Logger.log('❌ LINE_CHANNEL_ACCESS_TOKEN がスクリプトプロパティに設定されていません。');
+    return;
+  }
+
+  if (!userId) {
+    Logger.log('❌ LINE_USER_ID がスクリプトプロパティに設定されていません。');
+    return;
+  }
+
+  Logger.log('\n=== LINE Push 送信テスト中... ===');
+  var success = pushMessage_(userId, '【テスト通知】GASからLINE Botへの接続に成功しました。', token);
+  if (success) {
+    Logger.log('✅ LINE Push 通知が正常に送信されました！ LINEアプリを確認してください。');
+  } else {
+    Logger.log('❌ LINE Push 通知の送信に失敗しました。直近のエラーログを確認してください。');
+    var logs = typeof getErrorLogEntries_ === 'function' ? getErrorLogEntries_() : [];
+    if (logs.length > 0) {
+      Logger.log('エラー詳細: ' + JSON.stringify(logs[logs.length - 1]));
+    }
+  }
+}

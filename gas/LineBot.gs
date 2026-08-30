@@ -203,8 +203,9 @@ function replyMessage_(replyToken, text) {
     const response = UrlFetchApp.fetch(url, options);
     const code = response.getResponseCode ? response.getResponseCode() : 200;
     if (code !== 200) {
+      const responseText = response.getContentText ? response.getContentText() : '';
       if (typeof logError_ === 'function') {
-        logError_('linebot', 'reply', 'send_failed', new Error('HTTP ' + code));
+        logError_('linebot', 'reply', 'send_failed', new Error('HTTP ' + code + ': ' + responseText));
       }
       return false;
     }
@@ -276,8 +277,9 @@ function pushMessage_(userId, text, channelAccessToken) {
     const response = UrlFetchApp.fetch(url, options);
     const code = response.getResponseCode ? response.getResponseCode() : 200;
     if (code !== 200) {
+      const responseText = response.getContentText ? response.getContentText() : '';
       if (typeof logError_ === 'function') {
-        logError_('linebot', 'push', 'send_failed', new Error('HTTP ' + code));
+        logError_('linebot', 'push', 'send_failed', new Error('HTTP ' + code + ': ' + responseText));
       }
       return false;
     }
