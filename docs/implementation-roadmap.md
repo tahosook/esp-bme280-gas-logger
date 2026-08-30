@@ -78,6 +78,20 @@ Phase 7〜19 はすべて実装・デプロイ・実機検証を含めて完了�
 | 18 | 実装 — 月次ロールアップ（MonthlyAggregation.gs） | ✅ 完了 |
 | 19 | 検証 — ウォッチドッグ・月次ロールアップ | ✅ 完了 |
 
+## Phase 20〜26（内部品質改善・リファクタリング）
+
+`v1.1.0-stable` および LINE Bot 翌朝8:00スキップ機能（PR #24）の仕様・外部動作を完全に維持しながら、コードの可読性・保守性・テスト容易性・依存関係の明確性を改善する。
+
+| Phase | 内容 | 状態 |
+| --- | --- | --- |
+| 20 | 決定 — リファクタリング方針・Baseline（v1.1.0 + PR #24）と不変条件の確定 | ⏳ 進行中 |
+| 21 | 実装 — 低リスクな共通ユーティリティの集約（calcAvg_, roundTwoDecimals_, 日付処理） | ⬜ 未着手 |
+| 22 | 実装 — Config 整理と定数参照の一元化（CONFIG_KEYS統一、ハードコード解消） | ⬜ 未着手 |
+| 23 | 実装 — LINE 送信共通化と暗黙的依存（typeof）の整理 | ⬜ 未着手 |
+| 24 | 実装 — Monitor 内部の純粋ロジックと永続化I/Oの境界明確化 | ⬜ 未着手 |
+| 25 | 実装 — Daily / Monthly Aggregation の集計ロジック純粋関数化 | ⬜ 未着手 |
+| 26 | 検証 — 全自動テスト・ドキュメント整合性確認 | ⬜ 未着手 |
+
 ## 設計レビューによる確定方針（Phase 7以降の前提）
 
 受信基盤の上に日次集計・環境監視・LINE Bot を設計する設計レビュー
@@ -329,8 +343,94 @@ Phase 7 / 10 / 14 / 15 / 17 / 18 の未決項目は、人間の承認により�
 
 ---
 
+## Phase 20：決定 — リファクタリング方針・Baseline（v1.1.0 + PR #24）と不変条件の確定
+
+| 項目 | 内容 |
+| --- | --- |
+| 種別 | 決定 |
+| 目的 | v1.1.0-stable および LINE Bot 翌朝8:00スキップ機能（PR #24）を基準点とし、外部仕様・動作を変更しないリファクタリング方針・依存関係・不変条件を確定する |
+| 対象ファイル | `docs/architecture.md`、`docs/implementation-roadmap.md`、`docs/implementation-tasks.md` |
+| 依存関係 | なし |
+| 前提・未決事項 | BME280校正・測定アルゴリズム、API契約、Spreadsheet構造、監視判定・Watchdog、LINE Botコマンド・翌朝8:00スキップ（PR #24）は一切変更しない |
+| 受け入れ条件 | リファクタリング計画、不変条件、Phase 21〜26 のスコープがドキュメント化され、ユーザー承認を得る |
+| 検証方法 | ドキュメントレビュー・既存テスト全件パス確認 |
+
+## Phase 21：実装 — 低リスクな共通ユーティリティの集約
+
+| 項目 | 内容 |
+| --- | --- |
+| 種別 | 実装 |
+| 目的 | `DailyAggregation.gs` と `MonthlyAggregation.gs` で重複している計算処理（`calcAvg_`, `roundTwoDecimals_`）および日付フォーマット（`formatDateTokyo_`）を集約し、DRYを改善する |
+| 対象ファイル | `gas/DailyAggregation.gs`、`gas/MonthlyAggregation.gs`、`gas/Config.gs` |
+| 変更しない範囲 | 計算結果・丸め規則・日付出力形式・各関数の外部公開インターフェース |
+| 前提・未決事項 | 既存の単体テストがそのままパスすること |
+| 受け入れ条件 | 重複関数が一元化され、集計テストがすべて成功する |
+| 検証方法 | `node scripts/test-daily-aggregation.js`、`node scripts/test-monthly-aggregation.js` |
+
+## Phase 22：実装 — Config 整理と定数参照の一元化
+
+| 項目 | 内容 |
+| --- | --- |
+| 種別 | 実装 |
+| 目的 | `Router.gs` の `CONFIG_KEYS` と `Config.gs` の `SCRIPT_PROPERTY_KEYS` の重複を解消し、`Ingest.gs` などのハードコード値を `getMergedConfig_()` 経由の参照に統一する |
+| 対象ファイル | `gas/Config.gs`、`gas/Router.gs`、`gas/Ingest.gs`、`gas/Monitor.gs` |
+| 変更しない範囲 | 設定キー名、プロパティ名、デフォルト値、フォールバック優先順位 |
+| 前提・未決事項 | LINE Bot の `SKIP_UNTIL_HOUR` 設定（PR #24）を含む全設定体系を維持する |
+| 受け入れ条件 | 定数定義が一元化され、Config/Monitor/Ingest のテストがすべて成功する |
+| 検証方法 | `node scripts/test-config-monitor.gs.js`、`node scripts/test-gas-api.js`、`node scripts/test-watchdog.js` |
+
+## Phase 23：実装 — LINE 送信共通化と暗黙的依存の整理
+
+| 項目 | 内容 |
+| --- | --- |
+| 種別 | 実装 |
+| 目的 | `LineBot.gs` の `replyMessage_` と `pushMessage_` における HTTP 送信・エラーハンドリング処理を共通化し、コード内の暗黙的依存（過剰な `typeof` ガード）を整理する |
+| 対象ファイル | `gas/LineBot.gs`、`gas/ErrorLog.gs`、`gas/Ingest.gs` |
+| 変更しない範囲 | LINE API エンドポイント、ペイロード形式、署名検証、翌朝8:00スキップ機能（PR #24）、エラーログ記録仕様 |
+| 前提・未決事項 | Node.js 単体テスト環境で各テストスクリプトが必要なモジュールを適切に解決できるようにする |
+| 受け入れ条件 | LINE 送信ロジックが共通化され、LineBot / ErrorLog / Ingest のテストがすべて成功する |
+| 検証方法 | `node scripts/test-line-bot.js`、`node scripts/test-errorlog.gs.js` |
+
+## Phase 24：実装 — Monitor 内部の純粋ロジックと永続化I/Oの境界明確化
+
+| 項目 | 内容 |
+| --- | --- |
+| 種別 | 実装 |
+| 目的 | `Monitor.gs` における条件評価・ヒステリシス状態遷移・異常値判定・通知文生成（純粋ロジック）と、PropertiesService / Spreadsheet / Lock（I/O）の境界を明確にする |
+| 対象ファイル | `gas/Monitor.gs` |
+| 変更しない範囲 | 監視閾値、ヒステリシス幅、K=2平滑化判定、不快指数DI計算式、Watchdog動作、通知文面 |
+| 前提・未決事項 | 既存の判定結果・状態遷移が完全に同一であること |
+| 受け入れ条件 | 純粋関数と I/O 処理が分離され、Monitor / Watchdog のテストがすべて成功する |
+| 検証方法 | `node scripts/test-monitor.gs.js`、`node scripts/test-watchdog.js` |
+
+## Phase 25：実装 — Daily / Monthly Aggregation の集計ロジック純粋関数化
+
+| 項目 | 内容 |
+| --- | --- |
+| 種別 | 実装 |
+| 目的 | `DailyAggregation.gs` および `MonthlyAggregation.gs` の「行データ配列からの集計計算」を純粋関数として切り出し、Spreadsheet 読み書き・Lock制御・ポインタ更新と分離する |
+| 対象ファイル | `gas/DailyAggregation.gs`、`gas/MonthlyAggregation.gs` |
+| 変更しない範囲 | 集計結果（avg/min/max/count）、二重集計防止（既存日付除外）、当日/当月除外、anomaly除外、ポインタ更新規則 |
+| 前提・未決事項 | 純粋関数単体でテスト可能な構造にすること |
+| 受け入れ条件 | コア集計が純粋関数化され、日次・月次集計テストがすべて成功する |
+| 検証方法 | `node scripts/test-daily-aggregation.js`、`node scripts/test-monthly-aggregation.js` |
+
+## Phase 26：検証 — 全自動テスト・ドキュメント整合性確認
+
+| 項目 | 内容 |
+| --- | --- |
+| 種別 | 検証 |
+| 目的 | 全自動テストの実行、ファームウェア側の確認、ドキュメント（`docs/`）との整合性を確認し、リファクタリング完了を記録する |
+| 対象ファイル | `scripts/*`、`docs/*`、`README.md` |
+| 依存関係 | Phase 21〜25 |
+| 受け入れ条件 | 全8本のテストスクリプトが成功し、差分レビューで不要な変更・外部動作の変更がないことを確認できる |
+| 検証方法 | `for f in scripts/test-*.js; do node "$f"; done` および `git diff` レビュー |
+
+---
+
 ## 継続判断のルール
 
-- 新たに生じた未決の値は、決定Phaseで確定するまで実装しない（主要項目は Phase 7 / 10 / 14 / 15 / 17 / 18 で決定済み）。
+- 新たに生じた未決の値は、決定Phaseで確定するまで実装しない（主要項目は Phase 7 / 10 / 14 / 15 / 17 / 18 / 20 で決定済み）。
 - 各Phase完了後、受け入れ条件を満たさない場合は次Phaseへ進まない。
 - 人間による承認（GASデプロイ・LINE設定・実機書き込み）は明示的な確認を条件とする。
+

@@ -74,3 +74,45 @@
 
 ### 検証T4（Phase 19）：ウォッチドッグ・月次ロールアップ（✅ 完了）
 - 状態: aggregateMonthly手動実行およびウォッチドッグ単体・自動化設定完了
+
+---
+
+## リファクタリングタスク（Phase 20〜26）
+
+`v1.1.0-stable` および LINE Bot 翌朝8:00スキップ機能（PR #24）の仕様・外部動作を完全に維持した内部品質改善タスク。
+
+### 決定TR1（Phase 20）：リファクタリング方針と不変条件の確定（⏳ 進行中）
+- 対象: `docs/architecture.md`、`docs/implementation-roadmap.md`、`docs/implementation-tasks.md`
+- 内容: Baseline（v1.1.0 + PR #24）の確定、依存関係マップ作成、外部仕様変更なしの不変条件合意
+- 状態: 進行中
+
+### 実装TR1（Phase 21）：低リスクな共通ユーティリティの集約（⬜ 未着手）
+- 対象: `gas/DailyAggregation.gs`、`gas/MonthlyAggregation.gs`、`gas/Config.gs`
+- 内容: 重複している `calcAvg_`, `roundTwoDecimals_`, `formatDateTokyo_` を一元化
+- 状態: 未着手
+
+### 実装TR2（Phase 22）：Config 整理と定数参照の一元化（⬜ 未着手）
+- 対象: `gas/Config.gs`、`gas/Router.gs`、`gas/Ingest.gs`、`gas/Monitor.gs`
+- 内容: `CONFIG_KEYS` / `SCRIPT_PROPERTY_KEYS` の集約、`Ingest.gs` などのハードコード値を `getMergedConfig_()` 経由に統一
+- 状態: 未着手
+
+### 実装TR3（Phase 23）：LINE 送信共通化と暗黙的依存の整理（⬜ 未着手）
+- 対象: `gas/LineBot.gs`、`gas/ErrorLog.gs`、`gas/Ingest.gs`
+- 内容: `replyMessage_` / `pushMessage_` の共通HTTP送信処理抽出、過剰な `typeof` ガードの整理
+- 状態: 未着手
+
+### 実装TR4（Phase 24）：Monitor 内部の純粋ロジックと永続化I/Oの境界明確化（⬜ 未着手）
+- 対象: `gas/Monitor.gs`
+- 内容: 条件評価・ヒステリシス状態遷移・異常値判定・通知文生成（純粋ロジック）と Properties 永続化（I/O）の分離
+- 状態: 未着手
+
+### 実装TR5（Phase 25）：Daily / Monthly Aggregation の集計ロジック純粋関数化（⬜ 未着手）
+- 対象: `gas/DailyAggregation.gs`、`gas/MonthlyAggregation.gs`
+- 内容: 行データ配列からの日次・月次集計計算を純粋関数化し、Spreadsheet I/O・Lock処理と分離
+- 状態: 未着手
+
+### 検証TR1（Phase 26）：全自動テスト・ドキュメント整合性確認（⬜ 未着手）
+- 対象: `scripts/*`、`docs/*`、`README.md`
+- 内容: 全自動テスト（8ファイル）の実行・差分レビュー・ドキュメント整合性確認
+- 状態: 未着手
+
