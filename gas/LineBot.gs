@@ -140,12 +140,10 @@ function buildStatusReply_() {
     let timeStr = '-';
     if (lastValid.timestamp) {
       if (typeof formatDateTokyo_ === 'function') {
+        timeStr = formatDateTokyo_(lastValid.timestamp, 'yyyy-MM-dd HH:mm:ss');
+      } else if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
         const d = new Date(lastValid.timestamp);
-        if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
-          timeStr = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
-        } else {
-          timeStr = formatDateTokyo_(lastValid.timestamp);
-        }
+        timeStr = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
       } else {
         timeStr = String(lastValid.timestamp);
       }

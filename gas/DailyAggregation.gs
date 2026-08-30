@@ -222,7 +222,7 @@ function getExistingDailyDates_(dailySheet) {
   return existingDates;
 }
 
-function formatDateTokyo_(dateInput) {
+function formatDateTokyo_(dateInput, format) {
   if (!dateInput) {
     return null;
   }
@@ -234,7 +234,13 @@ function formatDateTokyo_(dateInput) {
     }
     dateObj = dateInput;
   } else if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateInput)) {
-    return dateInput.substring(0, 10);
+    if (!format || format === 'yyyy-MM-dd') {
+      return dateInput.substring(0, 10);
+    }
+    dateObj = new Date(dateInput);
+    if (isNaN(dateObj.getTime())) {
+      return null;
+    }
   } else {
     dateObj = new Date(dateInput);
     if (isNaN(dateObj.getTime())) {
@@ -242,25 +248,27 @@ function formatDateTokyo_(dateInput) {
     }
   }
 
+  const targetFormat = format || 'yyyy-MM-dd';
+
   if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
-    return Utilities.formatDate(dateObj, 'Asia/Tokyo', 'yyyy-MM-dd');
+    return Utilities.formatDate(dateObj, 'Asia/Tokyo', targetFormat);
   }
 
-  try {
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Tokyo',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    return formatter.format(dateObj);
-  } catch (e) {
-    const tokyoTime = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
-    const year = tokyoTime.getUTCFullYear();
-    const month = String(tokyoTime.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(tokyoTime.getUTCDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  const tokyoTime = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
+  const year = tokyoTime.getUTCFullYear();
+  const month = String(tokyoTime.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(tokyoTime.getUTCDate()).padStart(2, '0');
+
+  if (targetFormat === 'yyyy-MM') {
+    return `${year}-${month}`;
+  } else if (targetFormat === 'yyyy-MM-dd HH:mm:ss') {
+    const hours = String(tokyoTime.getUTCHours()).padStart(2, '0');
+    const minutes = String(tokyoTime.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(tokyoTime.getUTCSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
+
+  return `${year}-${month}-${day}`;
 }
 
 function calcAvg_(numbers) {

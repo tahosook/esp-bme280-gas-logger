@@ -241,10 +241,7 @@ function formatYearMonthTokyo_(dateInput) {
   }
 
   if (typeof formatDateTokyo_ === 'function') {
-    const fullDate = formatDateTokyo_(dateInput);
-    if (fullDate && fullDate.length >= 7) {
-      return fullDate.substring(0, 7);
-    }
+    return formatDateTokyo_(dateInput, 'yyyy-MM');
   }
 
   let dateObj;
@@ -260,21 +257,8 @@ function formatYearMonthTokyo_(dateInput) {
     }
   }
 
-  if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
-    return Utilities.formatDate(dateObj, 'Asia/Tokyo', 'yyyy-MM');
-  }
-
-  try {
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Tokyo',
-      year: 'numeric',
-      month: '2-digit'
-    });
-    return formatter.format(dateObj);
-  } catch (e) {
-    const tokyoTime = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
-    const year = tokyoTime.getUTCFullYear();
-    const month = String(tokyoTime.getUTCMonth() + 1).padStart(2, '0');
-    return `${year}-${month}`;
-  }
+  const tokyoTime = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
+  const year = tokyoTime.getUTCFullYear();
+  const month = String(tokyoTime.getUTCMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
 }
