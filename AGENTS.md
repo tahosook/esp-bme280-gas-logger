@@ -51,10 +51,30 @@ checking the existing hardware assumptions and documenting the reason.
   templates such as `secrets.example.h`.
 - Do not put real secrets in documentation, test logs, screenshots, or issue
   descriptions.
-- Keep `main` stable. Use task branches with the `codex/` prefix.
+- Keep `main` stable.
+- Use task branches with appropriate prefixes (e.g. `feat/*`, `fix/*`, `task/*`,
+  or agent-prefixed branches like `jules/*`, `codex/*`).
 - Prefer one focused change per branch and pull request.
-- Review the diff and run the relevant checks before merging.
+- Review the diff and run the relevant local checks before merging.
 - Use release tags for known-good firmware, for example `v1.0.0-stable`.
+
+## Agent roles and collaboration
+
+Different AI coding assistants collaborate on this repository:
+
+- **Interactive Agents (Antigravity, Claude Code, Cline, etc.)**:
+  - Role: Real-time pair programmer in IDE / CLI / chat.
+  - Responsibilities: Architecture design, task breakdown, creating Jules prompt specifications, PR conflict resolution, test runner validation, debugging, and GAS clasp deployment assistance upon user confirmation.
+  - Working rules:
+    - Small fixes & debugging during pair programming: edit files, run local tests, explain the diff and rationale to the user, and commit only after obtaining explicit user approval.
+    - Large features: create a dedicated task branch (`feat/*`, `task/*`, `agy/*`), implement & test, and submit a Pull Request.
+    - Never push directly to `main` without explaining the diff and obtaining explicit user confirmation.
+- **Autonomous / Task Agents (Jules, Codex, etc.)**:
+  - Role: Autonomous PR-based implementation agents.
+  - Responsibilities: End-to-end implementation of delegated phases/tasks on dedicated feature branches (`jules/*`, `codex/*`), creating Pull Requests, and passing all automated test suites.
+  - Working rules:
+    - Always work on a separate branch and open a Pull Request.
+    - Never attempt direct pushes to `main` or perform deployments.
 
 ## Selecting the next task
 
@@ -62,7 +82,7 @@ Treat `docs/implementation-roadmap.md` as a map of goals and dependencies, not
 as a queue that must be executed phase by phase. Do not automatically start the
 next roadmap phase after a merge.
 
-Before proposing or creating a next-task Issue, review what the previous work
+Before proposing or creating a next-task Issue/PR, review what the previous work
 actually established and identify unresolved decisions. Classify the next task
 as one of the following:
 
@@ -75,12 +95,12 @@ and a verification method. The presence of documentation alone does not mean a
 phase is complete: unresolved values, error behavior, or validation methods
 must be settled in a Decision task before dependent implementation begins.
 
-Codex may propose the next task and explain the evidence for it, but must not
+AI agents may propose the next task and explain the evidence for it, but must not
 create a GitHub Issue or begin implementation without the user's explicit
 approval. Read-only inspection and a proposed task description are allowed
 before that approval.
 
-## Codex working rules
+## AI Agent working rules
 
 Before editing:
 
@@ -94,7 +114,7 @@ After editing:
 2. Run the strongest available local checks.
 3. Report what was tested and what still requires manual hardware testing.
 
-Use the following task format for GitHub Issues or Codex requests:
+Use the following task format for GitHub Issues, PR descriptions, or Jules task prompts:
 
 ```text
 作業種別: 決定 / 実装 / 検証
@@ -110,7 +130,7 @@ Use the following task format for GitHub Issues or Codex requests:
 
 - GAS deployment requires human confirmation.
 - ESP8266 flashing requires human confirmation.
-- Codex may prepare code, commands, test plans, and review notes, but must not
+- AI agents may prepare code, commands, test plans, and review notes, but must not
   assume that external deployment or hardware flashing has happened.
 
 ## Validation priorities
