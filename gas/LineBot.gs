@@ -65,8 +65,11 @@ function handleTextMessageEvent_(event) {
   const normalized = normalizeText_(text);
 
   if (normalized === '状況' || normalized === 'status') {
-    const statusReply = buildStatusReply_();
-    replyMessage_(replyToken, statusReply);
+    const messages = buildStatusFlexMessage_();
+    replyMessageObjects_(replyToken, messages);
+  } else if (normalized === 'グラフ' || normalized === '24h') {
+    const messages = buildGraphMessage_();
+    replyMessageObjects_(replyToken, messages);
   } else if (normalized === 'スキップ' || normalized === 'skip') {
     const lock = LockService.getScriptLock();
     const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
@@ -77,7 +80,8 @@ function handleTextMessageEvent_(event) {
       const skipUntil = calculateNextMorning8Am_(Date.now(), targetHour);
       const properties = PropertiesService.getScriptProperties();
       properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(skipUntil));
-      replyMessage_(replyToken, '監視アラート通知を翌朝8:00までスキップに設定しました。');
+      const messages = buildSkipFlexMessage_();
+      replyMessageObjects_(replyToken, messages);
     } finally {
       lock.releaseLock();
     }
@@ -118,7 +122,95 @@ function normalizeText_(text) {
   return str.toLowerCase();
 }
 
-function buildStatusReply_() {
+function buildGraphMessage_() {
+  const properties = PropertiesService.getScriptProperties();
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+  if (!spreadsheetId) {
+    return [{ type: 'text', text: 'スプレッドシートが設定されていません。' }];
+  }
+
+  const sheetName = properties.getProperty(sheetNameKey) || 'DATA';
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  const sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) {
+    return [{ type: 'text', text: 'データシートが見つかりません。' }];
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return [{ type: 'text', text: 'データがありません。' }];
+  }
+
+  // 24h * 12 (5m intervals) = 288
+  const MAX_ROWS = 288;
+  const startRow = Math.max(1, lastRow - MAX_ROWS + 1);
+  const numRows = lastRow - startRow + 1;
+  const values = sheet.getRange(startRow, 1, numRows, 4).getValues();
+
+  // header might be included if startRow is 1, so filter out non-dates
+  const records = values.filter(row => {
+      const ts = row[0];
+      return Object.prototype.toString.call(ts) === '[object Date]' || (typeof ts === 'string' && !isNaN(new Date(ts).getTime()));
+  });
+
+  if (records.length === 0) {
+      return [{ type: 'text', text: 'グラフに描画できるデータがありません。' }];
+  }
+
+  let chartConfigObj = null;
+  if (typeof buildQuickChartConfig_ === 'function') {
+      chartConfigObj = buildQuickChartConfig_(records);
+  }
+
+  if (!chartConfigObj) {
+       return [{ type: 'text', text: 'グラフ設定の生成に失敗しました。' }];
+  }
+
+  const chartUrl = fetchQuickChartShortUrl_(chartConfigObj);
+  if (!chartUrl) {
+       return [{ type: 'text', text: 'グラフ画像URLの取得に失敗しました。' }];
+  }
+
+  return [
+    {
+      type: 'image',
+      originalContentUrl: chartUrl,
+      previewImageUrl: chartUrl
+    }
+  ];
+}
+
+function fetchQuickChartShortUrl_(chartConfigObj) {
+  const url = 'https://quickchart.io/chart/create';
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(chartConfigObj),
+    muteHttpExceptions: true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(url, options);
+    const code = response.getResponseCode ? response.getResponseCode() : 200;
+    if (code === 200) {
+      const responseText = response.getContentText ? response.getContentText() : '{}';
+      const result = JSON.parse(responseText);
+      if (result && result.success && result.url) {
+        return result.url;
+      }
+    }
+    return null;
+  } catch (error) {
+    if (typeof logError_ === 'function') {
+      logError_('linebot', 'quickchart', 'fetch_failed', error);
+    }
+    return null;
+  }
+}
+
+function buildStatusFlexMessage_() {
   const properties = PropertiesService.getScriptProperties();
   const states = typeof loadMonitorStates_ === 'function' ? loadMonitorStates_(properties) : {
     temp: { alert: false },
@@ -127,17 +219,40 @@ function buildStatusReply_() {
   };
   const lastValid = typeof loadLastValidMeasurement_ === 'function' ? loadLastValidMeasurement_(properties) : null;
 
-  const tempStatus = states.temp && states.temp.alert ? '[超過]' : '[正常]';
-  const humStatus = states.hum && states.hum.alert ? '[超過]' : '[正常]';
-  const diStatus = states.discomfortIndex && states.discomfortIndex.alert ? '[超過]' : '[正常]';
-
-  const lines = ['現在の監視状態：'];
+  let tempText = '-';
+  let humText = '-';
+  let diText = '-';
+  let ahText = '-';
+  let timeStr = 'データなし';
+  let diColor = '#cccccc';
+  let diLabel = '-';
 
   if (lastValid) {
-    const tempVal = typeof lastValid.temp === 'number' ? lastValid.temp.toFixed(2) : '-';
-    const humVal = typeof lastValid.hum === 'number' ? lastValid.hum.toFixed(2) : '-';
-    const diVal = typeof lastValid.discomfortIndex === 'number' ? lastValid.discomfortIndex.toFixed(2) : '-';
-    let timeStr = '-';
+    const tempVal = typeof lastValid.temp === 'number' ? lastValid.temp : null;
+    const humVal = typeof lastValid.hum === 'number' ? lastValid.hum : null;
+    let diVal = typeof lastValid.discomfortIndex === 'number' ? lastValid.discomfortIndex : null;
+
+    if (tempVal !== null) tempText = `${tempVal.toFixed(2)}℃`;
+    if (humVal !== null) humText = `${humVal.toFixed(2)}%`;
+
+    if (tempVal !== null && humVal !== null) {
+      if (typeof calculateDiscomfortIndex_ === 'function') {
+         diVal = calculateDiscomfortIndex_(tempVal, humVal);
+      }
+      if (typeof calculateAbsoluteHumidity_ === 'function') {
+         ahText = `${calculateAbsoluteHumidity_(tempVal, humVal).toFixed(2)} g/m³`;
+      }
+    }
+
+    if (diVal !== null) {
+        diText = diVal.toFixed(2);
+        if (typeof classifyDiscomfortIndex_ === 'function') {
+            const diInfo = classifyDiscomfortIndex_(diVal);
+            diColor = diInfo.color;
+            diLabel = diInfo.label;
+        }
+    }
+
     if (lastValid.timestamp) {
       if (typeof formatDateTokyo_ === 'function') {
         timeStr = formatDateTokyo_(lastValid.timestamp, 'yyyy-MM-dd HH:mm:ss');
@@ -148,22 +263,231 @@ function buildStatusReply_() {
         timeStr = String(lastValid.timestamp);
       }
     }
-
-    lines.push(`気温: ${tempVal}℃ ${tempStatus}`);
-    lines.push(`湿度: ${humVal}% ${humStatus}`);
-    lines.push(`簡易暑さ指数: ${diVal} ${diStatus}`);
-    lines.push(`最終受信: ${timeStr}`);
-  } else {
-    lines.push(`気温: - ${tempStatus}`);
-    lines.push(`湿度: - ${humStatus}`);
-    lines.push(`簡易暑さ指数: - ${diStatus}`);
-    lines.push('最終受信: データなし');
   }
 
-  return lines.join('\n');
+  const tempStatus = states.temp && states.temp.alert ? '🚨 超過' : '✅ 正常';
+  const humStatus = states.hum && states.hum.alert ? '🚨 超過' : '✅ 正常';
+
+  const flexJson = {
+    type: "flex",
+    altText: "現在の監視状態",
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "text",
+            text: "現在の監視状況",
+            weight: "bold",
+            size: "lg",
+            color: "#ffffff"
+          }
+        ],
+        backgroundColor: "#2c3e50"
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              { type: "text", text: "気温", size: "sm", color: "#555555", flex: 1 },
+              { type: "text", text: tempText, size: "sm", color: "#111111", align: "end", flex: 2 },
+              { type: "text", text: tempStatus, size: "sm", align: "end", flex: 2, color: states.temp && states.temp.alert ? "#e74c3c" : "#27ae60" }
+            ],
+            margin: "md"
+          },
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              { type: "text", text: "湿度", size: "sm", color: "#555555", flex: 1 },
+              { type: "text", text: humText, size: "sm", color: "#111111", align: "end", flex: 2 },
+              { type: "text", text: humStatus, size: "sm", align: "end", flex: 2, color: states.hum && states.hum.alert ? "#e74c3c" : "#27ae60" }
+            ],
+            margin: "md"
+          },
+          {
+            type: "separator",
+            margin: "lg"
+          },
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              { type: "text", text: "不快指数", size: "sm", color: "#555555", flex: 2 },
+              { type: "text", text: diText, size: "sm", color: "#111111", align: "end", flex: 2 },
+              {
+                type: "box",
+                layout: "vertical",
+                contents: [
+                  { type: "text", text: diLabel, size: "xs", color: "#ffffff", align: "center" }
+                ],
+                backgroundColor: diColor,
+                cornerRadius: "20px",
+                paddingAll: "2px",
+                flex: 3,
+                margin: "sm"
+              }
+            ],
+            margin: "lg",
+            alignItems: "center"
+          },
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              { type: "text", text: "容積絶対湿度", size: "sm", color: "#555555", flex: 2 },
+              { type: "text", text: ahText, size: "sm", color: "#111111", align: "end", flex: 3 }
+            ],
+            margin: "md"
+          },
+          {
+            type: "separator",
+            margin: "lg"
+          },
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              { type: "text", text: "最終受信", size: "xs", color: "#aaaaaa" },
+              { type: "text", text: timeStr, size: "xs", color: "#aaaaaa", align: "end" }
+            ],
+            margin: "lg"
+          }
+        ]
+      },
+      footer: {
+        type: "box",
+        layout: "horizontal",
+        spacing: "sm",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            color: "#f39c12",
+            action: {
+              type: "message",
+              label: "🔕 翌朝までスキップ",
+              text: "スキップ"
+            }
+          },
+          {
+            type: "button",
+            style: "secondary",
+            action: {
+              type: "message",
+              label: "🔔 クリア",
+              text: "クリア"
+            }
+          }
+        ]
+      }
+    }
+  };
+  return [flexJson];
 }
 
+function buildSkipFlexMessage_() {
+  const flexJson = {
+    type: "flex",
+    altText: "スキップ設定完了",
+    contents: {
+      type: "bubble",
+      body: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "text",
+            text: "監視アラート通知を翌朝8:00までスキップに設定しました。",
+            wrap: true,
+            size: "md"
+          }
+        ]
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            color: "#3498db",
+            action: {
+              type: "message",
+              label: "🔔 監視を再開（クリア）",
+              text: "クリア"
+            }
+          }
+        ]
+      }
+    }
+  };
+  return [flexJson];
+}
+
+function buildAlertFlexMessage_(alertText) {
+  const flexJson = {
+    type: "flex",
+    altText: "監視アラート",
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "text",
+            text: "⚠️ 監視アラート",
+            weight: "bold",
+            color: "#ffffff"
+          }
+        ],
+        backgroundColor: "#e74c3c"
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "text",
+            text: alertText,
+            wrap: true
+          }
+        ]
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            color: "#f39c12",
+            action: {
+              type: "message",
+              label: "🔕 翌朝8時までスキップ",
+              text: "スキップ"
+            }
+          }
+        ]
+      }
+    }
+  };
+  return [flexJson];
+}
+
+
 function replyMessage_(replyToken, text) {
+  return replyMessageObjects_(replyToken, [{ type: 'text', text: text }]);
+}
+
+function replyMessageObjects_(replyToken, messagesArray) {
   if (!replyToken || typeof replyToken !== 'string') {
     return false;
   }
@@ -171,12 +495,7 @@ function replyMessage_(replyToken, text) {
   const channelAccessToken = properties.getProperty(SCRIPT_PROPERTY_KEYS.lineChannelAccessToken);
   const payload = {
     replyToken: replyToken,
-    messages: [
-      {
-        type: 'text',
-        text: text
-      }
-    ]
+    messages: messagesArray
   };
   return sendLineApiRequest_('reply', payload, channelAccessToken, 'reply');
 }
@@ -211,21 +530,21 @@ function pushMonitorNotification_(text) {
     return false;
   }
 
-  return pushMessage_(userId, text, channelAccessToken);
+  const messages = typeof buildAlertFlexMessage_ === 'function' ? buildAlertFlexMessage_(text) : [{ type: 'text', text: text }];
+  return pushMessageObjects_(userId, messages, channelAccessToken);
 }
 
 function pushMessage_(userId, text, channelAccessToken) {
+  return pushMessageObjects_(userId, [{ type: 'text', text: text }], channelAccessToken);
+}
+
+function pushMessageObjects_(userId, messagesArray, channelAccessToken) {
   if (!userId || typeof userId !== 'string') {
     return false;
   }
   const payload = {
     to: userId,
-    messages: [
-      {
-        type: 'text',
-        text: text
-      }
-    ]
+    messages: messagesArray
   };
   return sendLineApiRequest_('push', payload, channelAccessToken, 'push');
 }

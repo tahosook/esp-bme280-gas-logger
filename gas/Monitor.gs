@@ -21,7 +21,7 @@ const DEFAULT_SMOOTHING = {
 function evaluateMonitorConditions_(measurement) {
   const temp = measurement.temp;
   const hum = measurement.hum;
-  const discomfortIndex = 0.81 * temp + 0.01 * hum * (0.99 * temp - 14.3) + 46.3;
+  const discomfortIndex = calculateDiscomfortIndex_(temp, hum);
 
   return {
     temp,
@@ -87,7 +87,9 @@ function buildMonitorNotification_(states, overallAlert, previousAlert, conditio
 
   const lines = [
     '室温監視：超過しました。',
-    `temp=${conditions.temp.toFixed(2)}℃ hum=${conditions.hum.toFixed(2)}% DI=${conditions.discomfortIndex.toFixed(2)}`
+    `気温: ${conditions.temp.toFixed(2)}℃`,
+    `湿度: ${conditions.hum.toFixed(2)}%`,
+    `不快指数: ${conditions.discomfortIndex.toFixed(2)}`
   ];
 
   if (anomaly) {

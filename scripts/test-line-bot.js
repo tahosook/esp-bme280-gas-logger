@@ -163,9 +163,9 @@ function runTests() {
     assert.strictEqual(fetchedUrls[0].url, 'https://api.line.me/v2/bot/message/reply');
     const payload = JSON.parse(fetchedUrls[0].options.payload);
     assert.strictEqual(payload.replyToken, 'token-123');
-    assert.ok(payload.messages[0].text.includes('現在の監視状態：'), 'Test 3 Failed: reply text should contain status header');
-    assert.ok(payload.messages[0].text.includes('28.50℃'), 'Test 3 Failed: reply text should contain temperature');
-    console.log('  ✓ Test 3: Status command reply passed');
+    assert.strictEqual(payload.messages[0].type, 'flex', 'Test 3 Failed: expected flex message type');
+    assert.strictEqual(payload.messages[0].altText, '現在の監視状態', 'Test 3 Failed: expected alt text for status message');
+    console.log('  ✓ Test 3: Status command flex reply passed');
   }
 
   // 4. コマンド「スキップ」 -> MONITOR_SKIP_UNTIL が設定され、Push が抑制される
@@ -196,7 +196,8 @@ function runTests() {
     assert.strictEqual(fetchedUrls.length, 1, 'Test 4 Failed: reply should be sent');
     assert.strictEqual(fetchedUrls[0].url, 'https://api.line.me/v2/bot/message/reply');
     const replyPayload = JSON.parse(fetchedUrls[0].options.payload);
-    assert.strictEqual(replyPayload.messages[0].text, '監視アラート通知を翌朝8:00までスキップに設定しました。', 'Test 4 Failed: reply text mismatch');
+    assert.strictEqual(replyPayload.messages[0].type, 'flex', 'Test 4 Failed: expected flex message type');
+    assert.strictEqual(replyPayload.messages[0].altText, 'スキップ設定完了', 'Test 4 Failed: reply altText mismatch');
 
     // Push 送信が抑制されるか確認
     fetchedUrls.length = 0;
@@ -291,7 +292,8 @@ function runTests() {
     assert.strictEqual(fetchedUrls[0].url, 'https://api.line.me/v2/bot/message/push');
     const payload = JSON.parse(fetchedUrls[0].options.payload);
     assert.strictEqual(payload.to, 'user-123');
-    assert.strictEqual(payload.messages[0].text, 'test message');
+    assert.strictEqual(payload.messages[0].type, 'flex', 'Test 8 Failed: expected flex message');
+    assert.strictEqual(payload.messages[0].altText, '監視アラート', 'Test 8 Failed: expected altText');
     console.log('  ✓ Test 8: Push with valid user ID passed');
   }
 
