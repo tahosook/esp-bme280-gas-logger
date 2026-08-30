@@ -169,14 +169,6 @@ function replyMessage_(replyToken, text) {
   }
   const properties = PropertiesService.getScriptProperties();
   const channelAccessToken = properties.getProperty(SCRIPT_PROPERTY_KEYS.lineChannelAccessToken);
-  if (!channelAccessToken) {
-    if (typeof logError_ === 'function') {
-      logError_('linebot', 'reply', 'send_failed', new Error('LINE_CHANNEL_ACCESS_TOKEN is missing'));
-    }
-    return false;
-  }
-
-  const url = 'https://api.line.me/v2/bot/message/reply';
   const payload = {
     replyToken: replyToken,
     messages: [
@@ -186,34 +178,7 @@ function replyMessage_(replyToken, text) {
       }
     ]
   };
-
-  const options = {
-    method: 'post',
-    contentType: 'application/json',
-    headers: {
-      Authorization: 'Bearer ' + channelAccessToken
-    },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  };
-
-  try {
-    const response = UrlFetchApp.fetch(url, options);
-    const code = response.getResponseCode ? response.getResponseCode() : 200;
-    if (code !== 200) {
-      const responseText = response.getContentText ? response.getContentText() : '';
-      if (typeof logError_ === 'function') {
-        logError_('linebot', 'reply', 'send_failed', new Error('HTTP ' + code + ': ' + responseText));
-      }
-      return false;
-    }
-    return true;
-  } catch (error) {
-    if (typeof logError_ === 'function') {
-      logError_('linebot', 'reply', 'send_failed', error);
-    }
-    return false;
-  }
+  return sendLineApiRequest_('reply', payload, channelAccessToken, 'reply');
 }
 
 function pushMonitorNotification_(text) {
@@ -250,7 +215,9 @@ function pushMonitorNotification_(text) {
 }
 
 function pushMessage_(userId, text, channelAccessToken) {
-  const url = 'https://api.line.me/v2/bot/message/push';
+  if (!userId || typeof userId !== 'string') {
+    return false;
+  }
   const payload = {
     to: userId,
     messages: [
@@ -260,7 +227,18 @@ function pushMessage_(userId, text, channelAccessToken) {
       }
     ]
   };
+  return sendLineApiRequest_('push', payload, channelAccessToken, 'push');
+}
 
+function sendLineApiRequest_(endpoint, payload, channelAccessToken, operation) {
+  if (!channelAccessToken) {
+    if (typeof logError_ === 'function') {
+      logError_('linebot', operation, 'send_failed', new Error('LINE_CHANNEL_ACCESS_TOKEN is missing'));
+    }
+    return false;
+  }
+
+  const url = 'https://api.line.me/v2/bot/message/' + endpoint;
   const options = {
     method: 'post',
     contentType: 'application/json',
@@ -277,14 +255,14 @@ function pushMessage_(userId, text, channelAccessToken) {
     if (code !== 200) {
       const responseText = response.getContentText ? response.getContentText() : '';
       if (typeof logError_ === 'function') {
-        logError_('linebot', 'push', 'send_failed', new Error('HTTP ' + code + ': ' + responseText));
+        logError_('linebot', operation, 'send_failed', new Error('HTTP ' + code + ': ' + responseText));
       }
       return false;
     }
     return true;
   } catch (error) {
     if (typeof logError_ === 'function') {
-      logError_('linebot', 'push', 'send_failed', error);
+      logError_('linebot', operation, 'send_failed', error);
     }
     return false;
   }
