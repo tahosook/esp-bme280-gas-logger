@@ -18,6 +18,7 @@ const DEFAULT_CONFIG = {
   MONITOR_DI_HYSTERESIS: 0.5,
   SENSOR_DUPLICATION_WINDOW_SECONDS: 180,
   SKIP_HOURS: 8,
+  SKIP_UNTIL_HOUR: 8,
   INGEST_LOCK_TIMEOUT_MS: 15000,
   LINE_LOCK_TIMEOUT_MS: 2000
 };
@@ -42,7 +43,7 @@ function getMergedConfig_() {
   const sheetConfig = getSheetConfig_();
   for (const key of Object.keys(sheetConfig)) {
     const raw = sheetConfig[key];
-    if (['WATCHDOG_TIMEOUT_MIN', 'MONITOR_CONSECUTIVE_K', 'SENSOR_DUPLICATION_WINDOW_SECONDS', 'INGEST_LOCK_TIMEOUT_MS', 'LINE_LOCK_TIMEOUT_MS', 'SKIP_HOURS'].indexOf(key) >= 0) {
+    if (['WATCHDOG_TIMEOUT_MIN', 'MONITOR_CONSECUTIVE_K', 'SENSOR_DUPLICATION_WINDOW_SECONDS', 'INGEST_LOCK_TIMEOUT_MS', 'LINE_LOCK_TIMEOUT_MS', 'SKIP_HOURS', 'SKIP_UNTIL_HOUR'].indexOf(key) >= 0) {
       const parsed = parseInt(raw, 10);
       if (!isNaN(parsed)) {
         config[key] = parsed;
