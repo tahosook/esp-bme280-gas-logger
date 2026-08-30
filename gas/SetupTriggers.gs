@@ -128,3 +128,12 @@ function testLineBotConnection() {
     }
   }
 }
+
+/**
+ * Google 権限（UrlFetchApp / 外部通信）を確実に承認させるための専用関数。
+ * try/catch を使わないため、GAS エディタで実行すると Google の「承認が必要です」ダイアログが必ず表示されます。
+ */
+function authorizeUrlFetch() {
+  UrlFetchApp.fetch('https://api.line.me');
+  Logger.log('✅ UrlFetchApp の権限が正常に承認されました。');
+}
