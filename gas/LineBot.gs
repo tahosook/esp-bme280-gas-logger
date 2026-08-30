@@ -73,11 +73,11 @@ function handleTextMessageEvent_(event) {
     const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
     lock.waitLock(timeoutMs);
     try {
-      const skipHours = config.SKIP_HOURS || 8;
-      const skipUntil = Date.now() + skipHours * 60 * 60 * 1000;
+      const targetHour = typeof config.SKIP_UNTIL_HOUR === 'number' ? config.SKIP_UNTIL_HOUR : 8;
+      const skipUntil = calculateNextMorning8Am_(Date.now(), targetHour);
       const properties = PropertiesService.getScriptProperties();
       properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(skipUntil));
-      replyMessage_(replyToken, `監視アラート通知を ${skipHours} 時間スキップに設定しました。`);
+      replyMessage_(replyToken, '監視アラート通知を翌朝8:00までスキップに設定しました。');
     } finally {
       lock.releaseLock();
     }
@@ -290,4 +290,22 @@ function pushMessage_(userId, text, channelAccessToken) {
     }
     return false;
   }
+}
+
+function calculateNextMorning8Am_(nowMs, targetHour) {
+  const hour = typeof targetHour === 'number' ? targetHour : 8;
+  const currentMs = typeof nowMs === 'number' ? nowMs : Date.now();
+
+  const jstNow = new Date(currentMs + 9 * 60 * 60 * 1000);
+  const jstYear = jstNow.getUTCFullYear();
+  const jstMonth = jstNow.getUTCMonth();
+  const jstDate = jstNow.getUTCDate();
+  const jstCurrentHour = jstNow.getUTCHours();
+
+  let targetDay = jstDate;
+  if (jstCurrentHour >= hour) {
+    targetDay += 1;
+  }
+
+  return Date.UTC(jstYear, jstMonth, targetDay, hour - 9, 0, 0, 0);
 }

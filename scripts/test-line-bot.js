@@ -193,6 +193,10 @@ function runTests() {
 
     vm.runInContext('handleLineWebhook_(e)', vm.createContext(Object.assign({}, context, { e: req })));
     assert.ok(propertiesStore.MONITOR_SKIP_UNTIL, 'Test 4 Failed: MONITOR_SKIP_UNTIL should be set');
+    assert.strictEqual(fetchedUrls.length, 1, 'Test 4 Failed: reply should be sent');
+    assert.strictEqual(fetchedUrls[0].url, 'https://api.line.me/v2/bot/message/reply');
+    const replyPayload = JSON.parse(fetchedUrls[0].options.payload);
+    assert.strictEqual(replyPayload.messages[0].text, '監視アラート通知を翌朝8:00までスキップに設定しました。', 'Test 4 Failed: reply text mismatch');
 
     // Push 送信が抑制されるか確認
     fetchedUrls.length = 0;
@@ -330,6 +334,90 @@ function runTests() {
     assert.strictEqual(fetchedUrls.length, 1, 'Test 10 Failed: reply should be sent');
     assert.strictEqual(fetchedUrls[0].url, 'https://api.line.me/v2/bot/message/reply');
     console.log('  ✓ Test 10: GAS runtime without headers routes and replies passed');
+  }
+
+  // 11. calculateNextMorning8Am_: 各時間帯（JST）における翌朝8:00計算の正確性テスト
+  {
+    const { context } = createGasContext();
+    // 補助関数: JST日時文字列からDate作成
+    function parseJstDate(str) {
+      // str format: "YYYY-MM-DDTHH:mm:ss"
+      return new Date(str + '+09:00').getTime();
+    }
+
+    // ケースA: 昼 14:00 JST -> 翌日 08:00 JST
+    const noon = parseJstDate('2026-08-30T14:00:00');
+    const expectedA = parseJstDate('2026-08-31T08:00:00');
+    const resultA = vm.runInContext(`calculateNextMorning8Am_(${noon})`, context);
+    assert.strictEqual(resultA, expectedA, 'Test 11A Failed: 14:00 JST should yield next day 08:00 JST');
+
+    // ケースB: 夜 23:30 JST -> 翌日 08:00 JST
+    const night = parseJstDate('2026-08-30T23:30:00');
+    const expectedB = parseJstDate('2026-08-31T08:00:00');
+    const resultB = vm.runInContext(`calculateNextMorning8Am_(${night})`, context);
+    assert.strictEqual(resultB, expectedB, 'Test 11B Failed: 23:30 JST should yield next day 08:00 JST');
+
+    // ケースC: 深夜 01:15 JST -> 当日 08:00 JST (仕様B)
+    const lateNight = parseJstDate('2026-08-31T01:15:00');
+    const expectedC = parseJstDate('2026-08-31T08:00:00');
+    const resultC = vm.runInContext(`calculateNextMorning8Am_(${lateNight})`, context);
+    assert.strictEqual(resultC, expectedC, 'Test 11C Failed: 01:15 JST should yield same day 08:00 JST');
+
+    // ケースD: 早朝 07:59 JST -> 当日 08:00 JST
+    const earlyMorning = parseJstDate('2026-08-31T07:59:00');
+    const expectedD = parseJstDate('2026-08-31T08:00:00');
+    const resultD = vm.runInContext(`calculateNextMorning8Am_(${earlyMorning})`, context);
+    assert.strictEqual(resultD, expectedD, 'Test 11D Failed: 07:59 JST should yield same day 08:00 JST');
+
+    // ケースE: 朝 08:00 JST ちょうど -> 翌日 08:00 JST
+    const exact8Am = parseJstDate('2026-08-31T08:00:00');
+    const expectedE = parseJstDate('2026-09-01T08:00:00');
+    const resultE = vm.runInContext(`calculateNextMorning8Am_(${exact8Am})`, context);
+    assert.strictEqual(resultE, expectedE, 'Test 11E Failed: 08:00 JST should yield next day 08:00 JST');
+
+    // ケースF: 月末 2026-08-31 22:00 JST -> 翌月 2026-09-01 08:00 JST
+    const monthEnd = parseJstDate('2026-08-31T22:00:00');
+    const expectedF = parseJstDate('2026-09-01T08:00:00');
+    const resultF = vm.runInContext(`calculateNextMorning8Am_(${monthEnd})`, context);
+    assert.strictEqual(resultF, expectedF, 'Test 11F Failed: Month rollover should yield 09-01 08:00 JST');
+
+    // ケースG: 年末 2026-12-31 23:00 JST -> 翌年 2027-01-01 08:00 JST
+    const yearEnd = parseJstDate('2026-12-31T23:00:00');
+    const expectedG = parseJstDate('2027-01-01T08:00:00');
+    const resultG = vm.runInContext(`calculateNextMorning8Am_(${yearEnd})`, context);
+    assert.strictEqual(resultG, expectedG, 'Test 11G Failed: Year rollover should yield 2027-01-01 08:00 JST');
+
+    console.log('  ✓ Test 11: calculateNextMorning8Am_ JST calculation across all time slots passed');
+  }
+
+  // 12. SKIP_UNTIL_HOUR 設定によるカスタム解除時刻の反映テスト
+  {
+    const secret = 'test-secret';
+    const { context, propertiesStore } = createGasContext({
+      LINE_CHANNEL_SECRET: secret,
+      LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+      SKIP_UNTIL_HOUR: '9'
+    });
+    const body = JSON.stringify({
+      events: [
+        {
+          type: 'message',
+          replyToken: 'token-123',
+          message: { type: 'text', text: 'スキップ' }
+        }
+      ]
+    });
+    const hmac = crypto.createHmac('sha256', secret).update(body).digest('base64');
+    const req = {
+      postData: { contents: body },
+      headers: { 'X-Line-Signature': hmac }
+    };
+
+    vm.runInContext('handleLineWebhook_(e)', vm.createContext(Object.assign({}, context, { e: req })));
+    const skipUntil = parseInt(propertiesStore.MONITOR_SKIP_UNTIL, 10);
+    const jstTarget = new Date(skipUntil + 9 * 60 * 60 * 1000);
+    assert.strictEqual(jstTarget.getUTCHours(), 9, 'Test 12 Failed: target hour should be 9');
+    console.log('  ✓ Test 12: Custom SKIP_UNTIL_HOUR configuration passed');
   }
 
   console.log('\nAll LineBot tests passed successfully!');
