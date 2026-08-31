@@ -3,7 +3,10 @@ const {
   calculateDiscomfortIndex_,
   calculateAbsoluteHumidity_,
   classifyDiscomfortIndex_,
-  buildQuickChartConfig_
+  buildQuickChartConfig_,
+  calculateNextMorning8Am_,
+  isSnoozeActive_,
+  formatSnoozeUntilJst_
 } = require('../gas/Metrics.gs');
 
 function runTests() {
@@ -59,6 +62,45 @@ function runTests() {
     assert.strictEqual(configObj.chart.data.labels.length, 2, 'Test 4 Failed: incorrect labels length');
     assert.strictEqual(configObj.chart.data.datasets.length, 2, 'Test 4 Failed: incorrect datasets length');
     console.log('  ✓ Test 4: QuickChart Config builder passed');
+  }
+
+  // 5. calculateNextMorning8Am_ calculation
+  {
+    function parseJstDate(str) {
+      return new Date(str + '+09:00').getTime();
+    }
+    const noon = parseJstDate('2026-08-30T14:00:00');
+    const expectedNoon = parseJstDate('2026-08-31T08:00:00');
+    assert.strictEqual(calculateNextMorning8Am_(noon, 8), expectedNoon, 'Test 5A Failed');
+
+    const night = parseJstDate('2026-08-30T23:30:00');
+    const expectedNight = parseJstDate('2026-08-31T08:00:00');
+    assert.strictEqual(calculateNextMorning8Am_(night, 8), expectedNight, 'Test 5B Failed');
+
+    const lateNight = parseJstDate('2026-08-31T01:15:00');
+    const expectedLateNight = parseJstDate('2026-08-31T08:00:00');
+    assert.strictEqual(calculateNextMorning8Am_(lateNight, 8), expectedLateNight, 'Test 5C Failed');
+    console.log('  ✓ Test 5: calculateNextMorning8Am_ passed');
+  }
+
+  // 6. isSnoozeActive_ checks
+  {
+    const now = Date.now();
+    assert.strictEqual(isSnoozeActive_(null, now), false, 'Test 6A Failed: null should be false');
+    assert.strictEqual(isSnoozeActive_('invalid', now), false, 'Test 6B Failed: invalid should be false');
+    assert.strictEqual(isSnoozeActive_(now - 1000, now), false, 'Test 6C Failed: past should be false');
+    assert.strictEqual(isSnoozeActive_(now + 10000, now), true, 'Test 6D Failed: future should be true');
+    assert.strictEqual(isSnoozeActive_(String(now + 10000), now), true, 'Test 6E Failed: string future should be true');
+    console.log('  ✓ Test 6: isSnoozeActive_ passed');
+  }
+
+  // 7. formatSnoozeUntilJst_ checks
+  {
+    const testDateMs = new Date('2026-08-31T08:00:00+09:00').getTime();
+    const formatted = formatSnoozeUntilJst_(testDateMs);
+    assert.strictEqual(formatted, '08/31 08:00', 'Test 7 Failed: formatted snooze timestamp mismatch');
+    assert.strictEqual(formatSnoozeUntilJst_(null), '', 'Test 7B Failed: null should return empty string');
+    console.log('  ✓ Test 7: formatSnoozeUntilJst_ passed');
   }
 
   console.log('\nAll Metrics tests passed successfully!');

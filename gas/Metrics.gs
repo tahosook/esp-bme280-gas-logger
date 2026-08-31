@@ -143,11 +143,82 @@ function buildQuickChartConfig_(records) {
   };
 }
 
+/**
+ * Calculates next morning target hour (default 8:00 AM JST) as UTC timestamp (ms).
+ * @param {number} [nowMs] - Current timestamp in ms
+ * @param {number} [targetHour] - Target hour in JST (default: 8)
+ * @returns {number} UTC timestamp in ms
+ */
+function calculateNextMorning8Am_(nowMs, targetHour) {
+  const hour = typeof targetHour === 'number' ? targetHour : 8;
+  const currentMs = typeof nowMs === 'number' ? nowMs : Date.now();
+
+  const jstNow = new Date(currentMs + 9 * 60 * 60 * 1000);
+  const jstYear = jstNow.getUTCFullYear();
+  const jstMonth = jstNow.getUTCMonth();
+  const jstDate = jstNow.getUTCDate();
+  const jstCurrentHour = jstNow.getUTCHours();
+
+  let targetDay = jstDate;
+  if (jstCurrentHour >= hour) {
+    targetDay += 1;
+  }
+
+  return Date.UTC(jstYear, jstMonth, targetDay, hour - 9, 0, 0, 0);
+}
+
+/**
+ * Checks whether snooze is currently active.
+ * @param {string|number|null} skipUntil - Timestamp (ms) until snooze expires
+ * @param {number} [nowMs] - Optional current timestamp in ms (defaults to Date.now())
+ * @returns {boolean} True if snooze is active, false otherwise
+ */
+function isSnoozeActive_(skipUntil, nowMs) {
+  if (!skipUntil) {
+    return false;
+  }
+  const untilMs = typeof skipUntil === 'number' ? skipUntil : parseInt(skipUntil, 10);
+  if (isNaN(untilMs)) {
+    return false;
+  }
+  const currentMs = typeof nowMs === 'number' ? nowMs : Date.now();
+  return currentMs < untilMs;
+}
+
+/**
+ * Formats snooze deadline in JST format (e.g. "08/31 08:00").
+ * @param {string|number} skipUntil - Timestamp in ms
+ * @returns {string} Formatted JST date string
+ */
+function formatSnoozeUntilJst_(skipUntil) {
+  if (!skipUntil) return '';
+  const untilMs = typeof skipUntil === 'number' ? skipUntil : parseInt(skipUntil, 10);
+  if (isNaN(untilMs)) return '';
+
+  if (typeof formatDateTokyo_ === 'function') {
+    return formatDateTokyo_(untilMs, 'MM/dd HH:mm');
+  }
+
+  if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
+    return Utilities.formatDate(new Date(untilMs), 'Asia/Tokyo', 'MM/dd HH:mm');
+  }
+
+  const tokyoTime = new Date(untilMs + 9 * 60 * 60 * 1000);
+  const month = String(tokyoTime.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(tokyoTime.getUTCDate()).padStart(2, '0');
+  const hours = String(tokyoTime.getUTCHours()).padStart(2, '0');
+  const minutes = String(tokyoTime.getUTCMinutes()).padStart(2, '0');
+  return `${month}/${day} ${hours}:${minutes}`;
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     calculateDiscomfortIndex_,
     calculateAbsoluteHumidity_,
     classifyDiscomfortIndex_,
-    buildQuickChartConfig_
+    buildQuickChartConfig_,
+    calculateNextMorning8Am_,
+    isSnoozeActive_,
+    formatSnoozeUntilJst_
   };
 }
