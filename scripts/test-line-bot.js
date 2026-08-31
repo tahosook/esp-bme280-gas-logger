@@ -726,4 +726,3 @@ function runTests() {
 }
 
 runTests();
-

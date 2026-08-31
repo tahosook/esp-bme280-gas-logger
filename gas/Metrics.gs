@@ -413,4 +413,3 @@ if (typeof module !== 'undefined') {
     formatSnoozeUntilJst_
   };
 }
-

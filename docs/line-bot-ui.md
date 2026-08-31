@@ -80,4 +80,3 @@ ESP8266 + BME280 のセンサーログを活用した LINE Bot の応答やア�
 - **手動デバッグ関数 (`DebugTest.gs`)**:
   - `debugTest_buildQuickChartUrl()`: GAS エディタからワンクリックで QuickChart URL の生成と URL 文字長（2,000文字以内か）を検証。
   - `debugTest_handleLineWebhook_Trends()`: LINE への実送信を行わずに Webhook 応答オブジェクトの構造を検証。
-
