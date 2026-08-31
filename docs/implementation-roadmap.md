@@ -36,6 +36,7 @@ https://github.com/tahosook/sketch_ambidata
 | [README.md](README.md) | 文書目次 |
 | [api-contract.md](api-contract.md) | センサー受信API契約 |
 | [architecture.md](architecture.md) | システム構成・アーキテクチャ |
+| [line-bot-ui.md](line-bot-ui.md) | LINE Bot UI/UX仕様 |
 | [deployment.md](deployment.md) | セットアップ・デプロイ手順 |
 | [release-plan.md](release-plan.md) | リリース・ロールバック計画 |
 | [implementation-tasks.md](implementation-tasks.md) | タスク一覧（決定 / 実装 / 検証） |
@@ -78,9 +79,9 @@ Phase 7〜19 はすべて実装・デプロイ・実機検証を含めて完了�
 | 18 | 実装 — 月次ロールアップ（MonthlyAggregation.gs） | ✅ 完了 |
 | 19 | 検証 — ウォッチドッグ・月次ロールアップ | ✅ 完了 |
 
-## Phase 20〜26（内部品質改善・リファクタリング）
+## 完了済み：Phase 20〜26（内部品質改善・リファクタリング）
 
-`v1.1.0-stable` および LINE Bot 翌朝8:00スキップ機能（PR #24）の仕様・外部動作を完全に維持しながら、コードの可読性・保守性・テスト容易性・依存関係の明確性を改善する。
+`v1.1.0-stable` および LINE Bot 翌朝8:00スキップ機能（PR #24）の仕様・外部動作を完全に維持しながら、コードの可読性・保守性・テスト容易性・依存関係の明確性を改善した。
 
 | Phase | 内容 | 状態 |
 | --- | --- | --- |
@@ -91,6 +92,16 @@ Phase 7〜19 はすべて実装・デプロイ・実機検証を含めて完了�
 | 24 | 実装 — Monitor 内部の純粋ロジックと永続化I/Oの境界明確化 | ✅ 完了 |
 | 25 | 実装 — Daily / Monthly Aggregation の集計ロジック純粋関数化 | ✅ 完了 |
 | 26 | 検証 — 全自動テスト・ドキュメント整合性確認 | ✅ 完了 |
+
+## 完了済み：Phase 27〜29（LINE Bot UI 近代化・QuickChart グラフ返信・手動検証）
+
+PR #26, #27, #28 にて、LINE Bot の UI を視覚的な Flex Message に刷新し、直近24時間の温湿度推移グラフ画像返信（QuickChart）および GAS エディタでの手動検証関数を導入した。
+
+| Phase | 内容 | 状態 |
+| --- | --- | --- |
+| 27 | 実装 — LINE Bot UI 近代化（NOW/SNOOZE/CLEAR/TRENDS、DIステータスバッジ、容積絶対湿度、スヌーズ期限表示、5段階アラート制御） | ✅ 完了 |
+| 28 | 実装 — QuickChart による直近24h温湿度推移グラフ画像生成（URL 2,000文字圧縮、サンプリング最適化） | ✅ 完了 |
+| 29 | 実装・検証 — 手動デバッグ関数（`DebugTest.gs` による URL 文字数検証、Webhook シミュレーション、全9本テスト通過） | ✅ 完了 |
 
 ## 設計レビューによる確定方針（Phase 7以降の前提）
 
@@ -117,16 +128,19 @@ Phase 7〜19 はすべて実装・デプロイ・実機検証を含めて完了�
 
 同一GASプロジェクト内の `.gs` ファイルは全て同じグローバルスコープ・同じ Script Properties を共有する。
 
-| モジュール | 責務 | 対応Phase |
+| モジュール | 責務 | 対応Phase / 機能 |
 | --- | --- | --- |
 | `Router.gs` | `doGet`/`doPost` 入口。ペイロードの形でセンサー取り込みかLINEイベントかを振り分け | 8 |
 | `Ingest.gs` | JSON検証・トークン照合・数値範囲チェック・重複排除・DATAへの追記・`flag`列固定5列化・Watchdog復帰リセット | 8 |
-| `Monitor.gs` | 直近データ評価、状態遷移（正常⇄超過）判定、通知要否の決定、異常値判定の比較元（直近有効データ）を Script Properties で保持 | 11 |
+| `Monitor.gs` | 直近データ評価、状態遷移（正常⇄超過）判定、通知要否の決定、センサー未受信ウォッチドッグ、異常値判定の比較元（直近有効データ）を Script Properties で保持 | 11 |
 | `DailyAggregation.gs` | 時間主導トリガー入口。前回処理済み行以降を読み、Dailyへ1日1行追記。`DAILY_LAST_ROW` は Script Properties で管理 | 15 |
 | `MonthlyAggregation.gs` | 月次集計。Dailyを読み、Monthlyへ1行追記 | 18 |
-| `LineBot.gs` | Webhook署名検証、コマンド解析（状況/スキップ/クリア）、Reply/Push送信（Config/状態変更は排他制御） | 12 |
+| `LineBot.gs` | Webhook署名検証、コマンド解析（状況/スキップ/クリア/グラフ/推移）、Reply/Push送信、Flex Message/グラフ画像返信（Config/状態変更は排他制御） | 12 / PR #26-#27 |
+| `Metrics.gs` | 不快指数 (DI)・容積絶対湿度 (AH) 計算、翌朝8時JST計算、QuickChart URL 生成（URL 圧縮・サンプリング）、5段階アラート優先度制御 | PR #26 |
 | `Config.gs` | Script Properties / Configシートへのアクセス集約、しきい値デフォルト定義 | 15 |
 | `ErrorLog.gs` | 例外記録のラッパー。秘密情報をログに残さない | 15 |
+| `SetupTriggers.gs` | 時間主導トリガー自動設定および LINE 接続テスト | 15 / 17 / 18 |
+| `DebugTest.gs` | GAS エディタからワンクリック実行可能な手動デバッグ・動作検証用関数群 | PR #28 |
 
 ## 決定済みの項目（Phase 7 / 10 / 14 / 15 で確定）
 
@@ -326,7 +340,7 @@ Phase 7 / 10 / 14 / 15 / 17 / 18 の未決項目は、人間の承認により�
 | 目的 | Dailyを月次で1行に集計し、Monthlyシートへ追記する |
 | 対象ファイル | `gas/MonthlyAggregation.gs`（DailyAggregation と同型） |
 | 依存関係 | Phase 15 |
-| 前提・未決事項 | 前月分のDaily行を集計し、Monthlyへ1行追記。列は `年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count`。Daily（0:10）より十分に遅い時刻（例: 1日 01:00）で実行し、前月最終日のDaily確定を待つ |
+| 前提・未決事項 | 前月分のDaily行を集計し、Monthlyへ1行追記。列は `年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count`。Monthly（毎月1日 01:00 JST）は前月確定分のDailyを集計し、Daily（毎日 02:00 JST）の当月分集計と分離する |
 | 受け入れ条件 | 月に1行追記され、前月の平均・最小・最大と日数が正しい |
 | 検証方法 | 実データ確認 |
 
@@ -415,7 +429,7 @@ Phase 7 / 10 / 14 / 15 / 17 / 18 の未決項目は、人間の承認により�
 | 受け入れ条件 | コア集計が純粋関数化され、日次・月次集計テストがすべて成功する |
 | 検証方法 | `node scripts/test-daily-aggregation.js`、`node scripts/test-monthly-aggregation.js` |
 
-## Phase 26：検証 — 全自動テスト・ドキュメント整合性確認
+## Phase 26：検証 — 全自動テスト・ドキュメント整合性確認（✅ 完了）
 
 | 項目 | 内容 |
 | --- | --- |
@@ -423,8 +437,20 @@ Phase 7 / 10 / 14 / 15 / 17 / 18 の未決項目は、人間の承認により�
 | 目的 | 全自動テストの実行、ファームウェア側の確認、ドキュメント（`docs/`）との整合性を確認し、リファクタリング完了を記録する |
 | 対象ファイル | `scripts/*`、`docs/*`、`README.md` |
 | 依存関係 | Phase 21〜25 |
-| 受け入れ条件 | 全8本のテストスクリプトが成功し、差分レビューで不要な変更・外部動作の変更がないことを確認できる |
+| 受け入れ条件 | 全単体テストスクリプトが成功し、差分レビューで不要な変更・外部動作の変更がないことを確認できる |
 | 検証方法 | `for f in scripts/test-*.js; do node "$f"; done` および `git diff` レビュー |
+
+---
+
+## 完了済み：Phase 27〜29（LINE Bot UI 近代化・QuickChart グラフ返信・手動検証機能）
+
+PR #26, #27, #28 にて実装・検証を完了。詳細は [docs/line-bot-ui.md](line-bot-ui.md) を参照。
+
+| Phase | 内容 | 状態 |
+| --- | --- | --- |
+| 27 | 実装 — LINE Bot UI 近代化と Flex Message 対応（NOW/SNOOZE/CLEAR/TRENDS、DIステータスバッジ、容積絶対湿度、スヌーズ期限表示、5段階アラート制御） | ✅ 完了（PR #26, #27） |
+| 28 | 実装 — QuickChart による直近24h温湿度推移グラフ画像生成（`buildQuickChartUrl`、URL 2,000文字圧縮、間引き・X軸ラベル最適化、フォールバック） | ✅ 完了（PR #26, #28） |
+| 29 | 実装・検証 — GAS 手動デバッグ・動作検証関数群（`DebugTest.gs` による URL 文字数検証、Webhook シミュレーション、全9本テストパス） | ✅ 完了（PR #28） |
 
 ---
 

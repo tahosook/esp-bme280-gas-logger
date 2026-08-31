@@ -113,5 +113,24 @@
 
 ### 検証TR1（Phase 26）：全自動テスト・ドキュメント整合性確認（✅ 完了）
 - 対象: `scripts/*`、`docs/*`、`README.md`
-- 内容: 全自動テスト（8ファイル）の実行・差分レビュー・ドキュメント整合性確認
+- 内容: 全自動テスト（全単体テストスクリプト）の実行・差分レビュー・ドキュメント整合性確認
 - 状態: 完了
+
+---
+
+## LINE Bot UI 近代化・QuickChart グラフ返信タスク（Phase 27〜29）
+
+### 実装UI1（Phase 27）：LINE Bot UI 近代化と Flex Message 対応（✅ 完了）
+- 対象: `gas/LineBot.gs`、`gas/Metrics.gs`、`gas/Config.gs`、`docs/line-bot-ui.md`
+- 内容: NOW/SNOOZE/CLEAR/TRENDS コマンド体系、DIバッジ・容積絶対湿度・スヌーズ停止期限の Flex Message カード化、5段階アラート優先度制御（クールダウン・1日上限・センサーガード）
+- 状態: 完了（PR #26, #27）
+
+### 実装UI2（Phase 28）：QuickChart による直近24h温湿度推移グラフ画像生成（✅ 完了）
+- 対象: `gas/Metrics.gs`、`gas/LineBot.gs`、`docs/line-bot-ui.md`
+- 内容: `buildQuickChartUrl()` 実装、288点データの間引き（約30点）・X軸ラベル最適化による LINE 2,000文字制限クリア、データ不足時フォールバック
+- 状態: 完了（PR #26, #28）
+
+### 検証UI1（Phase 29）：手動デバッグ関数とテストスイート拡充（✅ 完了）
+- 対象: `gas/DebugTest.gs`、`scripts/test-metrics.js`、`scripts/test-line-bot.js`、`docs/deployment.md`
+- 内容: GAS エディタでのワンクリック検証関数（`debugTest_buildQuickChartUrl`, `debugTest_handleLineWebhook_Trends`）、全9本の単体テスト全件通過確認
+- 状態: 完了（PR #28）
