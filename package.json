@@ -1,0 +1,27 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "ESP8266（ESPr Developer）とBME280で測定した温度・気圧・湿度を、AmbientからGoogleスプレッドシートへ移行する個人用ロガーです。",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tahosook/esp-bme280-gas-logger.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/tahosook/esp-bme280-gas-logger/issues"
+  },
+  "homepage": "https://github.com/tahosook/esp-bme280-gas-logger#readme",
+  "devDependencies": {
+    "jest": "^30.5.0"
+  }
+}
