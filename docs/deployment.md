@@ -40,7 +40,7 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
 
    日時はDate値で書き、列の表示形式を`yyyy-MM-dd HH:mm:ss`にする（Phase 7で決定。Phase 8の実装で反映）。
 3. スプレッドシートのタイムゾーンを`Asia/Tokyo`に設定する。
-4. Google Apps Scriptプロジェクトを作成し、`gas/` の内容を配置する。Phase 0〜6 の受信基盤は単一の `Code.gs`。Phase 8 以降はモジュール群（`Router.gs` / `Ingest.gs` / … / `MonthlyAggregation.gs`）をまとめて配置する。
+4. Google Apps Scriptプロジェクトを作成し、`gas/` の内容を配置する。Phase 0〜6 の受信基盤は単一の `Code.gs`。Phase 8 以降はモジュール群（`Router.gs` / `Ingest.gs` / `Config.gs` / `ErrorLog.gs` / `Monitor.gs` / `DailyAggregation.gs` / `MonthlyAggregation.gs` / `LineBot.gs` / `Metrics.gs` / `SetupTriggers.gs` / `DebugTest.gs`）をまとめて配置する。
 5. GASプロジェクトのタイムゾーンを`Asia/Tokyo`に設定する。
 6. `appsscript.json`にWebアプリ設定があることを確認する。CLIで同期する場合は、次の設定を含める。
 
@@ -173,17 +173,20 @@ ESP8266への書き込みは人間の確認後に実施する。Codexは書き�
 
 受信基盤の `SPREADSHEET_ID` / `API_TOKEN` / `SHEET_NAME` に加え、機能に応じて追加する。実値は公開資料へ記載しない。
 
-| キー | 内容 | 対応Phase |
+| キー | 内容 | 対応Phase / 機能 |
 | --- | --- | --- |
 | `LINE_CHANNEL_SECRET` | LINEチャネルシークレット（Webhook署名検証用） | 12 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINEアクセストークン（Push/Reply送信用） | 12 |
 | `LINE_USER_ID` | 通知送信先ユーザーID | 12 |
-| `MONITOR_SKIP_UNTIL` | スキップ解除時刻（UNIXミリ秒エポックタイム） | 12 / 24 |
+| `MONITOR_SKIP_UNTIL` | スキップ・スヌーズ解除時刻（UNIXミリ秒エポックタイム。`ALERT_SNOOZE_UNTIL`も互換対応） | 12 / 24 / PR #27 |
+| `ALERT_LAST_SENT_TIME` | 直近のアラートPush送信時刻（UNIXミリ秒エポックタイム。クールダウン判定用） | PR #26 |
+| `ALERT_COUNT_TODAY` | 当日のアラート送信件数（JSON: `{"date":"YYYY-MM-DD","count":N}`。1日上限ガード用） | PR #26 |
 | `DAILY_LAST_ROW` | Daily集計の前回処理済み行番号（1始まり） | 15 |
 | `MONTHLY_LAST_ROW` | Monthly集計の前回処理済み行番号（1始まり） | 18 |
-| `MONITOR_STATE_*` | 監視状態（超過/正常など、必要に応じて複数キー） | 11 |
-| `MONITOR_LAST_VALID_*` | 異常値判定の比較元（temp/hum/press ごと） | 11 |
+| `MONITOR_STATE_*` | 監視状態（超過/正常など、temp/hum/discomfortIndex ごと） | 11 |
+| `MONITOR_LAST_VALID_*` | 異常値判定の比較元（temp/hum/press 等の直近有効データ） | 11 |
 | `WATCHDOG_NOTIFIED` | ウォッチドッグ通知済みフラグ | 17 |
+| `ERROR_LOG_ENTRIES` | エラーログ履歴（直近最大100件の診断情報） | 15 |
 
 監視閾値など頻繁に調整する値は、Configシート（Phase 15で採用決定）へ置く。
 
@@ -195,7 +198,7 @@ ESP8266への書き込みは人間の確認後に実施する。Codexは書き�
 
 ### Configシート / Dailyシート（Phase 15）
 
-1. Configシートを作成し、1行目にキー名、2行目以降に値を配置する（採用は決定済み）。未設定キーは **Config.gs に定義されたデフォルト値** へフォールバックする。既定値は下表のとおり。
+1. Configシートを作成し、1行目にキー名、2行目以降に値を配置する（採用は決定済み。縦形式 `key \| value` も互換サポート）。未設定キーは **Config.gs に定義されたデフォルト値** へフォールバックする。既定値は下表のとおり。
 
    | キー | 既定値（決定済み） | 内容 |
    | --- | --- | --- |
@@ -209,13 +212,20 @@ ESP8266への書き込みは人間の確認後に実施する。Codexは書き�
    | `ANOMALY_TEMP` | 5.0 | 異常値判定の気温変化量（℃） |
    | `ANOMALY_HUM` | 30 | 異常値判定の湿度変化量（%） |
    | `ANOMALY_PRESS` | 20 | 異常値判定の気圧変化量（hPa） |
-   | `SKIP_UNTIL_HOUR` | 8 | LINEスキップ解除時刻（JSTの時、0〜23。既定は翌朝8:00） |
+   | `SKIP_UNTIL_HOUR` | 8 | LINEスヌーズ解除時刻（JSTの時、0〜23。既定は翌朝8:00） |
+   | `ALERT_COOLDOWN_MIN` | 60 | アラートPush通知の最小間隔（分）。連続通知を防止 |
+   | `ALERT_MAX_DAILY_COUNT` | 5 | 1日あたりのアラートPush通知最大件数（無料枠保護） |
+   | `SENSOR_GUARD_MIN_TEMP` | -10.0 | センサー異常ガード下限温度（℃） |
+   | `SENSOR_GUARD_MAX_TEMP` | 50.0 | センサー異常ガード上限温度（℃） |
+   | `SENSOR_GUARD_MIN_HUM` | 0.0 | センサー異常ガード下限湿度（%） |
+   | `SENSOR_GUARD_MAX_HUM` | 100.0 | センサー異常ガード上限湿度（%） |
+   | `SENSOR_DUPLICATION_WINDOW_SECONDS` | 180 | 重複POST排除の時間窓（秒） |
    | `WATCHDOG_TIMEOUT_MIN` | 4320 | センサー未受信ウォッチドッグのしきい値（分）。4320＝3日 |
 
 2. Dailyシートを作成し、1行目を `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` にする。
-3. 時間主導トリガーを設定し、日付境界+10分程度に日次集計を実行する。
-4. Monthlyシートを作成し、1行目を `年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count` にする。月次トリガー（例: 1日 01:00）で前月分を月次集計する。
-5. ウォッチドッグ用の時間主導トリガー（例: 1日1回）を設定する。DATA最終日時が `WATCHDOG_TIMEOUT_MIN`（既定4320＝3日）を超えると1回だけ通知し、復帰（追記再開）でリセットする。
+3. 時間主導トリガーを設定し、毎日 02:00 JST に日次集計を実行する（`SetupTriggers.gs` の `setupDailyAggregationTrigger` で登録可能）。
+4. Monthlyシートを作成し、1行目を `年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count` にする。月次トリガー（毎月 1日 01:00 JST）で前月分を月次集計する。
+5. ウォッチドッグ用の時間主導トリガー（毎時 0分）を設定する。DATA最終日時が `WATCHDOG_TIMEOUT_MIN`（既定4320＝3日）を超えると1回だけ通知し、復帰（追記再開）でリセットする。
 
 ※LINE設定・Config/Daily/Monthlyシート作成・トリガー設定は人間の承認後に実施する。
 
