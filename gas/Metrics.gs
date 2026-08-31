@@ -400,6 +400,120 @@ function formatSnoozeUntilJst_(skipUntil) {
   return `${month}/${day} ${hours}:${minutes}`;
 }
 
+/**
+ * Calculates pressure trend Delta P from current and 3h-ago pressure.
+ * @param {number} currentPress - Current pressure in hPa
+ * @param {number} pastPress - Pressure approx 3 hours ago in hPa
+ * @returns {string} Formatted trend label e.g. "↘ -2.1/3h", "↗ +1.5/3h", "安定", or "→ +0.4/3h"
+ */
+function calculatePressureTrend_(currentPress, pastPress) {
+  if (typeof currentPress !== 'number' || typeof pastPress !== 'number' ||
+      isNaN(currentPress) || isNaN(pastPress)) {
+    return '安定';
+  }
+  const delta = Number((currentPress - pastPress).toFixed(1));
+  if (delta <= -1.0) {
+    return `↘ ${delta.toFixed(1)}/3h`;
+  } else if (delta >= 1.0) {
+    return `↗ +${delta.toFixed(1)}/3h`;
+  } else if (Math.abs(delta) <= 0.2) {
+    return '安定';
+  } else {
+    return `→ ${delta > 0 ? '+' : ''}${delta.toFixed(1)}/3h`;
+  }
+}
+
+/**
+ * Gets JST date string (YYYY-MM-DD) from UTC timestamp (ms).
+ * @param {number} [ms] - Timestamp in ms (defaults to Date.now())
+ * @returns {string} JST date string YYYY-MM-DD
+ */
+function getJstDateString_(ms) {
+  const currentMs = typeof ms === 'number' ? ms : Date.now();
+  const jstDate = new Date(currentMs + 9 * 60 * 60 * 1000);
+  const year = jstDate.getUTCFullYear();
+  const month = String(jstDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(jstDate.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Evaluates whether to send push alert notification based on 5-step priority control.
+ * Pure function independent of Apps Script services.
+ *
+ * Priority flow:
+ *  1. Sensor anomaly guard (-10℃〜50℃, 0%〜100%)
+ *  2. SNOOZE priority check (ALERT_SNOOZE_UNTIL)
+ *  3. Warning threshold check (isOverThreshold)
+ *  4. 1-hour cooldown check (ALERT_LAST_SENT_TIME)
+ *  5. Daily max limit guard (ALERT_COUNT_TODAY, max 5/day)
+ *
+ * @param {object} params - Input parameters
+ * @param {number} params.temp - Temperature in Celsius
+ * @param {number} params.hum - Humidity in %
+ * @param {number} [params.press] - Pressure in hPa
+ * @param {boolean} params.isOverThreshold - Whether temperature or humidity is in alert state
+ * @param {number} [params.nowMs] - Current timestamp in ms
+ * @param {number|string|null} [params.snoozeUntil] - Snooze deadline timestamp in ms
+ * @param {number|string|null} [params.lastSentTime] - Last push alert sent timestamp in ms
+ * @param {object|null} [params.dailyAlertInfo] - { date: 'YYYY-MM-DD', count: number }
+ * @param {object} [params.options] - Custom options
+ * @returns {object} { shouldAlert: boolean, reason: string, todayJst: string }
+ */
+function evaluateAlertDecision_(params) {
+  if (!params) {
+    return { shouldAlert: false, reason: 'invalid_params', todayJst: '' };
+  }
+
+  const temp = typeof params.temp === 'number' ? params.temp : NaN;
+  const hum = typeof params.hum === 'number' ? params.hum : NaN;
+  const nowMs = typeof params.nowMs === 'number' ? params.nowMs : Date.now();
+  const todayJst = getJstDateString_(nowMs);
+
+  const opts = params.options || {};
+  const minTemp = typeof opts.minTemp === 'number' ? opts.minTemp : -10.0;
+  const maxTemp = typeof opts.maxTemp === 'number' ? opts.maxTemp : 50.0;
+  const minHum = typeof opts.minHum === 'number' ? opts.minHum : 0.0;
+  const maxHum = typeof opts.maxHum === 'number' ? opts.maxHum : 100.0;
+  const cooldownMs = typeof opts.cooldownMs === 'number' ? opts.cooldownMs : 60 * 60 * 1000;
+  const maxDailyCount = typeof opts.maxDailyCount === 'number' ? opts.maxDailyCount : 5;
+
+  // 1. センサー異常値ガード
+  if (isNaN(temp) || isNaN(hum) || temp < minTemp || temp > maxTemp || hum < minHum || hum > maxHum) {
+    return { shouldAlert: false, reason: 'sensor_anomaly', todayJst: todayJst };
+  }
+
+  // 2. SNOOZE（通知停止期限）の優先判定
+  if (isSnoozeActive_(params.snoozeUntil, nowMs)) {
+    return { shouldAlert: false, reason: 'snooze_active', todayJst: todayJst };
+  }
+
+  // 3. 警戒閾値の判定
+  if (!params.isOverThreshold) {
+    return { shouldAlert: false, reason: 'normal', todayJst: todayJst };
+  }
+
+  // 4. 1時間クールダウン判定（無料枠保護）
+  if (params.lastSentTime) {
+    const lastSentMs = typeof params.lastSentTime === 'number'
+      ? params.lastSentTime
+      : parseInt(params.lastSentTime, 10);
+    if (!isNaN(lastSentMs) && (nowMs - lastSentMs) < cooldownMs) {
+      return { shouldAlert: false, reason: 'cooldown_active', todayJst: todayJst };
+    }
+  }
+
+  // 5. 1日あたりの上限ガード（セーフティネット）
+  if (params.dailyAlertInfo && params.dailyAlertInfo.date === todayJst) {
+    const count = typeof params.dailyAlertInfo.count === 'number' ? params.dailyAlertInfo.count : 0;
+    if (count >= maxDailyCount) {
+      return { shouldAlert: false, reason: 'daily_limit_reached', todayJst: todayJst };
+    }
+  }
+
+  return { shouldAlert: true, reason: 'alert_triggered', todayJst: todayJst };
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     calculateDiscomfortIndex_,
@@ -410,6 +524,9 @@ if (typeof module !== 'undefined') {
     buildQuickChartUrl,
     calculateNextMorning8Am_,
     isSnoozeActive_,
-    formatSnoozeUntilJst_
+    formatSnoozeUntilJst_,
+    calculatePressureTrend_,
+    getJstDateString_,
+    evaluateAlertDecision_
   };
 }

@@ -4,7 +4,10 @@ const SCRIPT_PROPERTY_KEYS = {
   sheetName: 'SHEET_NAME',
   lineChannelSecret: 'LINE_CHANNEL_SECRET',
   lineChannelAccessToken: 'LINE_CHANNEL_ACCESS_TOKEN',
-  lineUserId: 'LINE_USER_ID'
+  lineUserId: 'LINE_USER_ID',
+  alertSnoozeUntil: 'ALERT_SNOOZE_UNTIL',
+  alertLastSentTime: 'ALERT_LAST_SENT_TIME',
+  alertCountToday: 'ALERT_COUNT_TODAY'
 };
 
 const DEFAULT_CONFIG = {
@@ -16,6 +19,12 @@ const DEFAULT_CONFIG = {
   MONITOR_HUM_HYSTERESIS: 5.0,
   MONITOR_DI_OVER: 80.0,
   MONITOR_DI_HYSTERESIS: 0.5,
+  ALERT_COOLDOWN_MIN: 60,
+  ALERT_MAX_DAILY_COUNT: 5,
+  SENSOR_GUARD_MIN_TEMP: -10.0,
+  SENSOR_GUARD_MAX_TEMP: 50.0,
+  SENSOR_GUARD_MIN_HUM: 0.0,
+  SENSOR_GUARD_MAX_HUM: 100.0,
   SENSOR_DUPLICATION_WINDOW_SECONDS: 180,
   SKIP_HOURS: 8,
   SKIP_UNTIL_HOUR: 8,
@@ -43,7 +52,7 @@ function getMergedConfig_() {
   const sheetConfig = getSheetConfig_();
   for (const key of Object.keys(sheetConfig)) {
     const raw = sheetConfig[key];
-    if (['WATCHDOG_TIMEOUT_MIN', 'MONITOR_CONSECUTIVE_K', 'SENSOR_DUPLICATION_WINDOW_SECONDS', 'INGEST_LOCK_TIMEOUT_MS', 'LINE_LOCK_TIMEOUT_MS', 'SKIP_HOURS', 'SKIP_UNTIL_HOUR'].indexOf(key) >= 0) {
+    if (['WATCHDOG_TIMEOUT_MIN', 'MONITOR_CONSECUTIVE_K', 'SENSOR_DUPLICATION_WINDOW_SECONDS', 'INGEST_LOCK_TIMEOUT_MS', 'LINE_LOCK_TIMEOUT_MS', 'SKIP_HOURS', 'SKIP_UNTIL_HOUR', 'ALERT_COOLDOWN_MIN', 'ALERT_MAX_DAILY_COUNT'].indexOf(key) >= 0) {
       const parsed = parseInt(raw, 10);
       if (!isNaN(parsed)) {
         config[key] = parsed;

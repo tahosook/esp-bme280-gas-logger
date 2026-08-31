@@ -181,6 +181,16 @@ function runTests() {
     assert.strictEqual(bubble.footer.contents.length, 2, 'Test 3 Failed: active footer should have 2 buttons');
     assert.strictEqual(bubble.footer.contents[0].action.text, 'SNOOZE');
     assert.strictEqual(bubble.footer.contents[1].action.text, 'TRENDS');
+
+    // Confirm that 容積絶対湿度 is removed and required fields exist
+    const bodyStr = JSON.stringify(bubble.body);
+    assert.strictEqual(bodyStr.includes('容積絶対湿度'), false, 'Test 3 Failed: 容積絶対湿度 must be removed from NOW card');
+    assert.ok(bodyStr.includes('室温'), 'Test 3 Failed: 室温 label missing');
+    assert.ok(bodyStr.includes('湿度'), 'Test 3 Failed: 湿度 label missing');
+    assert.ok(bodyStr.includes('気圧'), 'Test 3 Failed: 気圧 label missing');
+    assert.ok(bodyStr.includes('快適度'), 'Test 3 Failed: 快適度 label missing');
+    assert.ok(bodyStr.includes('測定'), 'Test 3 Failed: 測定 label missing');
+
     console.log('  ✓ Test 3: Status command flex reply (active) passed');
   }
 
@@ -246,7 +256,7 @@ function runTests() {
     };
 
     vm.runInContext('handleLineWebhook_(e)', vm.createContext(Object.assign({}, context, { e: req })));
-    assert.ok(propertiesStore.MONITOR_SKIP_UNTIL, 'Test 4 Failed: MONITOR_SKIP_UNTIL should be set');
+    assert.ok(propertiesStore.ALERT_SNOOZE_UNTIL || propertiesStore.MONITOR_SKIP_UNTIL, 'Test 4 Failed: ALERT_SNOOZE_UNTIL should be set');
     assert.strictEqual(fetchedUrls.length, 1, 'Test 4 Failed: reply should be sent');
     assert.strictEqual(fetchedUrls[0].url, 'https://api.line.me/v2/bot/message/reply');
     const replyPayload = JSON.parse(fetchedUrls[0].options.payload);
@@ -270,6 +280,7 @@ function runTests() {
     const { context, propertiesStore, fetchedUrls } = createGasContext({
       LINE_CHANNEL_SECRET: secret,
       LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+      ALERT_SNOOZE_UNTIL: String(Date.now() + 100000),
       MONITOR_SKIP_UNTIL: String(Date.now() + 100000),
       MONITOR_STATE_temp: JSON.stringify({ consecutive: 2, alert: true })
     });
@@ -289,6 +300,7 @@ function runTests() {
     };
 
     vm.runInContext('handleLineWebhook_(e)', vm.createContext(Object.assign({}, context, { e: req })));
+    assert.strictEqual(propertiesStore.ALERT_SNOOZE_UNTIL, undefined, 'Test 5 Failed: ALERT_SNOOZE_UNTIL should be deleted');
     assert.strictEqual(propertiesStore.MONITOR_SKIP_UNTIL, undefined, 'Test 5 Failed: MONITOR_SKIP_UNTIL should be deleted');
     const tempState = JSON.parse(propertiesStore.MONITOR_STATE_temp);
     assert.strictEqual(tempState.alert, false, 'Test 5 Failed: alert state should be reset');
@@ -347,15 +359,17 @@ function runTests() {
       LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
       LINE_USER_ID: 'user-123'
     });
-    const pushed = vm.runInContext('pushMonitorNotification_("test message")', context);
+    const pushed = vm.runInContext('pushMonitorNotification_("現在: 30.2 ℃ / 68 %")', context);
     assert.strictEqual(pushed, true, 'Test 8 Failed: push should return true');
     assert.strictEqual(fetchedUrls.length, 1, 'Test 8 Failed: fetch should be called');
     assert.strictEqual(fetchedUrls[0].url, 'https://api.line.me/v2/bot/message/push');
     const payload = JSON.parse(fetchedUrls[0].options.payload);
     assert.strictEqual(payload.to, 'user-123');
     assert.strictEqual(payload.messages[0].type, 'flex', 'Test 8 Failed: expected flex message');
-    assert.strictEqual(payload.messages[0].altText, '監視アラート', 'Test 8 Failed: expected altText');
+    assert.strictEqual(payload.messages[0].altText, '⚠️ 室温・湿度 警告', 'Test 8 Failed: expected altText');
     const bubble = payload.messages[0].contents;
+    assert.strictEqual(bubble.header.contents[0].text, '⚠️ 室温・湿度 警告');
+    assert.strictEqual(bubble.body.contents[0].text, '現在: 30.2 ℃ / 68 %');
     assert.strictEqual(bubble.footer.contents[0].action.label, '🔕 翌朝8時までSNOOZE');
     assert.strictEqual(bubble.footer.contents[0].action.text, 'SNOOZE');
     console.log('  ✓ Test 8: Push with valid user ID passed');
@@ -719,7 +733,12 @@ function runTests() {
     vm.runInContext('debugTest_handleLineWebhook_Trends()', context);
     assert.ok(logEntries.some(l => l.includes('正常な image メッセージが生成されました')), 'Test 17 Failed: debugTest_handleLineWebhook_Trends should log image message');
 
-    console.log('  ✓ Test 17: DebugTest.gs functions debugTest_buildQuickChartUrl and debugTest_handleLineWebhook_Trends passed');
+    logEntries.length = 0;
+    vm.runInContext('debugTest_checkAlertLogic()', context);
+    assert.ok(logEntries.some(l => l.includes('checkAlertLogic 完了')), 'Test 17 Failed: debugTest_checkAlertLogic should log completion');
+    assert.ok(logEntries.some(l => l.includes('6/6 ケース合格')), 'Test 17 Failed: all 6 alert logic cases should pass');
+
+    console.log('  ✓ Test 17: DebugTest.gs functions debugTest_buildQuickChartUrl, debugTest_handleLineWebhook_Trends, and debugTest_checkAlertLogic passed');
   }
 
   console.log('\nAll LineBot tests passed successfully!');

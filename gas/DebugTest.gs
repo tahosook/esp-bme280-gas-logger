@@ -6,6 +6,130 @@
  */
 
 /**
+ * アラート通知制御ロジック（evaluateAlertDecision_）の単体手動検証関数。
+ * GAS エディタで本関数を選択して「実行」をクリックしてください。
+ * スヌーズ中、クールダウン中、正常値、閾値超過時、異常値ガード、1日上限到達の各ケースをシミュレート検証します。
+ */
+function debugTest_checkAlertLogic() {
+  Logger.log('=== [DEBUG TEST] checkAlertLogic 開始 ===');
+  try {
+    const now = Date.now();
+    const todayJst = typeof getJstDateString_ === 'function' ? getJstDateString_(now) : new Date().toISOString().slice(0, 10);
+
+    const testCases = [
+      {
+        name: 'ケース1: 正常域 (25.0℃ / 50%)',
+        params: {
+          temp: 25.0,
+          hum: 50.0,
+          press: 1013.2,
+          isOverThreshold: false,
+          nowMs: now,
+          snoozeUntil: null,
+          lastSentTime: null,
+          dailyAlertInfo: null
+        },
+        expectedShouldAlert: false,
+        expectedReason: 'normal'
+      },
+      {
+        name: 'ケース2: センサー異常値ガード (60.0℃ / 50%)',
+        params: {
+          temp: 60.0,
+          hum: 50.0,
+          press: 1013.2,
+          isOverThreshold: true,
+          nowMs: now,
+          snoozeUntil: null,
+          lastSentTime: null,
+          dailyAlertInfo: null
+        },
+        expectedShouldAlert: false,
+        expectedReason: 'sensor_anomaly'
+      },
+      {
+        name: 'ケース3: 警戒閾値超過・初回 (31.0℃ / 75%)',
+        params: {
+          temp: 31.0,
+          hum: 75.0,
+          press: 1013.2,
+          isOverThreshold: true,
+          nowMs: now,
+          snoozeUntil: null,
+          lastSentTime: null,
+          dailyAlertInfo: null
+        },
+        expectedShouldAlert: true,
+        expectedReason: 'alert_triggered'
+      },
+      {
+        name: 'ケース4: SNOOZE有効期間中 (31.0℃ / 75%)',
+        params: {
+          temp: 31.0,
+          hum: 75.0,
+          press: 1013.2,
+          isOverThreshold: true,
+          nowMs: now,
+          snoozeUntil: now + 3600000,
+          lastSentTime: null,
+          dailyAlertInfo: null
+        },
+        expectedShouldAlert: false,
+        expectedReason: 'snooze_active'
+      },
+      {
+        name: 'ケース5: 1hクールダウン中 (前回送信から30分後)',
+        params: {
+          temp: 31.0,
+          hum: 75.0,
+          press: 1013.2,
+          isOverThreshold: true,
+          nowMs: now,
+          snoozeUntil: null,
+          lastSentTime: now - 30 * 60 * 1000,
+          dailyAlertInfo: { date: todayJst, count: 1 }
+        },
+        expectedShouldAlert: false,
+        expectedReason: 'cooldown_active'
+      },
+      {
+        name: 'ケース6: 1日上限到達 (当日送信回数5回)',
+        params: {
+          temp: 31.0,
+          hum: 75.0,
+          press: 1013.2,
+          isOverThreshold: true,
+          nowMs: now,
+          snoozeUntil: null,
+          lastSentTime: now - 70 * 60 * 1000,
+          dailyAlertInfo: { date: todayJst, count: 5 }
+        },
+        expectedShouldAlert: false,
+        expectedReason: 'daily_limit_reached'
+      }
+    ];
+
+    let passedCount = 0;
+    for (let i = 0; i < testCases.length; i += 1) {
+      const tc = testCases[i];
+      const result = evaluateAlertDecision_(tc.params);
+      const isPassed = (result.shouldAlert === tc.expectedShouldAlert) && (result.reason === tc.expectedReason);
+      if (isPassed) {
+        passedCount += 1;
+        Logger.log(`✅ [PASS] ${tc.name} => shouldAlert: ${result.shouldAlert}, reason: '${result.reason}'`);
+      } else {
+        Logger.log(`❌ [FAIL] ${tc.name} => 期待値: { shouldAlert: ${tc.expectedShouldAlert}, reason: '${tc.expectedReason}' }, 実際: { shouldAlert: ${result.shouldAlert}, reason: '${result.reason}' }`);
+      }
+    }
+
+    Logger.log(`=== checkAlertLogic 完了: ${passedCount}/${testCases.length} ケース合格 ===`);
+  } catch (err) {
+    Logger.log('❌ checkAlertLogic 実行時エラー: ' + (err && err.message ? err.message : String(err)));
+    console.error('debugTest_checkAlertLogic failed:', err);
+  }
+}
+
+/**
  * QuickChart グラフ URL 生成ロジック（buildQuickChartUrl）の単体手動検証関数。
  * GAS エディタで本関数を選択して「実行」をクリックしてください。
  */
