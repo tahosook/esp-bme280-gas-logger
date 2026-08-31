@@ -85,7 +85,7 @@ function createGasContext(initialProps = {}, fetchedUrls = []) {
 
   const context = vm.createContext(sandbox);
 
-  const files = ['Config.gs', 'ErrorLog.gs', 'Monitor.gs', 'Router.gs', 'LineBot.gs'];
+  const files = ['Config.gs', 'ErrorLog.gs', 'DailyAggregation.gs', 'Metrics.gs', 'Monitor.gs', 'Router.gs', 'LineBot.gs'];
   for (const file of files) {
     const code = fs.readFileSync(path.join(__dirname, '..', 'gas', file), 'utf8');
     vm.runInContext(code, context);
@@ -135,20 +135,20 @@ function runTests() {
     console.log('  ✓ Test 2: Invalid signature rejected passed');
   }
 
-  // 3. コマンド「状況」 -> 監視状態を含む Reply が送信される
+  // 3. コマンド「NOW」通常監視中 -> 監視中（Active）のFlex Messageが返信される
   {
     const secret = 'test-secret';
     const { context, fetchedUrls } = createGasContext({
       LINE_CHANNEL_SECRET: secret,
       LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
-      MONITOR_LAST_VALID_payload: JSON.stringify({ temp: 28.5, hum: 65.0, discomfortIndex: 77.2, timestamp: new Date().toISOString() })
+      MONITOR_LAST_VALID_payload: JSON.stringify({ temp: 28.5, hum: 65.0, press: 1013.25, discomfortIndex: 77.2, timestamp: '2026-08-29T10:30:00.000Z' })
     });
     const body = JSON.stringify({
       events: [
         {
           type: 'message',
           replyToken: 'token-123',
-          message: { type: 'text', text: '状況' }
+          message: { type: 'text', text: 'NOW' }
         }
       ]
     });
@@ -165,23 +165,67 @@ function runTests() {
     assert.strictEqual(payload.replyToken, 'token-123');
     assert.strictEqual(payload.messages[0].type, 'flex', 'Test 3 Failed: expected flex message type');
     assert.strictEqual(payload.messages[0].altText, '現在の監視状態', 'Test 3 Failed: expected alt text for status message');
-    console.log('  ✓ Test 3: Status command flex reply passed');
+    const bubble = payload.messages[0].contents;
+    assert.strictEqual(bubble.header.backgroundColor, '#27ae60', 'Test 3 Failed: header should be active green');
+    assert.strictEqual(bubble.header.contents[0].text, '🔔 監視中（Active）', 'Test 3 Failed: header title mismatch');
+    assert.strictEqual(bubble.footer.contents.length, 2, 'Test 3 Failed: active footer should have 2 buttons');
+    assert.strictEqual(bubble.footer.contents[0].action.text, 'SNOOZE');
+    assert.strictEqual(bubble.footer.contents[1].action.text, 'TRENDS');
+    console.log('  ✓ Test 3: Status command flex reply (active) passed');
   }
 
-  // 4. コマンド「スキップ」 -> MONITOR_SKIP_UNTIL が設定され、Push が抑制される
+  // 3B. コマンド「NOW」スヌーズ中 -> SNOOZE中（期限表示・CLEARボタン）のFlex Messageが返信される
   {
     const secret = 'test-secret';
-    const { context, propertiesStore, fetchedUrls } = createGasContext({
+    const futureMs = Date.now() + 3600000;
+    const { context, fetchedUrls } = createGasContext({
       LINE_CHANNEL_SECRET: secret,
       LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
-      LINE_USER_ID: 'user-123'
+      MONITOR_SKIP_UNTIL: String(futureMs),
+      MONITOR_LAST_VALID_payload: JSON.stringify({ temp: 28.5, hum: 65.0, press: 1013.25, discomfortIndex: 77.2, timestamp: '2026-08-29T10:30:00.000Z' })
     });
     const body = JSON.stringify({
       events: [
         {
           type: 'message',
           replyToken: 'token-123',
-          message: { type: 'text', text: 'スキップ' }
+          message: { type: 'text', text: '現在' }
+        }
+      ]
+    });
+    const hmac = crypto.createHmac('sha256', secret).update(body).digest('base64');
+    const req = {
+      postData: { contents: body },
+      headers: { 'X-Line-Signature': hmac }
+    };
+
+    vm.runInContext('handleLineWebhook_(e)', vm.createContext(Object.assign({}, context, { e: req })));
+    assert.strictEqual(fetchedUrls.length, 1, 'Test 3B Failed: reply should be called');
+    const payload = JSON.parse(fetchedUrls[0].options.payload);
+    const bubble = payload.messages[0].contents;
+    assert.strictEqual(bubble.header.backgroundColor, '#e67e22', 'Test 3B Failed: header should be orange');
+    assert.strictEqual(bubble.header.contents[0].text, '🔕 SNOOZE中', 'Test 3B Failed: header title mismatch');
+    assert.ok(bubble.header.contents[1].text.includes('停止期限:'), 'Test 3B Failed: subtext should show deadline');
+    assert.strictEqual(bubble.footer.contents.length, 1, 'Test 3B Failed: snooze footer should have 1 button');
+    assert.strictEqual(bubble.footer.contents[0].action.text, 'CLEAR');
+    console.log('  ✓ Test 3B: Status command flex reply (snooze active) passed');
+  }
+
+  // 4. コマンド「SNOOZE」 -> MONITOR_SKIP_UNTIL が設定され、Push が抑制される
+  {
+    const secret = 'test-secret';
+    const { context, propertiesStore, fetchedUrls } = createGasContext({
+      LINE_CHANNEL_SECRET: secret,
+      LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+      LINE_USER_ID: 'user-123',
+      MONITOR_LAST_VALID_payload: JSON.stringify({ temp: 28.5, hum: 65.0 })
+    });
+    const body = JSON.stringify({
+      events: [
+        {
+          type: 'message',
+          replyToken: 'token-123',
+          message: { type: 'text', text: 'SNOOZE' }
         }
       ]
     });
@@ -198,19 +242,22 @@ function runTests() {
     const replyPayload = JSON.parse(fetchedUrls[0].options.payload);
     assert.strictEqual(replyPayload.messages[0].type, 'flex', 'Test 4 Failed: expected flex message type');
     assert.strictEqual(replyPayload.messages[0].altText, 'スキップ設定完了', 'Test 4 Failed: reply altText mismatch');
+    const bubble = replyPayload.messages[0].contents;
+    assert.strictEqual(bubble.header.contents[0].text, '🔕 SNOOZE設定完了');
+    assert.strictEqual(bubble.footer.contents[0].action.text, 'CLEAR');
 
     // Push 送信が抑制されるか確認
     fetchedUrls.length = 0;
     const pushed = vm.runInContext('pushMonitorNotification_("test text")', context);
     assert.strictEqual(pushed, false, 'Test 4 Failed: Push should be suppressed when skip is active');
     assert.strictEqual(fetchedUrls.length, 0, 'Test 4 Failed: UrlFetchApp.fetch should not be called');
-    console.log('  ✓ Test 4: Skip command and push suppression passed');
+    console.log('  ✓ Test 4: SNOOZE command and push suppression passed');
   }
 
-  // 5. コマンド「クリア」 -> resetMonitorStates_ が呼ばれ状態がリセットされる
+  // 5. コマンド「CLEAR」 -> resetMonitorStates_ が呼ばれ状態がリセットされる
   {
     const secret = 'test-secret';
-    const { context, propertiesStore } = createGasContext({
+    const { context, propertiesStore, fetchedUrls } = createGasContext({
       LINE_CHANNEL_SECRET: secret,
       LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
       MONITOR_SKIP_UNTIL: String(Date.now() + 100000),
@@ -221,7 +268,7 @@ function runTests() {
         {
           type: 'message',
           replyToken: 'token-123',
-          message: { type: 'text', text: 'クリア' }
+          message: { type: 'text', text: 'CLEAR' }
         }
       ]
     });
@@ -235,6 +282,9 @@ function runTests() {
     assert.strictEqual(propertiesStore.MONITOR_SKIP_UNTIL, undefined, 'Test 5 Failed: MONITOR_SKIP_UNTIL should be deleted');
     const tempState = JSON.parse(propertiesStore.MONITOR_STATE_temp);
     assert.strictEqual(tempState.alert, false, 'Test 5 Failed: alert state should be reset');
+    assert.strictEqual(fetchedUrls.length, 1);
+    const replyPayload = JSON.parse(fetchedUrls[0].options.payload);
+    assert.ok(replyPayload.messages[0].text.includes('リセットしました'), 'Test 5 Failed: clear reply text mismatch');
     console.log('  ✓ Test 5: Clear command reset passed');
   }
 
@@ -263,7 +313,8 @@ function runTests() {
     vm.runInContext('handleLineWebhook_(e)', vm.createContext(Object.assign({}, context, { e: req })));
     assert.strictEqual(fetchedUrls.length, 1, 'Test 6 Failed: UrlFetchApp.fetch should be called');
     const payload = JSON.parse(fetchedUrls[0].options.payload);
-    assert.ok(payload.messages[0].text.includes('利用可能なコマンド:'), 'Test 6 Failed: should return help text');
+    assert.ok(payload.messages[0].text.includes('NOW'), 'Test 6 Failed: should return help text with NOW');
+    assert.ok(payload.messages[0].text.includes('SNOOZE'), 'Test 6 Failed: should return help text with SNOOZE');
     console.log('  ✓ Test 6: Unknown command help reply passed');
   }
 
@@ -294,6 +345,9 @@ function runTests() {
     assert.strictEqual(payload.to, 'user-123');
     assert.strictEqual(payload.messages[0].type, 'flex', 'Test 8 Failed: expected flex message');
     assert.strictEqual(payload.messages[0].altText, '監視アラート', 'Test 8 Failed: expected altText');
+    const bubble = payload.messages[0].contents;
+    assert.strictEqual(bubble.footer.contents[0].action.label, '🔕 翌朝8時までSNOOZE');
+    assert.strictEqual(bubble.footer.contents[0].action.text, 'SNOOZE');
     console.log('  ✓ Test 8: Push with valid user ID passed');
   }
 
@@ -420,6 +474,54 @@ function runTests() {
     const jstTarget = new Date(skipUntil + 9 * 60 * 60 * 1000);
     assert.strictEqual(jstTarget.getUTCHours(), 9, 'Test 12 Failed: target hour should be 9');
     console.log('  ✓ Test 12: Custom SKIP_UNTIL_HOUR configuration passed');
+  }
+
+  // 13. コマンドエイリアス（大文字小文字・全角半角・日本語）の網羅的判定テスト
+  {
+    const secret = 'test-secret';
+    const checkCommand = (cmdText, expectedAction) => {
+      const { context, fetchedUrls, propertiesStore } = createGasContext({
+        LINE_CHANNEL_SECRET: secret,
+        LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+        MONITOR_LAST_VALID_payload: JSON.stringify({ temp: 25.0, hum: 50.0 })
+      });
+      const body = JSON.stringify({
+        events: [
+          {
+            type: 'message',
+            replyToken: 'token-alias',
+            message: { type: 'text', text: cmdText }
+          }
+        ]
+      });
+      const hmac = crypto.createHmac('sha256', secret).update(body).digest('base64');
+      const req = {
+        postData: { contents: body },
+        headers: { 'X-Line-Signature': hmac }
+      };
+
+      vm.runInContext('handleLineWebhook_(e)', vm.createContext(Object.assign({}, context, { e: req })));
+      assert.strictEqual(fetchedUrls.length, 1, `Alias test failed for '${cmdText}': expected reply`);
+      const payload = JSON.parse(fetchedUrls[0].options.payload);
+
+      if (expectedAction === 'status') {
+        assert.strictEqual(payload.messages[0].altText, '現在の監視状態', `Alias test for '${cmdText}' expected status altText`);
+      } else if (expectedAction === 'snooze') {
+        assert.strictEqual(payload.messages[0].altText, 'スキップ設定完了', `Alias test for '${cmdText}' expected snooze altText`);
+      } else if (expectedAction === 'clear') {
+        assert.ok(payload.messages[0].text.includes('リセットしました'), `Alias test for '${cmdText}' expected clear message`);
+      } else if (expectedAction === 'trends') {
+        // Without spreadsheet mock it returns error text message
+        assert.ok(payload.messages[0].text.includes('スプレッドシートが設定されていません'), `Alias test for '${cmdText}' expected trends dispatch`);
+      }
+    };
+
+    ['NOW', 'now', ' 状況 ', '状態', '現在', 'status', 'ＮＯＷ'].forEach(t => checkCommand(t, 'status'));
+    ['SNOOZE', 'snooze', 'スキップ', 'おやすみ', 'skip', 'ＳＮＯＯＺＥ'].forEach(t => checkCommand(t, 'snooze'));
+    ['CLEAR', 'clear', 'クリア', '解除', 'ＣＬＥＡＲ'].forEach(t => checkCommand(t, 'clear'));
+    ['TRENDS', 'trends', 'グラフ', '24h', 'ＴＲＥＮＤＳ'].forEach(t => checkCommand(t, 'trends'));
+
+    console.log('  ✓ Test 13: Full command aliases (NOW/SNOOZE/CLEAR/TRENDS) passed');
   }
 
   console.log('\nAll LineBot tests passed successfully!');

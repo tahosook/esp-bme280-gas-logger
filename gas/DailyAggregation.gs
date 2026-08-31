@@ -180,6 +180,10 @@ function formatDateTokyo_(dateInput, format) {
     const minutes = String(tokyoTime.getUTCMinutes()).padStart(2, '0');
     const seconds = String(tokyoTime.getUTCSeconds()).padStart(2, '0');
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  } else if (targetFormat === 'MM/dd HH:mm') {
+    const hours = String(tokyoTime.getUTCHours()).padStart(2, '0');
+    const minutes = String(tokyoTime.getUTCMinutes()).padStart(2, '0');
+    return `${month}/${day} ${hours}:${minutes}`;
   }
 
   return `${year}-${month}-${day}`;

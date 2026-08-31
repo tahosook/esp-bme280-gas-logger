@@ -64,28 +64,35 @@ function handleTextMessageEvent_(event) {
   const replyToken = event.replyToken;
   const normalized = normalizeText_(text);
 
-  if (normalized === '状況' || normalized === 'status') {
+  const nowCommands = ['now', '状況', '状態', '現在', 'status'];
+  const snoozeCommands = ['snooze', 'スキップ', 'おやすみ', 'skip'];
+  const trendsCommands = ['trends', 'グラフ', '24h'];
+  const clearCommands = ['clear', 'クリア', '解除'];
+
+  if (nowCommands.indexOf(normalized) !== -1) {
     const messages = buildStatusFlexMessage_();
     replyMessageObjects_(replyToken, messages);
-  } else if (normalized === 'グラフ' || normalized === '24h') {
+  } else if (trendsCommands.indexOf(normalized) !== -1) {
     const messages = buildGraphMessage_();
     replyMessageObjects_(replyToken, messages);
-  } else if (normalized === 'スキップ' || normalized === 'skip') {
+  } else if (snoozeCommands.indexOf(normalized) !== -1) {
     const lock = LockService.getScriptLock();
     const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
     const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
     lock.waitLock(timeoutMs);
     try {
       const targetHour = typeof config.SKIP_UNTIL_HOUR === 'number' ? config.SKIP_UNTIL_HOUR : 8;
-      const skipUntil = calculateNextMorning8Am_(Date.now(), targetHour);
+      const skipUntil = typeof calculateNextMorning8Am_ === 'function'
+        ? calculateNextMorning8Am_(Date.now(), targetHour)
+        : Date.now() + 8 * 3600 * 1000;
       const properties = PropertiesService.getScriptProperties();
       properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(skipUntil));
-      const messages = buildSkipFlexMessage_();
+      const messages = buildSkipFlexMessage_(skipUntil);
       replyMessageObjects_(replyToken, messages);
     } finally {
       lock.releaseLock();
     }
-  } else if (normalized === 'クリア' || normalized === 'clear') {
+  } else if (clearCommands.indexOf(normalized) !== -1) {
     const lock = LockService.getScriptLock();
     const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
     const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
@@ -96,16 +103,17 @@ function handleTextMessageEvent_(event) {
       }
       const properties = PropertiesService.getScriptProperties();
       properties.deleteProperty(LINE_BOT_PROPERTIES.skipUntil);
-      replyMessage_(replyToken, '監視状態およびスキップ設定を全リセットしました。');
+      replyMessage_(replyToken, '🔔 監視状態およびスヌーズ設定をリセットしました（監視再開）。');
     } finally {
       lock.releaseLock();
     }
   } else {
     const helpReply = [
       '利用可能なコマンド:',
-      '・状況 (status): 現在の室温・湿度・監視状態を表示',
-      '・スキップ (skip): アラート通知を一時スキップ',
-      '・クリア (clear): 監視状態をリセット'
+      '・NOW (状況): 現在の室温・湿度・気圧・監視状態を表示',
+      '・SNOOZE (おやすみ/スキップ): アラート通知を翌朝8:00まで停止',
+      '・TRENDS (グラフ/24h): 直近24時間の温湿度推移グラフ画像を表示',
+      '・CLEAR (解除/クリア): 監視状態およびスヌーズ設定をリセット'
     ].join('\n');
     replyMessage_(replyToken, helpReply);
   }
@@ -212,6 +220,10 @@ function fetchQuickChartShortUrl_(chartConfigObj) {
 
 function buildStatusFlexMessage_() {
   const properties = PropertiesService.getScriptProperties();
+  const skipUntil = properties.getProperty(LINE_BOT_PROPERTIES.skipUntil);
+  const isSnooze = typeof isSnoozeActive_ === 'function' ? isSnoozeActive_(skipUntil, Date.now()) : false;
+  const snoozeTimeStr = typeof formatSnoozeUntilJst_ === 'function' ? formatSnoozeUntilJst_(skipUntil) : '';
+
   const states = typeof loadMonitorStates_ === 'function' ? loadMonitorStates_(properties) : {
     temp: { alert: false },
     hum: { alert: false },
@@ -221,6 +233,7 @@ function buildStatusFlexMessage_() {
 
   let tempText = '-';
   let humText = '-';
+  let pressText = '-';
   let diText = '-';
   let ahText = '-';
   let timeStr = 'データなし';
@@ -230,10 +243,12 @@ function buildStatusFlexMessage_() {
   if (lastValid) {
     const tempVal = typeof lastValid.temp === 'number' ? lastValid.temp : null;
     const humVal = typeof lastValid.hum === 'number' ? lastValid.hum : null;
+    const pressVal = typeof lastValid.press === 'number' ? lastValid.press : null;
     let diVal = typeof lastValid.discomfortIndex === 'number' ? lastValid.discomfortIndex : null;
 
     if (tempVal !== null) tempText = `${tempVal.toFixed(2)}℃`;
     if (humVal !== null) humText = `${humVal.toFixed(2)}%`;
+    if (pressVal !== null) pressText = `${pressVal.toFixed(2)} hPa`;
 
     if (tempVal !== null && humVal !== null) {
       if (typeof calculateDiscomfortIndex_ === 'function') {
@@ -268,6 +283,64 @@ function buildStatusFlexMessage_() {
   const tempStatus = states.temp && states.temp.alert ? '🚨 超過' : '✅ 正常';
   const humStatus = states.hum && states.hum.alert ? '🚨 超過' : '✅ 正常';
 
+  const headerContents = isSnooze ? [
+    {
+      type: "text",
+      text: "🔕 SNOOZE中",
+      weight: "bold",
+      size: "lg",
+      color: "#ffffff"
+    },
+    {
+      type: "text",
+      text: `停止期限: ${snoozeTimeStr || '翌朝08:00'} まで (翌朝自動再開)`,
+      size: "xs",
+      color: "#ffffff",
+      margin: "xs"
+    }
+  ] : [
+    {
+      type: "text",
+      text: "🔔 監視中（Active）",
+      weight: "bold",
+      size: "lg",
+      color: "#ffffff"
+    }
+  ];
+
+  const footerContents = isSnooze ? [
+    {
+      type: "button",
+      style: "primary",
+      color: "#3498db",
+      action: {
+        type: "message",
+        label: "🔔 監視を再開（CLEAR）",
+        text: "CLEAR"
+      }
+    }
+  ] : [
+    {
+      type: "button",
+      style: "primary",
+      color: "#f39c12",
+      action: {
+        type: "message",
+        label: "🔕 翌朝までSNOOZE",
+        text: "SNOOZE"
+      }
+    },
+    {
+      type: "button",
+      style: "secondary",
+      action: {
+        type: "message",
+        label: "📈 TRENDS (24h)",
+        text: "TRENDS"
+      }
+    }
+  ];
+
   const flexJson = {
     type: "flex",
     altText: "現在の監視状態",
@@ -276,16 +349,8 @@ function buildStatusFlexMessage_() {
       header: {
         type: "box",
         layout: "vertical",
-        contents: [
-          {
-            type: "text",
-            text: "現在の監視状況",
-            weight: "bold",
-            size: "lg",
-            color: "#ffffff"
-          }
-        ],
-        backgroundColor: "#2c3e50"
+        contents: headerContents,
+        backgroundColor: isSnooze ? "#e67e22" : "#27ae60"
       },
       body: {
         type: "box",
@@ -308,6 +373,15 @@ function buildStatusFlexMessage_() {
               { type: "text", text: "湿度", size: "sm", color: "#555555", flex: 1 },
               { type: "text", text: humText, size: "sm", color: "#111111", align: "end", flex: 2 },
               { type: "text", text: humStatus, size: "sm", align: "end", flex: 2, color: states.hum && states.hum.alert ? "#e74c3c" : "#27ae60" }
+            ],
+            margin: "md"
+          },
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              { type: "text", text: "気圧", size: "sm", color: "#555555", flex: 1 },
+              { type: "text", text: pressText, size: "sm", color: "#111111", align: "end", flex: 4 }
             ],
             margin: "md"
           },
@@ -363,50 +437,98 @@ function buildStatusFlexMessage_() {
       },
       footer: {
         type: "box",
-        layout: "horizontal",
+        layout: isSnooze ? "vertical" : "horizontal",
         spacing: "sm",
-        contents: [
-          {
-            type: "button",
-            style: "primary",
-            color: "#f39c12",
-            action: {
-              type: "message",
-              label: "🔕 翌朝までスキップ",
-              text: "スキップ"
-            }
-          },
-          {
-            type: "button",
-            style: "secondary",
-            action: {
-              type: "message",
-              label: "🔔 クリア",
-              text: "クリア"
-            }
-          }
-        ]
+        contents: footerContents
       }
     }
   };
   return [flexJson];
 }
 
-function buildSkipFlexMessage_() {
+function buildSkipFlexMessage_(skipUntil) {
+  const properties = PropertiesService.getScriptProperties();
+  const untilVal = skipUntil || properties.getProperty(LINE_BOT_PROPERTIES.skipUntil);
+  const snoozeTimeStr = typeof formatSnoozeUntilJst_ === 'function' ? formatSnoozeUntilJst_(untilVal) : '';
+  const lastValid = typeof loadLastValidMeasurement_ === 'function' ? loadLastValidMeasurement_(properties) : null;
+
+  let tempText = '-';
+  let humText = '-';
+  if (lastValid) {
+    if (typeof lastValid.temp === 'number') tempText = `${lastValid.temp.toFixed(2)}℃`;
+    if (typeof lastValid.hum === 'number') humText = `${lastValid.hum.toFixed(2)}%`;
+  }
+
   const flexJson = {
     type: "flex",
     altText: "スキップ設定完了",
     contents: {
       type: "bubble",
-      body: {
+      header: {
         type: "box",
         layout: "vertical",
         contents: [
           {
             type: "text",
-            text: "監視アラート通知を翌朝8:00までスキップに設定しました。",
-            wrap: true,
-            size: "md"
+            text: "🔕 SNOOZE設定完了",
+            weight: "bold",
+            size: "lg",
+            color: "#ffffff"
+          }
+        ],
+        backgroundColor: "#e67e22"
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "text",
+                text: `停止期限: ${snoozeTimeStr || '翌朝 08:00'} まで停止`,
+                weight: "bold",
+                size: "md",
+                color: "#e67e22"
+              },
+              {
+                type: "text",
+                text: "翌朝08:00までアラート通知を一時停止します。",
+                size: "xs",
+                color: "#777777",
+                margin: "xs",
+                wrap: true
+              }
+            ],
+            backgroundColor: "#fdf6e2",
+            paddingAll: "md",
+            cornerRadius: "8px"
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  { type: "text", text: "現在の室温", size: "xs", color: "#888888", flex: 1 },
+                  { type: "text", text: tempText, size: "xs", color: "#111111", align: "end", flex: 1 }
+                ],
+                margin: "md"
+              },
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  { type: "text", text: "現在の湿度", size: "xs", color: "#888888", flex: 1 },
+                  { type: "text", text: humText, size: "xs", color: "#111111", align: "end", flex: 1 }
+                ],
+                margin: "sm"
+              }
+            ]
           }
         ]
       },
@@ -420,8 +542,8 @@ function buildSkipFlexMessage_() {
             color: "#3498db",
             action: {
               type: "message",
-              label: "🔔 監視を再開（クリア）",
-              text: "クリア"
+              label: "🔔 監視を再開（CLEAR）",
+              text: "CLEAR"
             }
           }
         ]
@@ -471,8 +593,8 @@ function buildAlertFlexMessage_(alertText) {
             color: "#f39c12",
             action: {
               type: "message",
-              label: "🔕 翌朝8時までスキップ",
-              text: "スキップ"
+              label: "🔕 翌朝8時までSNOOZE",
+              text: "SNOOZE"
             }
           }
         ]
