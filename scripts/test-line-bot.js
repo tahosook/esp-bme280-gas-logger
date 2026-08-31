@@ -24,11 +24,17 @@ function createGasContext(initialProps = {}, fetchedUrls = []) {
     releaseLock: () => true
   };
 
+  const logEntries = [];
   const sandbox = {
     console: {
       log: () => {},
       error: () => {},
       warn: () => {}
+    },
+    Logger: {
+      log: (msg) => {
+        logEntries.push(msg);
+      }
     },
     PropertiesService: {
       getScriptProperties: () => scriptProperties
@@ -80,18 +86,22 @@ function createGasContext(initialProps = {}, fetchedUrls = []) {
     Set: Set,
     propertiesStore,
     fetchedUrls,
-    errorLogs
+    errorLogs,
+    logEntries
   };
 
   const context = vm.createContext(sandbox);
 
-  const files = ['Config.gs', 'ErrorLog.gs', 'DailyAggregation.gs', 'Metrics.gs', 'Monitor.gs', 'Router.gs', 'LineBot.gs'];
+  const files = ['Config.gs', 'ErrorLog.gs', 'DailyAggregation.gs', 'Metrics.gs', 'Monitor.gs', 'Router.gs', 'LineBot.gs', 'DebugTest.gs'];
   for (const file of files) {
-    const code = fs.readFileSync(path.join(__dirname, '..', 'gas', file), 'utf8');
-    vm.runInContext(code, context);
+    const filePath = path.join(__dirname, '..', 'gas', file);
+    if (fs.existsSync(filePath)) {
+      const code = fs.readFileSync(filePath, 'utf8');
+      vm.runInContext(code, context);
+    }
   }
 
-  return { context, sandbox, propertiesStore, fetchedUrls, errorLogs };
+  return { context, sandbox, propertiesStore, fetchedUrls, errorLogs, logEntries };
 }
 
 function runTests() {
@@ -511,17 +521,205 @@ function runTests() {
       } else if (expectedAction === 'clear') {
         assert.ok(payload.messages[0].text.includes('リセットしました'), `Alias test for '${cmdText}' expected clear message`);
       } else if (expectedAction === 'trends') {
-        // Without spreadsheet mock it returns error text message
-        assert.ok(payload.messages[0].text.includes('スプレッドシートが設定されていません'), `Alias test for '${cmdText}' expected trends dispatch`);
+        // Without spreadsheet mock it returns fallback error text message
+        assert.ok(payload.messages[0].text.includes('グラフを生成するためのデータが不足しています'), `Alias test for '${cmdText}' expected trends fallback`);
       }
     };
 
     ['NOW', 'now', ' 状況 ', '状態', '現在', 'status', 'ＮＯＷ'].forEach(t => checkCommand(t, 'status'));
     ['SNOOZE', 'snooze', 'スキップ', 'おやすみ', 'skip', 'ＳＮＯＯＺＥ'].forEach(t => checkCommand(t, 'snooze'));
     ['CLEAR', 'clear', 'クリア', '解除', 'ＣＬＥＡＲ'].forEach(t => checkCommand(t, 'clear'));
-    ['TRENDS', 'trends', 'グラフ', '24h', 'ＴＲＥＮＤＳ'].forEach(t => checkCommand(t, 'trends'));
+    ['TRENDS', 'trends', 'グラフ', '24h', '推移', ' グラフ ', 'ＴＲＥＮＤＳ'].forEach(t => checkCommand(t, 'trends'));
 
-    console.log('  ✓ Test 13: Full command aliases (NOW/SNOOZE/CLEAR/TRENDS) passed');
+    console.log('  ✓ Test 13: Full command aliases (NOW/SNOOZE/CLEAR/TRENDS/推移) passed');
+  }
+
+  // 14. TRENDS コマンド正常系: Spreadsheetモックから288件取得し image メッセージ（URL < 2000文字）を返信する
+  {
+    const secret = 'test-secret';
+    const mockRows = [['Timestamp', 'temp', 'press', 'hum']];
+    const baseTime = new Date('2026-08-31T00:00:00+09:00').getTime();
+    for (let i = 0; i < 288; i++) {
+      mockRows.push([new Date(baseTime + i * 5 * 60 * 1000), 25.5, 1013.2, 60.5]);
+    }
+
+    const mockSheet = {
+      getName: () => 'DATA',
+      getLastRow: () => mockRows.length,
+      getRange: (startRow, startCol, numRows, numCols) => ({
+        getValues: () => mockRows.slice(startRow - 1, startRow - 1 + numRows)
+      })
+    };
+
+    const mockSpreadsheet = {
+      getSheetByName: (name) => (name === 'DATA' || name === '2026' ? mockSheet : null),
+      getActiveSheet: () => mockSheet
+    };
+
+    const { context, fetchedUrls, sandbox } = createGasContext({
+      LINE_CHANNEL_SECRET: secret,
+      LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+      SPREADSHEET_ID: 'test-sheet-id',
+      SHEET_NAME: 'DATA'
+    });
+
+    sandbox.SpreadsheetApp = {
+      openById: (id) => (id === 'test-sheet-id' ? mockSpreadsheet : null)
+    };
+
+    const body = JSON.stringify({
+      events: [
+        {
+          type: 'message',
+          replyToken: 'token-trends-1',
+          message: { type: 'text', text: 'グラフ' }
+        }
+      ]
+    });
+    const hmac = crypto.createHmac('sha256', secret).update(body).digest('base64');
+    const req = {
+      postData: { contents: body },
+      headers: { 'X-Line-Signature': hmac }
+    };
+
+    vm.runInContext('handleLineWebhook_(e)', vm.createContext(Object.assign({}, context, { e: req })));
+    assert.strictEqual(fetchedUrls.length, 1, 'Test 14 Failed: UrlFetchApp.fetch should be called');
+    const payload = JSON.parse(fetchedUrls[0].options.payload);
+    assert.strictEqual(payload.replyToken, 'token-trends-1');
+    assert.strictEqual(payload.messages[0].type, 'image', 'Test 14 Failed: expected image message type');
+    assert.ok(typeof payload.messages[0].originalContentUrl === 'string', 'Test 14 Failed: originalContentUrl should be string');
+    assert.ok(typeof payload.messages[0].previewImageUrl === 'string', 'Test 14 Failed: previewImageUrl should be string');
+    assert.ok(payload.messages[0].originalContentUrl.length < 2000, 'Test 14 Failed: originalContentUrl must be < 2000 chars');
+    assert.ok(payload.messages[0].originalContentUrl.includes('w=600&h=360&devicePixelRatio=2.0'), 'Test 14 Failed: responsive size mismatch');
+
+    console.log('  ✓ Test 14: TRENDS command image message reply (URL < 2000 chars) passed');
+  }
+
+  // 15. TRENDS コマンド異常系: データ不足時はフォールバックテキストを返信する
+  {
+    const secret = 'test-secret';
+    const mockSheet = {
+      getName: () => 'DATA',
+      getLastRow: () => 1, // only header
+      getRange: () => ({ getValues: () => [] })
+    };
+    const mockSpreadsheet = {
+      getSheetByName: () => mockSheet,
+      getActiveSheet: () => mockSheet
+    };
+
+    const { context, fetchedUrls, sandbox } = createGasContext({
+      LINE_CHANNEL_SECRET: secret,
+      LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+      SPREADSHEET_ID: 'test-sheet-id',
+      SHEET_NAME: 'DATA'
+    });
+
+    sandbox.SpreadsheetApp = {
+      openById: () => mockSpreadsheet
+    };
+
+    const body = JSON.stringify({
+      events: [
+        {
+          type: 'message',
+          replyToken: 'token-trends-fallback',
+          message: { type: 'text', text: '推移' }
+        }
+      ]
+    });
+    const hmac = crypto.createHmac('sha256', secret).update(body).digest('base64');
+    const req = {
+      postData: { contents: body },
+      headers: { 'X-Line-Signature': hmac }
+    };
+
+    vm.runInContext('handleLineWebhook_(e)', vm.createContext(Object.assign({}, context, { e: req })));
+    assert.strictEqual(fetchedUrls.length, 1);
+    const payload = JSON.parse(fetchedUrls[0].options.payload);
+    assert.strictEqual(payload.messages[0].type, 'text');
+    assert.ok(payload.messages[0].text.includes('グラフを生成するためのデータが不足しています'), 'Test 15 Failed: fallback text mismatch');
+
+    console.log('  ✓ Test 15: TRENDS command fallback text reply on insufficient data passed');
+  }
+
+  // 16. LINE Webhook 実行時エラーハンドリング: 予期せぬ例外発生時にエラー返信とログ記録が行われる
+  {
+    const secret = 'test-secret';
+    const { context, fetchedUrls, propertiesStore, sandbox } = createGasContext({
+      LINE_CHANNEL_SECRET: secret,
+      LINE_CHANNEL_ACCESS_TOKEN: 'test-token'
+    });
+
+    // Cause buildStatusFlexMessage_ to throw an error
+    sandbox.buildStatusFlexMessage_ = () => {
+      throw new Error('simulated_fatal_error');
+    };
+
+    const body = JSON.stringify({
+      events: [
+        {
+          type: 'message',
+          replyToken: 'token-err-1',
+          message: { type: 'text', text: 'NOW' }
+        }
+      ]
+    });
+    const hmac = crypto.createHmac('sha256', secret).update(body).digest('base64');
+    const req = {
+      postData: { contents: body },
+      headers: { 'X-Line-Signature': hmac }
+    };
+
+    vm.runInContext('handleLineWebhook_(e)', vm.createContext(Object.assign({}, context, { e: req })));
+    assert.strictEqual(fetchedUrls.length, 1, 'Test 16 Failed: reply should be sent');
+    const payload = JSON.parse(fetchedUrls[0].options.payload);
+    assert.strictEqual(payload.messages[0].type, 'text');
+    assert.ok(payload.messages[0].text.includes('⚠️ GAS処理エラー: simulated_fatal_error'), 'Test 16 Failed: error text mismatch');
+
+    const errorLogs = JSON.parse(propertiesStore.ERROR_LOG_ENTRIES || '[]');
+    assert.ok(errorLogs.length > 0, 'Test 16 Failed: error log should be recorded');
+    assert.strictEqual(errorLogs[0].errorCode, 'unhandled_error');
+
+    console.log('  ✓ Test 16: LINE Webhook error handling and fallback error reply passed');
+  }
+
+  // 17. DebugTest.gs: debugTest_buildQuickChartUrl と debugTest_handleLineWebhook_Trends の動作検証
+  {
+    const mockRows = [['Timestamp', 'temp', 'press', 'hum']];
+    for (let i = 0; i < 50; i++) {
+      mockRows.push([new Date(Date.now() - (50 - i) * 5 * 60 * 1000), 24.0, 1012.0, 55.0]);
+    }
+    const mockSheet = {
+      getName: () => '2026',
+      getLastRow: () => mockRows.length,
+      getRange: (startRow, startCol, numRows, numCols) => ({
+        getValues: () => mockRows.slice(startRow - 1, startRow - 1 + numRows)
+      })
+    };
+    const mockSpreadsheet = {
+      getSheetByName: (name) => (name === 'DATA' || name === '2026' ? mockSheet : null),
+      getActiveSheet: () => mockSheet
+    };
+
+    const { context, logEntries, sandbox } = createGasContext({
+      SPREADSHEET_ID: 'test-sheet-id',
+      SHEET_NAME: '2026'
+    });
+
+    sandbox.SpreadsheetApp = {
+      openById: () => mockSpreadsheet
+    };
+
+    vm.runInContext('debugTest_buildQuickChartUrl()', context);
+    assert.ok(logEntries.some(l => l.includes('QuickChart URL 生成成功')), 'Test 17 Failed: debugTest_buildQuickChartUrl should log success');
+    assert.ok(logEntries.some(l => l.includes('2,000 文字制限をクリア')), 'Test 17 Failed: debugTest_buildQuickChartUrl should log 2000 chars pass');
+
+    logEntries.length = 0;
+    vm.runInContext('debugTest_handleLineWebhook_Trends()', context);
+    assert.ok(logEntries.some(l => l.includes('正常な image メッセージが生成されました')), 'Test 17 Failed: debugTest_handleLineWebhook_Trends should log image message');
+
+    console.log('  ✓ Test 17: DebugTest.gs functions debugTest_buildQuickChartUrl and debugTest_handleLineWebhook_Trends passed');
   }
 
   console.log('\nAll LineBot tests passed successfully!');

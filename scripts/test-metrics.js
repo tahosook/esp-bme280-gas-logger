@@ -4,6 +4,8 @@ const {
   calculateAbsoluteHumidity_,
   classifyDiscomfortIndex_,
   buildQuickChartConfig_,
+  buildQuickChartUrlFromRecords_,
+  buildQuickChartUrl,
   calculateNextMorning8Am_,
   isSnoozeActive_,
   formatSnoozeUntilJst_
@@ -56,12 +58,102 @@ function runTests() {
     ];
     const configObj = buildQuickChartConfig_(records);
     assert.ok(configObj !== null, 'Test 4 Failed: Config object is null');
-    assert.strictEqual(configObj.width, 800, 'Test 4 Failed: incorrect width');
-    assert.strictEqual(configObj.height, 400, 'Test 4 Failed: incorrect height');
+    assert.strictEqual(configObj.width, 600, 'Test 4 Failed: incorrect width');
+    assert.strictEqual(configObj.height, 360, 'Test 4 Failed: incorrect height');
     assert.strictEqual(configObj.chart.type, 'line', 'Test 4 Failed: incorrect chart type');
     assert.strictEqual(configObj.chart.data.labels.length, 2, 'Test 4 Failed: incorrect labels length');
     assert.strictEqual(configObj.chart.data.datasets.length, 2, 'Test 4 Failed: incorrect datasets length');
     console.log('  ✓ Test 4: QuickChart Config builder passed');
+  }
+
+  // 4B. QuickChart URL from 288 records (24h) meets LINE 2000-character limit & design spec
+  {
+    const records288 = [];
+    const baseTime = new Date('2026-08-31T00:00:00+09:00').getTime();
+    for (let i = 0; i < 288; i++) {
+      const d = new Date(baseTime + i * 5 * 60 * 1000);
+      const temp = 26.12345 + Math.sin(i / 10) * 5;
+      const press = 1013.25;
+      const hum = 62.98765 + Math.cos(i / 10) * 15;
+      records288.push([d, temp, press, hum]);
+    }
+
+    const chartUrl = buildQuickChartUrlFromRecords_(records288);
+    assert.ok(typeof chartUrl === 'string', 'Test 4B Failed: chartUrl should be a string');
+    assert.ok(chartUrl.startsWith('https://quickchart.io/chart?'), 'Test 4B Failed: URL should start with QuickChart base URL');
+    assert.ok(chartUrl.includes('w=600'), 'Test 4B Failed: URL should specify width 600');
+    assert.ok(chartUrl.includes('h=360'), 'Test 4B Failed: URL should specify height 360');
+    assert.ok(chartUrl.includes('devicePixelRatio=2.0'), 'Test 4B Failed: URL should specify devicePixelRatio 2.0');
+
+    // Crucial check: LINE Messaging API limit is 2,000 characters
+    assert.ok(chartUrl.length < 2000, `Test 4B Failed: URL length ${chartUrl.length} exceeds 2000 characters!`);
+
+    // Verify decoded chart config contents
+    const encodedConfig = chartUrl.split('&c=')[1];
+    const decodedConfig = JSON.parse(decodeURIComponent(encodedConfig));
+    assert.strictEqual(decodedConfig.type, 'line');
+    assert.strictEqual(decodedConfig.data.datasets.length, 2);
+
+    // Dataset 0: Temp (Red #ef4444)
+    const tempDs = decodedConfig.data.datasets[0];
+    assert.strictEqual(tempDs.borderColor, '#ef4444');
+    assert.strictEqual(tempDs.yAxisID, 'yTemp');
+
+    // Dataset 1: Hum (Blue #3b82f6)
+    const humDs = decodedConfig.data.datasets[1];
+    assert.strictEqual(humDs.borderColor, '#3b82f6');
+    assert.strictEqual(humDs.yAxisID, 'yHum');
+
+    // Verify sampling count is approx 30-40 points
+    assert.ok(decodedConfig.data.labels.length >= 25 && decodedConfig.data.labels.length <= 40,
+      `Test 4B Failed: sampled points count ${decodedConfig.data.labels.length} not in expected 25-40 range`);
+
+    // Verify numerical rounding to 1 decimal place
+    tempDs.data.forEach(val => {
+      assert.strictEqual(typeof val, 'number');
+      assert.strictEqual(val, Number(val.toFixed(1)), 'Test 4B Failed: Temp value not rounded to 1 decimal place');
+    });
+    humDs.data.forEach(val => {
+      assert.strictEqual(typeof val, 'number');
+      assert.strictEqual(val, Number(val.toFixed(1)), 'Test 4B Failed: Hum value not rounded to 1 decimal place');
+    });
+
+    console.log(`  ✓ Test 4B: QuickChart 24h 288-record URL (${chartUrl.length} chars < 2000) & design passed`);
+  }
+
+  // 4C. buildQuickChartUrl with Sheet object mock & edge cases
+  {
+    // Empty records / null handling
+    assert.strictEqual(buildQuickChartUrl(null), null, 'Test 4C-1 Failed: null input should return null');
+    assert.strictEqual(buildQuickChartUrl([]), null, 'Test 4C-2 Failed: empty array should return null');
+    assert.strictEqual(buildQuickChartUrlFromRecords_(null), null, 'Test 4C-3 Failed: null records should return null');
+    assert.strictEqual(buildQuickChartUrlFromRecords_([]), null, 'Test 4C-4 Failed: empty records should return null');
+
+    // Mock sheet with lastRow < 2 (only header)
+    const mockEmptySheet = {
+      getLastRow: () => 1,
+      getRange: () => { throw new Error('should not be called'); }
+    };
+    assert.strictEqual(buildQuickChartUrl(mockEmptySheet), null, 'Test 4C-5 Failed: empty sheet should return null');
+
+    // Mock sheet with 10 rows of data
+    const mockSheetData = [
+      ['Timestamp', 'Temp', 'Press', 'Hum'],
+      [new Date('2026-08-31T12:00:00Z'), 28.5, 1012, 60.0],
+      [new Date('2026-08-31T12:05:00Z'), 28.6, 1012, 60.5],
+      [new Date('2026-08-31T12:10:00Z'), 28.7, 1012, 61.0]
+    ];
+    const mockSheet = {
+      getLastRow: () => mockSheetData.length,
+      getRange: (startRow, startCol, numRows, numCols) => ({
+        getValues: () => mockSheetData.slice(startRow - 1, startRow - 1 + numRows)
+      })
+    };
+    const sheetUrl = buildQuickChartUrl(mockSheet);
+    assert.ok(typeof sheetUrl === 'string', 'Test 4C-6 Failed: sheetUrl should be a string');
+    assert.ok(sheetUrl.length < 2000, 'Test 4C-6 Failed: sheetUrl should be under 2000 chars');
+
+    console.log('  ✓ Test 4C: buildQuickChartUrl Sheet mock & edge cases passed');
   }
 
   // 5. calculateNextMorning8Am_ calculation

@@ -64,58 +64,72 @@ function handleTextMessageEvent_(event) {
   const replyToken = event.replyToken;
   const normalized = normalizeText_(text);
 
-  const nowCommands = ['now', '状況', '状態', '現在', 'status'];
-  const snoozeCommands = ['snooze', 'スキップ', 'おやすみ', 'skip'];
-  const trendsCommands = ['trends', 'グラフ', '24h'];
-  const clearCommands = ['clear', 'クリア', '解除'];
+  try {
+    const nowCommands = ['now', '状況', '状態', '現在', 'status'];
+    const snoozeCommands = ['snooze', 'スキップ', 'おやすみ', 'skip'];
+    const trendsCommands = ['trends', 'グラフ', '24h', '推移'];
+    const clearCommands = ['clear', 'クリア', '解除'];
 
-  if (nowCommands.indexOf(normalized) !== -1) {
-    const messages = buildStatusFlexMessage_();
-    replyMessageObjects_(replyToken, messages);
-  } else if (trendsCommands.indexOf(normalized) !== -1) {
-    const messages = buildGraphMessage_();
-    replyMessageObjects_(replyToken, messages);
-  } else if (snoozeCommands.indexOf(normalized) !== -1) {
-    const lock = LockService.getScriptLock();
-    const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
-    const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
-    lock.waitLock(timeoutMs);
-    try {
-      const targetHour = typeof config.SKIP_UNTIL_HOUR === 'number' ? config.SKIP_UNTIL_HOUR : 8;
-      const skipUntil = typeof calculateNextMorning8Am_ === 'function'
-        ? calculateNextMorning8Am_(Date.now(), targetHour)
-        : Date.now() + 8 * 3600 * 1000;
-      const properties = PropertiesService.getScriptProperties();
-      properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(skipUntil));
-      const messages = buildSkipFlexMessage_(skipUntil);
+    if (nowCommands.indexOf(normalized) !== -1) {
+      const messages = buildStatusFlexMessage_();
       replyMessageObjects_(replyToken, messages);
-    } finally {
-      lock.releaseLock();
-    }
-  } else if (clearCommands.indexOf(normalized) !== -1) {
-    const lock = LockService.getScriptLock();
-    const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
-    const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
-    lock.waitLock(timeoutMs);
-    try {
-      if (typeof resetMonitorStates_ === 'function') {
-        resetMonitorStates_();
+    } else if (trendsCommands.indexOf(normalized) !== -1) {
+      const messages = buildGraphMessage_();
+      replyMessageObjects_(replyToken, messages);
+    } else if (snoozeCommands.indexOf(normalized) !== -1) {
+      const lock = LockService.getScriptLock();
+      const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+      const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
+      lock.waitLock(timeoutMs);
+      try {
+        const targetHour = typeof config.SKIP_UNTIL_HOUR === 'number' ? config.SKIP_UNTIL_HOUR : 8;
+        const skipUntil = typeof calculateNextMorning8Am_ === 'function'
+          ? calculateNextMorning8Am_(Date.now(), targetHour)
+          : Date.now() + 8 * 3600 * 1000;
+        const properties = PropertiesService.getScriptProperties();
+        properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(skipUntil));
+        const messages = buildSkipFlexMessage_(skipUntil);
+        replyMessageObjects_(replyToken, messages);
+      } finally {
+        lock.releaseLock();
       }
-      const properties = PropertiesService.getScriptProperties();
-      properties.deleteProperty(LINE_BOT_PROPERTIES.skipUntil);
-      replyMessage_(replyToken, '🔔 監視状態およびスヌーズ設定をリセットしました（監視再開）。');
-    } finally {
-      lock.releaseLock();
+    } else if (clearCommands.indexOf(normalized) !== -1) {
+      const lock = LockService.getScriptLock();
+      const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+      const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
+      lock.waitLock(timeoutMs);
+      try {
+        if (typeof resetMonitorStates_ === 'function') {
+          resetMonitorStates_();
+        }
+        const properties = PropertiesService.getScriptProperties();
+        properties.deleteProperty(LINE_BOT_PROPERTIES.skipUntil);
+        replyMessage_(replyToken, '🔔 監視状態およびスヌーズ設定をリセットしました（監視再開）。');
+      } finally {
+        lock.releaseLock();
+      }
+    } else {
+      const helpReply = [
+        '利用可能なコマンド:',
+        '・NOW (状況): 現在の室温・湿度・気圧・監視状態を表示',
+        '・SNOOZE (おやすみ/スキップ): アラート通知を翌朝8:00まで停止',
+        '・TRENDS (グラフ/24h): 直近24時間の温湿度推移グラフ画像を表示',
+        '・CLEAR (解除/クリア): 監視状態およびスヌーズ設定をリセット'
+      ].join('\n');
+      replyMessage_(replyToken, helpReply);
     }
-  } else {
-    const helpReply = [
-      '利用可能なコマンド:',
-      '・NOW (状況): 現在の室温・湿度・気圧・監視状態を表示',
-      '・SNOOZE (おやすみ/スキップ): アラート通知を翌朝8:00まで停止',
-      '・TRENDS (グラフ/24h): 直近24時間の温湿度推移グラフ画像を表示',
-      '・CLEAR (解除/クリア): 監視状態およびスヌーズ設定をリセット'
-    ].join('\n');
-    replyMessage_(replyToken, helpReply);
+  } catch (err) {
+    console.error('LINE Webhook Error:', err && err.toString ? err.toString() : String(err), err && err.stack ? err.stack : '');
+    if (typeof logError_ === 'function') {
+      logError_('linebot', 'webhook', 'unhandled_error', err);
+    }
+    if (replyToken) {
+      try {
+        replyMessage_(replyToken, '⚠️ GAS処理エラー: ' + (err && err.message ? err.message : String(err)));
+      } catch (replyErr) {
+        console.error('Failed to reply error message to LINE:', replyErr);
+      }
+    }
   }
 }
 
@@ -136,49 +150,44 @@ function buildGraphMessage_() {
   const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
   const spreadsheetId = properties.getProperty(spreadsheetIdKey);
   if (!spreadsheetId) {
-    return [{ type: 'text', text: 'スプレッドシートが設定されていません。' }];
+    return [{ type: 'text', text: 'グラフを生成するためのデータが不足しています。' }];
+  }
+
+  let spreadsheet;
+  try {
+    spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  } catch (err) {
+    console.error('Failed to open spreadsheet:', err);
+    if (typeof logError_ === 'function') {
+      logError_('linebot', 'graph', 'spreadsheet_open_failed', err);
+    }
+    return [{ type: 'text', text: 'グラフを生成するためのデータが不足しています。' }];
   }
 
   const sheetName = properties.getProperty(sheetNameKey) || 'DATA';
-  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  const sheet = spreadsheet.getSheetByName(sheetName);
+  let sheet = spreadsheet.getSheetByName(sheetName);
   if (!sheet) {
-    return [{ type: 'text', text: 'データシートが見つかりません。' }];
+    // Fallback to year-based sheet name e.g. "2026" or active sheet
+    sheet = spreadsheet.getSheetByName('2026') || spreadsheet.getActiveSheet();
+  }
+  if (!sheet) {
+    return [{ type: 'text', text: 'グラフを生成するためのデータが不足しています。' }];
   }
 
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    return [{ type: 'text', text: 'データがありません。' }];
+  let chartUrl = null;
+  if (typeof buildQuickChartUrl === 'function') {
+    try {
+      chartUrl = buildQuickChartUrl(sheet);
+    } catch (err) {
+      console.error('buildQuickChartUrl error:', err);
+      if (typeof logError_ === 'function') {
+        logError_('linebot', 'quickchart', 'build_url_failed', err);
+      }
+    }
   }
 
-  // 24h * 12 (5m intervals) = 288
-  const MAX_ROWS = 288;
-  const startRow = Math.max(1, lastRow - MAX_ROWS + 1);
-  const numRows = lastRow - startRow + 1;
-  const values = sheet.getRange(startRow, 1, numRows, 4).getValues();
-
-  // header might be included if startRow is 1, so filter out non-dates
-  const records = values.filter(row => {
-      const ts = row[0];
-      return Object.prototype.toString.call(ts) === '[object Date]' || (typeof ts === 'string' && !isNaN(new Date(ts).getTime()));
-  });
-
-  if (records.length === 0) {
-      return [{ type: 'text', text: 'グラフに描画できるデータがありません。' }];
-  }
-
-  let chartConfigObj = null;
-  if (typeof buildQuickChartConfig_ === 'function') {
-      chartConfigObj = buildQuickChartConfig_(records);
-  }
-
-  if (!chartConfigObj) {
-       return [{ type: 'text', text: 'グラフ設定の生成に失敗しました。' }];
-  }
-
-  const chartUrl = fetchQuickChartShortUrl_(chartConfigObj);
   if (!chartUrl) {
-       return [{ type: 'text', text: 'グラフ画像URLの取得に失敗しました。' }];
+    return [{ type: 'text', text: 'グラフを生成するためのデータが不足しています。' }];
   }
 
   return [
@@ -188,34 +197,6 @@ function buildGraphMessage_() {
       previewImageUrl: chartUrl
     }
   ];
-}
-
-function fetchQuickChartShortUrl_(chartConfigObj) {
-  const url = 'https://quickchart.io/chart/create';
-  const options = {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(chartConfigObj),
-    muteHttpExceptions: true
-  };
-
-  try {
-    const response = UrlFetchApp.fetch(url, options);
-    const code = response.getResponseCode ? response.getResponseCode() : 200;
-    if (code === 200) {
-      const responseText = response.getContentText ? response.getContentText() : '{}';
-      const result = JSON.parse(responseText);
-      if (result && result.success && result.url) {
-        return result.url;
-      }
-    }
-    return null;
-  } catch (error) {
-    if (typeof logError_ === 'function') {
-      logError_('linebot', 'quickchart', 'fetch_failed', error);
-    }
-    return null;
-  }
 }
 
 function buildStatusFlexMessage_() {
