@@ -4,7 +4,8 @@ const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert');
 
-const source = fs.readFileSync(`${__dirname}/../gas/Monitor.gs`, 'utf8');
+const sourceMetrics = fs.readFileSync(`${__dirname}/../gas/Metrics.gs`, 'utf8');
+const sourceMonitor = fs.readFileSync(`${__dirname}/../gas/Monitor.gs`, 'utf8');
 
 const propertiesStore = new Map();
 
@@ -36,7 +37,8 @@ const context = {
 };
 
 vm.createContext(context);
-vm.runInContext(source, context, { filename: 'gas/Monitor.gs' });
+vm.runInContext(sourceMetrics, context, { filename: 'gas/Metrics.gs' });
+vm.runInContext(sourceMonitor, context, { filename: 'gas/Monitor.gs' });
 
 function fixedDate(iso) {
   const base = new Date(iso);

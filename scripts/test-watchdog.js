@@ -8,6 +8,7 @@ const source = [
   fs.readFileSync(`${__dirname}/../gas/Router.gs`, 'utf8'),
   fs.readFileSync(`${__dirname}/../gas/Config.gs`, 'utf8'),
   fs.readFileSync(`${__dirname}/../gas/ErrorLog.gs`, 'utf8'),
+  fs.readFileSync(`${__dirname}/../gas/Metrics.gs`, 'utf8'),
   fs.readFileSync(`${__dirname}/../gas/Monitor.gs`, 'utf8'),
   fs.readFileSync(`${__dirname}/../gas/Ingest.gs`, 'utf8')
 ].join('\n');

@@ -5,6 +5,7 @@ const vm = require('vm');
 const assert = require('assert');
 
 const source = [
+  fs.readFileSync(`${__dirname}/../gas/Metrics.gs`, 'utf8'),
   fs.readFileSync(`${__dirname}/../gas/Config.gs`, 'utf8'),
   fs.readFileSync(`${__dirname}/../gas/Monitor.gs`, 'utf8')
 ].join('\n');
