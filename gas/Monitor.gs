@@ -76,30 +76,16 @@ function detectAnomaly_(current, lastValid, limits) {
   return false;
 }
 
-function buildMonitorNotification_(states, overallAlert, previousAlert, conditions, anomaly) {
-  if (!overallAlert) {
+function buildMonitorNotification_(conditions) {
+  if (!conditions) {
     return null;
   }
 
-  if (previousAlert) {
-    return null;
-  }
-
-  const lines = [
-    '室温監視：超過しました。',
-    `気温: ${conditions.temp.toFixed(2)}℃`,
-    `湿度: ${conditions.hum.toFixed(2)}%`,
-    `不快指数: ${conditions.discomfortIndex.toFixed(2)}`
-  ];
-
-  if (anomaly) {
-    lines.push('※ 急変と判定されたため参考値です。');
-  }
-
-  lines.push('（公式WBGTではなく自宅用目安です）');
+  const tempStr = typeof conditions.temp === 'number' ? conditions.temp.toFixed(1) : '-';
+  const humStr = typeof conditions.hum === 'number' ? Math.round(conditions.hum) : '-';
 
   return {
-    text: lines.join('\n'),
+    text: `現在: ${tempStr} ℃ / ${humStr} %`,
     payload: conditions
   };
 }
@@ -114,6 +100,7 @@ function updateMonitorState_(measurement) {
   const monitorConfig = getMonitorConfig_();
   const thresholds = monitorConfig.thresholds;
   const smoothing = monitorConfig.smoothing;
+  const mergedConfig = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
 
   const currentStates = loadMonitorStates_(properties);
   const lastValid = loadLastValidMeasurement_(properties);
@@ -129,18 +116,82 @@ function updateMonitorState_(measurement) {
     discomfortIndex: evaluateConditionState_(currentStates.discomfortIndex, conditions.discomfortIndex, thresholds.discomfortIndex, smoothing)
   };
 
-  const overallAlert = states.temp.alert || states.hum.alert || states.discomfortIndex.alert;
-  const previousAlert = currentStates.temp.alert || currentStates.hum.alert || currentStates.discomfortIndex.alert;
+  const isOverThreshold = states.temp.alert || states.hum.alert || states.discomfortIndex.alert;
 
-  const notification = buildMonitorNotification_(states, overallAlert, previousAlert, conditions, anomaly);
+  const snoozeUntil = loadAlertSnoozeUntil_(properties);
+  const lastSentTime = loadAlertLastSentTime_(properties);
+  const dailyAlertInfo = loadDailyAlertInfo_(properties);
+
+  const decision = typeof evaluateAlertDecision_ === 'function'
+    ? evaluateAlertDecision_({
+        temp: conditions.temp,
+        hum: conditions.hum,
+        press: conditions.press,
+        isOverThreshold: isOverThreshold,
+        nowMs: Date.now(),
+        snoozeUntil: snoozeUntil,
+        lastSentTime: lastSentTime,
+        dailyAlertInfo: dailyAlertInfo,
+        options: {
+          cooldownMs: getConfigNumber_(mergedConfig, ['ALERT_COOLDOWN_MIN'], 60) * 60 * 1000,
+          maxDailyCount: getConfigNumber_(mergedConfig, ['ALERT_MAX_DAILY_COUNT'], 5),
+          minTemp: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MIN_TEMP'], -10.0),
+          maxTemp: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MAX_TEMP'], 50.0),
+          minHum: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MIN_HUM'], 0.0),
+          maxHum: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MAX_HUM'], 100.0)
+        }
+      })
+    : { shouldAlert: isOverThreshold && !(currentStates.temp.alert || currentStates.hum.alert || currentStates.discomfortIndex.alert) };
+
+  let notification = null;
+  if (decision.shouldAlert) {
+    notification = buildMonitorNotification_(conditions);
+    const nowMs = Date.now();
+    saveAlertLastSentTime_(properties, nowMs);
+    const todayJst = decision.todayJst || (typeof getJstDateString_ === 'function' ? getJstDateString_(nowMs) : new Date().toISOString().slice(0, 10));
+    const newCount = (dailyAlertInfo && dailyAlertInfo.date === todayJst) ? (dailyAlertInfo.count + 1) : 1;
+    saveDailyAlertInfo_(properties, { date: todayJst, count: newCount });
+  }
 
   saveMonitorStates_(properties, states);
 
   return {
     states,
     notification,
-    anomaly
+    anomaly,
+    decision
   };
+}
+
+function loadDailyAlertInfo_(properties) {
+  const propKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.alertCountToday) || 'ALERT_COUNT_TODAY';
+  const raw = properties.getProperty(propKey);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveDailyAlertInfo_(properties, info) {
+  const propKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.alertCountToday) || 'ALERT_COUNT_TODAY';
+  properties.setProperty(propKey, JSON.stringify(info));
+}
+
+function loadAlertLastSentTime_(properties) {
+  const propKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.alertLastSentTime) || 'ALERT_LAST_SENT_TIME';
+  return properties.getProperty(propKey);
+}
+
+function saveAlertLastSentTime_(properties, timestampMs) {
+  const propKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.alertLastSentTime) || 'ALERT_LAST_SENT_TIME';
+  properties.setProperty(propKey, String(timestampMs));
+}
+
+function loadAlertSnoozeUntil_(properties) {
+  const primaryKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.alertSnoozeUntil) || 'ALERT_SNOOZE_UNTIL';
+  return properties.getProperty(primaryKey) || properties.getProperty('MONITOR_SKIP_UNTIL');
 }
 
 function getAnomalyLimits_() {

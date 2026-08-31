@@ -8,7 +8,10 @@ const {
   buildQuickChartUrl,
   calculateNextMorning8Am_,
   isSnoozeActive_,
-  formatSnoozeUntilJst_
+  formatSnoozeUntilJst_,
+  calculatePressureTrend_,
+  getJstDateString_,
+  evaluateAlertDecision_
 } = require('../gas/Metrics.gs');
 
 function runTests() {
@@ -193,6 +196,141 @@ function runTests() {
     assert.strictEqual(formatted, '08/31 08:00', 'Test 7 Failed: formatted snooze timestamp mismatch');
     assert.strictEqual(formatSnoozeUntilJst_(null), '', 'Test 7B Failed: null should return empty string');
     console.log('  ✓ Test 7: formatSnoozeUntilJst_ passed');
+  }
+
+  // 8. calculatePressureTrend_ checks
+  {
+    assert.strictEqual(calculatePressureTrend_(null, 1013.2), '安定', 'Test 8A Failed: null should return 安定');
+    assert.strictEqual(calculatePressureTrend_(1008.4, 1010.5), '↘ -2.1/3h', 'Test 8B Failed: drop trend');
+    assert.strictEqual(calculatePressureTrend_(1015.0, 1013.5), '↗ +1.5/3h', 'Test 8C Failed: rise trend');
+    assert.strictEqual(calculatePressureTrend_(1013.2, 1013.2), '安定', 'Test 8D Failed: flat trend');
+    assert.strictEqual(calculatePressureTrend_(1013.6, 1013.2), '→ +0.4/3h', 'Test 8E Failed: small rise trend');
+    assert.strictEqual(calculatePressureTrend_(1012.7, 1013.2), '→ -0.5/3h', 'Test 8F Failed: small drop trend');
+    console.log('  ✓ Test 8: calculatePressureTrend_ passed');
+  }
+
+  // 9. evaluateAlertDecision_ 5-step priority flow checks
+  {
+    const now = new Date('2026-08-31T14:00:00+09:00').getTime();
+    const todayJst = '2026-08-31';
+
+    // 1. Normal state -> no alert
+    const r1 = evaluateAlertDecision_({
+      temp: 25.0,
+      hum: 50.0,
+      press: 1013.2,
+      isOverThreshold: false,
+      nowMs: now,
+      snoozeUntil: null,
+      lastSentTime: null,
+      dailyAlertInfo: null
+    });
+    assert.strictEqual(r1.shouldAlert, false);
+    assert.strictEqual(r1.reason, 'normal');
+
+    // 2. Sensor anomaly (temp > 50) -> skipped
+    const r2A = evaluateAlertDecision_({
+      temp: 60.0,
+      hum: 50.0,
+      isOverThreshold: true,
+      nowMs: now
+    });
+    assert.strictEqual(r2A.shouldAlert, false);
+    assert.strictEqual(r2A.reason, 'sensor_anomaly');
+
+    // Sensor anomaly (temp < -10) -> skipped
+    const r2B = evaluateAlertDecision_({
+      temp: -15.0,
+      hum: 50.0,
+      isOverThreshold: true,
+      nowMs: now
+    });
+    assert.strictEqual(r2B.shouldAlert, false);
+    assert.strictEqual(r2B.reason, 'sensor_anomaly');
+
+    // Sensor anomaly (hum > 100) -> skipped
+    const r2C = evaluateAlertDecision_({
+      temp: 25.0,
+      hum: 105.0,
+      isOverThreshold: true,
+      nowMs: now
+    });
+    assert.strictEqual(r2C.shouldAlert, false);
+    assert.strictEqual(r2C.reason, 'sensor_anomaly');
+
+    // 3. SNOOZE active -> skipped
+    const r3 = evaluateAlertDecision_({
+      temp: 31.0,
+      hum: 75.0,
+      isOverThreshold: true,
+      nowMs: now,
+      snoozeUntil: now + 3600000
+    });
+    assert.strictEqual(r3.shouldAlert, false);
+    assert.strictEqual(r3.reason, 'snooze_active');
+
+    // 4. Warning threshold exceeded (first time) -> should alert
+    const r4 = evaluateAlertDecision_({
+      temp: 31.0,
+      hum: 75.0,
+      isOverThreshold: true,
+      nowMs: now,
+      snoozeUntil: null,
+      lastSentTime: null,
+      dailyAlertInfo: null
+    });
+    assert.strictEqual(r4.shouldAlert, true);
+    assert.strictEqual(r4.reason, 'alert_triggered');
+
+    // 5. 1-hour cooldown active (< 60 min) -> skipped
+    const r5A = evaluateAlertDecision_({
+      temp: 31.0,
+      hum: 75.0,
+      isOverThreshold: true,
+      nowMs: now,
+      lastSentTime: now - 30 * 60 * 1000,
+      dailyAlertInfo: { date: todayJst, count: 1 }
+    });
+    assert.strictEqual(r5A.shouldAlert, false);
+    assert.strictEqual(r5A.reason, 'cooldown_active');
+
+    // Cooldown expired (> 60 min) -> should alert
+    const r5B = evaluateAlertDecision_({
+      temp: 31.0,
+      hum: 75.0,
+      isOverThreshold: true,
+      nowMs: now,
+      lastSentTime: now - 65 * 60 * 1000,
+      dailyAlertInfo: { date: todayJst, count: 1 }
+    });
+    assert.strictEqual(r5B.shouldAlert, true);
+    assert.strictEqual(r5B.reason, 'alert_triggered');
+
+    // 6. Daily limit reached (count 5 today) -> skipped
+    const r6A = evaluateAlertDecision_({
+      temp: 31.0,
+      hum: 75.0,
+      isOverThreshold: true,
+      nowMs: now,
+      lastSentTime: now - 70 * 60 * 1000,
+      dailyAlertInfo: { date: todayJst, count: 5 }
+    });
+    assert.strictEqual(r6A.shouldAlert, false);
+    assert.strictEqual(r6A.reason, 'daily_limit_reached');
+
+    // Daily count 5 on yesterday's date -> should alert (reset on new day)
+    const r6B = evaluateAlertDecision_({
+      temp: 31.0,
+      hum: 75.0,
+      isOverThreshold: true,
+      nowMs: now,
+      lastSentTime: now - 70 * 60 * 1000,
+      dailyAlertInfo: { date: '2026-08-30', count: 5 }
+    });
+    assert.strictEqual(r6B.shouldAlert, true);
+    assert.strictEqual(r6B.reason, 'alert_triggered');
+
+    console.log('  ✓ Test 9: evaluateAlertDecision_ passed');
   }
 
   console.log('\nAll Metrics tests passed successfully!');

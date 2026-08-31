@@ -1,6 +1,12 @@
 const LINE_BOT_PROPERTIES = {
-  skipUntil: 'MONITOR_SKIP_UNTIL'
+  skipUntil: 'ALERT_SNOOZE_UNTIL',
+  legacySkipUntil: 'MONITOR_SKIP_UNTIL'
 };
+
+function getSnoozeUntilProperty_(properties) {
+  return properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) ||
+    properties.getProperty(LINE_BOT_PROPERTIES.legacySkipUntil);
+}
 
 function handleLineWebhook_(e) {
   let body;
@@ -88,6 +94,7 @@ function handleTextMessageEvent_(event) {
           : Date.now() + 8 * 3600 * 1000;
         const properties = PropertiesService.getScriptProperties();
         properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(skipUntil));
+        properties.setProperty(LINE_BOT_PROPERTIES.legacySkipUntil, String(skipUntil));
         const messages = buildSkipFlexMessage_(skipUntil);
         replyMessageObjects_(replyToken, messages);
       } finally {
@@ -104,6 +111,7 @@ function handleTextMessageEvent_(event) {
         }
         const properties = PropertiesService.getScriptProperties();
         properties.deleteProperty(LINE_BOT_PROPERTIES.skipUntil);
+        properties.deleteProperty(LINE_BOT_PROPERTIES.legacySkipUntil);
         replyMessage_(replyToken, '🔔 監視状態およびスヌーズ設定をリセットしました（監視再開）。');
       } finally {
         lock.releaseLock();
@@ -201,7 +209,9 @@ function buildGraphMessage_() {
 
 function buildStatusFlexMessage_() {
   const properties = PropertiesService.getScriptProperties();
-  const skipUntil = properties.getProperty(LINE_BOT_PROPERTIES.skipUntil);
+  const skipUntil = typeof getSnoozeUntilProperty_ === 'function'
+    ? getSnoozeUntilProperty_(properties)
+    : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
   const isSnooze = typeof isSnoozeActive_ === 'function' ? isSnoozeActive_(skipUntil, Date.now()) : false;
   const snoozeTimeStr = typeof formatSnoozeUntilJst_ === 'function' ? formatSnoozeUntilJst_(skipUntil) : '';
 
@@ -216,53 +226,97 @@ function buildStatusFlexMessage_() {
   let humText = '-';
   let pressText = '-';
   let diText = '-';
-  let ahText = '-';
   let timeStr = 'データなし';
-  let diColor = '#cccccc';
-  let diLabel = '-';
+  let diColor = '#27ae60';
+  let diLabel = '快適';
+
+  let currentPress = null;
+  let pastPress = null;
 
   if (lastValid) {
     const tempVal = typeof lastValid.temp === 'number' ? lastValid.temp : null;
     const humVal = typeof lastValid.hum === 'number' ? lastValid.hum : null;
     const pressVal = typeof lastValid.press === 'number' ? lastValid.press : null;
+    currentPress = pressVal;
     let diVal = typeof lastValid.discomfortIndex === 'number' ? lastValid.discomfortIndex : null;
 
-    if (tempVal !== null) tempText = `${tempVal.toFixed(2)}℃`;
-    if (humVal !== null) humText = `${humVal.toFixed(2)}%`;
-    if (pressVal !== null) pressText = `${pressVal.toFixed(2)} hPa`;
+    if (tempVal !== null) {
+      const isTempAlert = states.temp && states.temp.alert;
+      tempText = isTempAlert ? `${tempVal.toFixed(1)} ℃ (⚠️ 超過)` : `${tempVal.toFixed(1)} ℃ (正常)`;
+    }
+
+    if (humVal !== null) {
+      const isHumAlert = states.hum && states.hum.alert;
+      humText = isHumAlert ? `${Math.round(humVal)} % (⚠️ 多湿)` : `${Math.round(humVal)} % (正常)`;
+    }
 
     if (tempVal !== null && humVal !== null) {
       if (typeof calculateDiscomfortIndex_ === 'function') {
-         diVal = calculateDiscomfortIndex_(tempVal, humVal);
-      }
-      if (typeof calculateAbsoluteHumidity_ === 'function') {
-         ahText = `${calculateAbsoluteHumidity_(tempVal, humVal).toFixed(2)} g/m³`;
+        diVal = calculateDiscomfortIndex_(tempVal, humVal);
       }
     }
 
     if (diVal !== null) {
-        diText = diVal.toFixed(2);
-        if (typeof classifyDiscomfortIndex_ === 'function') {
-            const diInfo = classifyDiscomfortIndex_(diVal);
-            diColor = diInfo.color;
-            diLabel = diInfo.label;
-        }
+      if (typeof classifyDiscomfortIndex_ === 'function') {
+        const diInfo = classifyDiscomfortIndex_(diVal);
+        diColor = diInfo.color;
+        diLabel = diInfo.label;
+      }
+      diText = `${diVal.toFixed(1)}（${diLabel}）`;
     }
 
     if (lastValid.timestamp) {
+      let formattedDate = '';
       if (typeof formatDateTokyo_ === 'function') {
-        timeStr = formatDateTokyo_(lastValid.timestamp, 'yyyy-MM-dd HH:mm:ss');
+        formattedDate = formatDateTokyo_(lastValid.timestamp, 'MM/dd HH:mm');
       } else if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
         const d = new Date(lastValid.timestamp);
-        timeStr = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+        formattedDate = Utilities.formatDate(d, 'Asia/Tokyo', 'MM/dd HH:mm');
       } else {
-        timeStr = String(lastValid.timestamp);
+        const d = new Date(lastValid.timestamp);
+        const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+        const mm = String(jst.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(jst.getUTCDate()).padStart(2, '0');
+        const hh = String(jst.getUTCHours()).padStart(2, '0');
+        const min = String(jst.getUTCMinutes()).padStart(2, '0');
+        formattedDate = `${mm}/${dd} ${hh}:${min}`;
       }
+      timeStr = `${formattedDate} 測定`;
     }
   }
 
-  const tempStatus = states.temp && states.temp.alert ? '🚨 超過' : '✅ 正常';
-  const humStatus = states.hum && states.hum.alert ? '🚨 超過' : '✅ 正常';
+  // 直近3時間の気圧データ取得
+  try {
+    const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+    const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
+    const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+    if (spreadsheetId) {
+      const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+      const sheetName = properties.getProperty(sheetNameKey) || 'DATA';
+      let sheet = spreadsheet.getSheetByName(sheetName);
+      if (!sheet) {
+        sheet = spreadsheet.getSheetByName('2026') || spreadsheet.getActiveSheet();
+      }
+      if (sheet && sheet.getLastRow() >= 2) {
+        const lastRow = sheet.getLastRow();
+        const targetRow = Math.max(2, lastRow - 36);
+        const rowValues = sheet.getRange(targetRow, 1, 1, 4).getValues()[0];
+        const p = Number(rowValues[2]);
+        if (!isNaN(p) && isFinite(p)) {
+          pastPress = p;
+        }
+      }
+    }
+  } catch (e) {
+    // ignore sheet lookup error
+  }
+
+  if (currentPress !== null) {
+    const trendStr = (typeof calculatePressureTrend_ === 'function' && pastPress !== null)
+      ? calculatePressureTrend_(currentPress, pastPress)
+      : '安定';
+    pressText = `${currentPress.toFixed(1)} hPa (${trendStr})`;
+  }
 
   const headerContents = isSnooze ? [
     {
@@ -316,11 +370,14 @@ function buildStatusFlexMessage_() {
       style: "secondary",
       action: {
         type: "message",
-        label: "📈 TRENDS (24h)",
+        label: "📈 TRENDS",
         text: "TRENDS"
       }
     }
   ];
+
+  const isTempAlert = states.temp && states.temp.alert;
+  const isHumAlert = states.hum && states.hum.alert;
 
   const flexJson = {
     type: "flex",
@@ -341,9 +398,8 @@ function buildStatusFlexMessage_() {
             type: "box",
             layout: "horizontal",
             contents: [
-              { type: "text", text: "気温", size: "sm", color: "#555555", flex: 1 },
-              { type: "text", text: tempText, size: "sm", color: "#111111", align: "end", flex: 2 },
-              { type: "text", text: tempStatus, size: "sm", align: "end", flex: 2, color: states.temp && states.temp.alert ? "#e74c3c" : "#27ae60" }
+              { type: "text", text: "室温", size: "sm", color: "#555555", flex: 1 },
+              { type: "text", text: tempText, size: "sm", color: isTempAlert ? "#e74c3c" : "#111111", align: "end", flex: 3 }
             ],
             margin: "md"
           },
@@ -352,8 +408,7 @@ function buildStatusFlexMessage_() {
             layout: "horizontal",
             contents: [
               { type: "text", text: "湿度", size: "sm", color: "#555555", flex: 1 },
-              { type: "text", text: humText, size: "sm", color: "#111111", align: "end", flex: 2 },
-              { type: "text", text: humStatus, size: "sm", align: "end", flex: 2, color: states.hum && states.hum.alert ? "#e74c3c" : "#27ae60" }
+              { type: "text", text: humText, size: "sm", color: isHumAlert ? "#e74c3c" : "#111111", align: "end", flex: 3 }
             ],
             margin: "md"
           },
@@ -362,7 +417,7 @@ function buildStatusFlexMessage_() {
             layout: "horizontal",
             contents: [
               { type: "text", text: "気圧", size: "sm", color: "#555555", flex: 1 },
-              { type: "text", text: pressText, size: "sm", color: "#111111", align: "end", flex: 4 }
+              { type: "text", text: pressText, size: "sm", color: "#111111", align: "end", flex: 3 }
             ],
             margin: "md"
           },
@@ -374,34 +429,13 @@ function buildStatusFlexMessage_() {
             type: "box",
             layout: "horizontal",
             contents: [
-              { type: "text", text: "不快指数", size: "sm", color: "#555555", flex: 2 },
-              { type: "text", text: diText, size: "sm", color: "#111111", align: "end", flex: 2 },
-              {
-                type: "box",
-                layout: "vertical",
-                contents: [
-                  { type: "text", text: diLabel, size: "xs", color: "#ffffff", align: "center" }
-                ],
-                backgroundColor: diColor,
-                cornerRadius: "20px",
-                paddingAll: "2px",
-                flex: 3,
-                margin: "sm"
-              }
+              { type: "text", text: "快適度", size: "sm", color: "#555555", flex: 1 },
+              { type: "text", text: diText, size: "sm", color: diColor, align: "end", flex: 3 }
             ],
             margin: "lg",
             alignItems: "center"
           },
           {
-            type: "box",
-            layout: "horizontal",
-            contents: [
-              { type: "text", text: "容積絶対湿度", size: "sm", color: "#555555", flex: 2 },
-              { type: "text", text: ahText, size: "sm", color: "#111111", align: "end", flex: 3 }
-            ],
-            margin: "md"
-          },
-          {
             type: "separator",
             margin: "lg"
           },
@@ -409,7 +443,7 @@ function buildStatusFlexMessage_() {
             type: "box",
             layout: "horizontal",
             contents: [
-              { type: "text", text: "最終受信", size: "xs", color: "#aaaaaa" },
+              { type: "text", text: "計測日時", size: "xs", color: "#aaaaaa" },
               { type: "text", text: timeStr, size: "xs", color: "#aaaaaa", align: "end" }
             ],
             margin: "lg"
@@ -429,15 +463,15 @@ function buildStatusFlexMessage_() {
 
 function buildSkipFlexMessage_(skipUntil) {
   const properties = PropertiesService.getScriptProperties();
-  const untilVal = skipUntil || properties.getProperty(LINE_BOT_PROPERTIES.skipUntil);
+  const untilVal = skipUntil || (typeof getSnoozeUntilProperty_ === 'function' ? getSnoozeUntilProperty_(properties) : properties.getProperty(LINE_BOT_PROPERTIES.skipUntil));
   const snoozeTimeStr = typeof formatSnoozeUntilJst_ === 'function' ? formatSnoozeUntilJst_(untilVal) : '';
   const lastValid = typeof loadLastValidMeasurement_ === 'function' ? loadLastValidMeasurement_(properties) : null;
 
   let tempText = '-';
   let humText = '-';
   if (lastValid) {
-    if (typeof lastValid.temp === 'number') tempText = `${lastValid.temp.toFixed(2)}℃`;
-    if (typeof lastValid.hum === 'number') humText = `${lastValid.hum.toFixed(2)}%`;
+    if (typeof lastValid.temp === 'number') tempText = `${lastValid.temp.toFixed(1)} ℃`;
+    if (typeof lastValid.hum === 'number') humText = `${Math.round(lastValid.hum)} %`;
   }
 
   const flexJson = {
@@ -537,7 +571,7 @@ function buildSkipFlexMessage_(skipUntil) {
 function buildAlertFlexMessage_(alertText) {
   const flexJson = {
     type: "flex",
-    altText: "監視アラート",
+    altText: "⚠️ 室温・湿度 警告",
     contents: {
       type: "bubble",
       header: {
@@ -546,8 +580,9 @@ function buildAlertFlexMessage_(alertText) {
         contents: [
           {
             type: "text",
-            text: "⚠️ 監視アラート",
+            text: "⚠️ 室温・湿度 警告",
             weight: "bold",
+            size: "lg",
             color: "#ffffff"
           }
         ],
@@ -559,7 +594,10 @@ function buildAlertFlexMessage_(alertText) {
         contents: [
           {
             type: "text",
-            text: alertText,
+            text: alertText || "室温・湿度の警戒閾値を超過しました。",
+            weight: "bold",
+            size: "md",
+            color: "#333333",
             wrap: true
           }
         ]
@@ -585,7 +623,6 @@ function buildAlertFlexMessage_(alertText) {
   return [flexJson];
 }
 
-
 function replyMessage_(replyToken, text) {
   return replyMessageObjects_(replyToken, [{ type: 'text', text: text }]);
 }
@@ -609,7 +646,9 @@ function pushMonitorNotification_(text) {
   }
 
   const properties = PropertiesService.getScriptProperties();
-  const skipUntilStr = properties.getProperty(LINE_BOT_PROPERTIES.skipUntil);
+  const skipUntilStr = typeof getSnoozeUntilProperty_ === 'function'
+    ? getSnoozeUntilProperty_(properties)
+    : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
   if (skipUntilStr) {
     const skipUntil = parseInt(skipUntilStr, 10);
     if (!isNaN(skipUntil) && Date.now() < skipUntil) {
