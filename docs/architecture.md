@@ -52,9 +52,12 @@ LINE Push通知（1回・復帰でリセット）
   - `Monitor.gs`: 直近データ評価、状態遷移（正常⇄超過）判定、通知要否の決定、センサー未受信ウォッチドッグ、異常値判定の比較元（直近有効データ）を Script Properties で保持
   - `DailyAggregation.gs`: 日次集計（前回処理済み行以降を読み、Dailyへ1日1行）。処理済み行番号は Script Properties（`DAILY_LAST_ROW`）で管理し、追記確定時のみ更新する
   - `MonthlyAggregation.gs`: 月次集計（Dailyを読み、Monthlyへ1月1行）
-  - `LineBot.gs`: Webhook署名検証、コマンド解析（状況/スキップ/クリア）、Reply/Push送信（Config/状態変更は排他制御）
+  - `LineBot.gs`: Webhook署名検証、コマンド解析（状況/スキップ/クリア/グラフ/推移）、Reply/Push送信、QuickChart 24hグラフ画像返信（Config/状態変更は排他制御）
+  - `Metrics.gs`: 不快指数 (DI)・容積絶対湿度 (AH) 計算、翌朝8時JST計算、QuickChart URL 生成（URL 圧縮・サンプリング）などの純粋関数群
   - `Config.gs`: Script Properties / Configシートへのアクセス集約、しきい値デフォルト定義。**Configシートは `getValues()` で一括取得し、Script Properties は `getProperties()` で一括取得する**。個別の `getRange().getValue()` は極力避ける。
   - `ErrorLog.gs`: 例外記録のラッパー（秘密情報をログに残さない）。ログには処理種別、対象シート/キー、エラーコードといった診断情報を残し、トークン・認可情報・機微なペイロードはマスクする。
+  - `SetupTriggers.gs`: 時間主導トリガー設定および LINE 接続テスト
+  - `DebugTest.gs`: GAS エディタからワンクリック実行可能な手動デバッグ・動作検証用関数群（QuickChart URL 2,000文字検証、LINE Webhook 応答シミュレーション）
 - **Googleスプレッドシート**:
   - DATA: `日時 | temp | press | hum | flag` の生ログ（追記専用）。シート名は `DATA`、`日時` は **Date値＋表示形式 `yyyy-MM-dd HH:mm:ss`**
   - Daily: `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` の日次集計（1日1行）
