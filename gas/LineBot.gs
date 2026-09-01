@@ -746,3 +746,25 @@ function calculateNextMorning8Am_(nowMs, targetHour) {
 
   return Date.UTC(jstYear, jstMonth, targetDay, hour - 9, 0, 0, 0);
 }
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    LINE_BOT_PROPERTIES,
+    getSnoozeUntilProperty_,
+    handleLineWebhook_,
+    verifyLineSignature_,
+    handleTextMessageEvent_,
+    normalizeText_,
+    buildGraphMessage_,
+    buildStatusFlexMessage_,
+    buildSkipFlexMessage_,
+    buildAlertFlexMessage_,
+    replyMessage_,
+    replyMessageObjects_,
+    pushMonitorNotification_,
+    pushMessage_,
+    pushMessageObjects_,
+    sendLineApiRequest_,
+    calculateNextMorning8Am_
+  };
+}

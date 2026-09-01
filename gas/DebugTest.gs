@@ -220,3 +220,11 @@ function debugTest_handleLineWebhook_Trends() {
     console.error('debugTest_handleLineWebhook_Trends failed:', err);
   }
 }
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    debugTest_checkAlertLogic,
+    debugTest_buildQuickChartUrl,
+    debugTest_handleLineWebhook_Trends
+  };
+}

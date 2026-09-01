@@ -57,19 +57,18 @@ jobs:
           echo "Only placeholder values ✅"
 
   gas-unit-tests:
-    name: GAS unit tests
+    name: GAS Jest unit tests & coverage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Run all GAS unit tests
-        run: |
-          for f in scripts/test-*.js; do
-            echo "=== Running $f ==="
-            node "$f"
-          done
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run Jest unit tests and coverage check
+        run: npm run test:coverage
 
   library-doc:
     name: Required libraries documented

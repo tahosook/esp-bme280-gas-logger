@@ -74,3 +74,16 @@ function jsonResponse_(body) {
       .createTextOutput(JSON.stringify(body))
       .setMimeType(ContentService.MimeType.JSON);
 }
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    CONFIG_KEYS,
+    LIMITS,
+    doPost,
+    doGet,
+    successResponse_,
+    errorResponse_,
+    readinessResponse_,
+    jsonResponse_
+  };
+}
