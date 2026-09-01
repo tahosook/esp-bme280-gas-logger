@@ -84,3 +84,15 @@ function clearErrorLog_() {
 function getErrorLogForTest_() {
   return getErrorLogEntries_();
 }
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    ERROR_LOG_PROPERTIES,
+    SENSITIVE_KEYS,
+    logError_,
+    maskSecret_,
+    getErrorLogEntries_,
+    clearErrorLog_,
+    getErrorLogForTest_
+  };
+}

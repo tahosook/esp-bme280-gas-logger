@@ -303,3 +303,20 @@ function buildDailyRowData_(dateStr, bucket) {
     bucket.alertCount
   ];
 }
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    DAILY_AGGREGATION_PROPERTIES,
+    DAILY_SHEET_NAME,
+    DATA_SHEET_NAME,
+    DAILY_LOCK_TIMEOUT_MS,
+    aggregateDaily,
+    runDailyAggregation_,
+    getExistingDailyDates_,
+    formatDateTokyo_,
+    calcAvg_,
+    roundTwoDecimals_,
+    processDailyDataRows_,
+    buildDailyRowData_
+  };
+}

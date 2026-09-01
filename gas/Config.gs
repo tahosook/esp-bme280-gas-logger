@@ -130,3 +130,14 @@ function getSpreadsheetConfig_() {
 function getMergedConfigForTest_() {
   return getMergedConfig_();
 }
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    SCRIPT_PROPERTY_KEYS,
+    DEFAULT_CONFIG,
+    getMergedConfig_,
+    getSheetConfig_,
+    getSpreadsheetConfig_,
+    getMergedConfigForTest_
+  };
+}

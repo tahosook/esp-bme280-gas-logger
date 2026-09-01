@@ -19,3 +19,4 @@ docs/test-results/local/
 # OS files
 .DS_Store
 node_modules/
+coverage/

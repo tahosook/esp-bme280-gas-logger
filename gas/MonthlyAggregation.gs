@@ -274,3 +274,18 @@ function buildMonthlyRowData_(yearMonth, bucket) {
     daysCount
   ];
 }
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    MONTHLY_AGGREGATION_PROPERTIES,
+    MONTHLY_TARGET_SHEET_NAME,
+    MONTHLY_SOURCE_DAILY_SHEET_NAME,
+    MONTHLY_LOCK_TIMEOUT_MS,
+    aggregateMonthly,
+    runMonthlyAggregation_,
+    getExistingMonthlyDates_,
+    formatYearMonthTokyo_,
+    processMonthlyDataRows_,
+    buildMonthlyRowData_
+  };
+}

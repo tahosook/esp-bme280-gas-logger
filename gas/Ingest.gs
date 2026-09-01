@@ -152,3 +152,11 @@ function checkAndAppendMeasurement_(payload, properties) {
     lock.releaseLock();
   }
 }
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    handleSensorPost_,
+    validateSensorPayload_,
+    checkAndAppendMeasurement_
+  };
+}

@@ -422,3 +422,33 @@ function resetWatchdogState_() {
 function getMonitorStateForTest_() {
   return loadMonitorStates_(PropertiesService.getScriptProperties());
 }
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    MONITOR_PROPERTIES,
+    DEFAULT_THRESHOLDS,
+    DEFAULT_SMOOTHING,
+    evaluateMonitorConditions_,
+    evaluateConditionState_,
+    detectAnomaly_,
+    buildMonitorNotification_,
+    updateMonitorState_,
+    loadDailyAlertInfo_,
+    saveDailyAlertInfo_,
+    loadAlertLastSentTime_,
+    saveAlertLastSentTime_,
+    loadAlertSnoozeUntil_,
+    getAnomalyLimits_,
+    getMonitorConfig_,
+    getConfigNumber_,
+    loadMonitorStates_,
+    saveMonitorStates_,
+    loadLastValidMeasurement_,
+    saveLastValidMeasurement_,
+    resetMonitorStates_,
+    checkWatchdog,
+    runWatchdogCheck_,
+    resetWatchdogState_,
+    getMonitorStateForTest_
+  };
+}

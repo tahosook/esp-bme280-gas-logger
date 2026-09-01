@@ -137,3 +137,15 @@ function authorizeUrlFetch() {
   UrlFetchApp.fetch('https://api.line.me');
   Logger.log('✅ UrlFetchApp の権限が正常に承認されました。');
 }
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    setupAllTriggers,
+    setupMonthlyAggregationTrigger,
+    setupDailyAggregationTrigger,
+    setupWatchdogTrigger,
+    triggerExists_,
+    testLineBotConnection,
+    authorizeUrlFetch
+  };
+}
