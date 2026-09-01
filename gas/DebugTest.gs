@@ -239,14 +239,7 @@ function debugTest_runDataArchiveDryRun() {
     }
 
     const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-    let sourceSheet;
-    if (typeof getRawDataSheet_ === 'function') {
-      sourceSheet = getRawDataSheet_(spreadsheet, properties);
-    } else {
-      const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
-      const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
-      sourceSheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA');
-    }
+    const sourceSheet = getRawDataSheet_(spreadsheet, properties);
 
     if (!sourceSheet) {
       Logger.log('❌ 探索可能な生データシートが見つかりません。');
@@ -266,25 +259,12 @@ function debugTest_runDataArchiveDryRun() {
     const retentionMonths = config.ARCHIVE_RETENTION_MONTHS || 2;
     const now = new Date();
 
-    let thresholdDate;
-    if (typeof getArchiveThresholdDate_ === 'function') {
-      thresholdDate = getArchiveThresholdDate_(now, retentionMonths);
-    } else {
-      Logger.log('❌ getArchiveThresholdDate_ 関数が見つかりません。DataArchive.gs が読み込まれているか確認してください。');
-      return;
-    }
+    const thresholdDate = getArchiveThresholdDate_(now, retentionMonths);
 
     Logger.log(`基準日 (現在): ${now.toISOString()} / 退避基準閾値: ${thresholdDate.toISOString()} (左記より前のデータをアーカイブ)`);
 
     const values = sourceSheet.getRange(2, 1, lastRow - 1, sourceSheet.getLastColumn()).getValues();
-    let groupedData;
-
-    if (typeof groupDataForArchive_ === 'function') {
-      groupedData = groupDataForArchive_(values, thresholdDate);
-    } else {
-      Logger.log('❌ groupDataForArchive_ 関数が見つかりません。');
-      return;
-    }
+    const groupedData = groupDataForArchive_(values, thresholdDate);
 
     if (groupedData.size === 0) {
       Logger.log('ℹ️ アーカイブ対象となるデータはありませんでした。');

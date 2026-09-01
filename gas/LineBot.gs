@@ -206,13 +206,7 @@ function buildGraphMessage_() {
     return [{ type: 'text', text: 'グラフを生成するためのデータが不足しています。' }];
   }
 
-  let sheet;
-  if (typeof getRawDataSheet_ === 'function') {
-    sheet = getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
-  } else {
-    const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
-    sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA') || spreadsheet.getActiveSheet();
-  }
+  const sheet = getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
   if (!sheet) {
     return [{ type: 'text', text: 'グラフを生成するためのデータが不足しています。' }];
   }
@@ -327,13 +321,7 @@ function buildStatusFlexMessage_() {
     const spreadsheetId = properties.getProperty(spreadsheetIdKey);
     if (spreadsheetId) {
       const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-      let sheet;
-      if (typeof getRawDataSheet_ === 'function') {
-        sheet = getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
-      } else {
-        const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
-        sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA') || spreadsheet.getActiveSheet();
-      }
+      const sheet = getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
       if (sheet && sheet.getLastRow() >= 2) {
         const lastRow = sheet.getLastRow();
         const targetRow = Math.max(2, lastRow - 36);

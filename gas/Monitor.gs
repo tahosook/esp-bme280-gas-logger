@@ -322,13 +322,7 @@ function runWatchdogCheck_() {
   }
 
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  let dataSheet;
-  if (typeof getRawDataSheet_ === 'function') {
-    dataSheet = getRawDataSheet_(spreadsheet, properties);
-  } else {
-    const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
-    dataSheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA');
-  }
+  const dataSheet = getRawDataSheet_(spreadsheet, properties);
   if (!dataSheet) {
     const error = new Error('Raw data sheet not found');
     if (typeof logError_ === 'function') {

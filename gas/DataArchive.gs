@@ -15,12 +15,7 @@ function runDataArchive_() {
 
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
 
-  let sourceSheet;
-  if (typeof getRawDataSheet_ === 'function') {
-    sourceSheet = getRawDataSheet_(spreadsheet, properties);
-  } else {
-    sourceSheet = spreadsheet.getSheetByName('RawData') || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA') || spreadsheet.getActiveSheet();
-  }
+  const sourceSheet = getRawDataSheet_(spreadsheet, properties);
 
   if (!sourceSheet) {
     const error = new Error('Source raw data sheet not found');

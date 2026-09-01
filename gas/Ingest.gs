@@ -65,13 +65,7 @@ function checkAndAppendMeasurement_(payload, properties) {
   }
 
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  let sheet;
-  if (typeof getRawDataSheet_ === 'function') {
-    sheet = getRawDataSheet_(spreadsheet, properties);
-  } else {
-    const sheetName = properties.getProperty(CONFIG_KEYS.sheetName) || 'RawData';
-    sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA');
-  }
+  const sheet = getRawDataSheet_(spreadsheet, properties);
   if (!sheet) {
     throw new Error('sheet not found');
   }
