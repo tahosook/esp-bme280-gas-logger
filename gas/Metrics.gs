@@ -333,6 +333,37 @@ function buildQuickChartUrl(sheetOrRecords, options) {
 }
 
 /**
+ * Parses a datetimepicker string ("YYYY-MM-DDTHH:mm") as JST (UTC+9) and returns timestamp in ms.
+ * If invalid or in the past compared to nowMs, returns null.
+ * @param {string} datetimeStr - Format "YYYY-MM-DDTHH:mm"
+ * @param {number} [nowMs] - Current timestamp in ms (defaults to Date.now())
+ * @returns {number|null} Timestamp in ms or null
+ */
+function parseJstDatetimepicker_(datetimeStr, nowMs) {
+  if (!datetimeStr || typeof datetimeStr !== 'string') return null;
+  const match = datetimeStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return null;
+
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10) - 1;
+  const day = parseInt(match[3], 10);
+  const hour = parseInt(match[4], 10);
+  const min = parseInt(match[5], 10);
+
+  // UTC equivalent time representing the JST time, then subtract 9 hours to get true UTC timestamp
+  const utcMs = Date.UTC(year, month, day, hour, min, 0, 0);
+  const jstOffsetMs = 9 * 60 * 60 * 1000;
+  const targetMs = utcMs - jstOffsetMs;
+
+  const currentMs = typeof nowMs === 'number' ? nowMs : Date.now();
+  if (targetMs <= currentMs) {
+    return null;
+  }
+
+  return targetMs;
+}
+
+/**
  * Calculates next morning target hour (default 8:00 AM JST) as UTC timestamp (ms).
  * @param {number} [nowMs] - Current timestamp in ms
  * @param {number} [targetHour] - Target hour in JST (default: 8)
@@ -527,6 +558,7 @@ if (typeof module !== 'undefined') {
     formatSnoozeUntilJst_,
     calculatePressureTrend_,
     getJstDateString_,
-    evaluateAlertDecision_
+    evaluateAlertDecision_,
+    parseJstDatetimepicker_
   };
 }

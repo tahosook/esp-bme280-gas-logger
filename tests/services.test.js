@@ -669,6 +669,51 @@ describe('LineBot & Ingest Edge Cases', () => {
     expect(msg[0].text).toContain('不足しています');
   });
 
+  test('LineBot: handleLineWebhook_ での postback (datetimepicker) イベントの正常および異常系処理', () => {
+    const testEnv = createGasMockEnvironment({
+      initialProperties: {
+        LINE_CHANNEL_SECRET: 'test-secret',
+        LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+        LINE_USER_ID: 'user-123',
+        ALERT_SNOOZE_UNTIL: '1000'
+      }
+    });
+    Object.assign(global, testEnv.globals);
+    // モック日時 (JST 2026-08-31 17:00:00 -> UTC 08:00:00)
+    global.Date.now = () => new Date('2026-08-31T08:00:00Z').getTime();
+
+    // 1. 正常系 (未来の日時: JST 2026-09-01 08:00 -> UTC 2026-08-31 23:00)
+    const validPostbackEvent = {
+      type: 'postback',
+      replyToken: 'tok-ok',
+      postback: {
+        data: 'action=snooze_custom',
+        params: { datetime: '2026-09-01T08:00' }
+      }
+    };
+    handleLineWebhook_({ postData: { contents: JSON.stringify({ events: [validPostbackEvent] }) } });
+
+    // プロパティが更新されていること
+    const expectedMs = Date.UTC(2026, 8, 1, 8 - 9, 0, 0); // JST Sep 1 08:00 (UTC Aug 31 23:00)
+    expect(testEnv.propertiesStore.get('ALERT_SNOOZE_UNTIL')).toBe(String(expectedMs));
+    expect(testEnv.fetchedRequests.length).toBeGreaterThan(0);
+    expect(testEnv.fetchedRequests[testEnv.fetchedRequests.length-1].options.payload).toContain('通知を停止しました');
+
+    // 2. 異常系 (過去の日時)
+    const pastPostbackEvent = {
+      type: 'postback',
+      replyToken: 'tok-past',
+      postback: {
+        data: 'action=snooze_custom',
+        params: { datetime: '2026-08-30T08:00' }
+      }
+    };
+    handleLineWebhook_({ postData: { contents: JSON.stringify({ events: [pastPostbackEvent] }) } });
+    // SNOOZE期限が過去のもので上書きされないこと (1000か直前のexpectedMsか)
+    expect(testEnv.propertiesStore.get('ALERT_SNOOZE_UNTIL')).toBe(String(expectedMs));
+    expect(testEnv.fetchedRequests[testEnv.fetchedRequests.length-1].options.payload).toContain('無効な日時');
+  });
+
   test('LineBot: handleLineWebhook_ の異常系（無効ボディ・例外発生時のエラー返信）', () => {
     Object.assign(global, env.globals);
     // 1. e が null

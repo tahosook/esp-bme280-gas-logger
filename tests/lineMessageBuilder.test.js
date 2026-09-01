@@ -153,14 +153,30 @@ describe('Flex Message Builders (LINE メッセージ構築)', () => {
   });
 
   describe('buildSkipFlexMessage_ (SNOOZE コマンド完了)', () => {
-    test('スキップ完了カードが正しく生成され、CLEAR ボタンを含む', () => {
+    test('スキップ完了カードが正しく生成され、kiloサイズでdatetimepickerとCLEARボタンを含む', () => {
       const futureMs = Date.now() + 8 * 3600000;
       const messages = buildSkipFlexMessage_(futureMs);
       expect(messages.length).toBe(1);
 
       const bubble = messages[0].contents;
-      expect(bubble.header.contents[0].text).toBe('🔕 SNOOZE設定完了');
-      expect(bubble.footer.contents[0].action.text).toBe('CLEAR');
+      expect(bubble.size).toBe('kilo');
+
+      const bodyContents = bubble.body.contents;
+      expect(bodyContents[0].text).toBe('🔕 通知を停止しました');
+      expect(bodyContents[1].text).toContain('期限:');
+
+      // datetimepicker button
+      const dtBtn = bodyContents[3];
+      expect(dtBtn.type).toBe('button');
+      expect(dtBtn.action.type).toBe('datetimepicker');
+      expect(dtBtn.action.data).toBe('action=snooze_custom');
+      expect(dtBtn.action.mode).toBe('datetime');
+
+      // CLEAR button
+      const clearBtn = bodyContents[4];
+      expect(clearBtn.type).toBe('button');
+      expect(clearBtn.action.type).toBe('message');
+      expect(clearBtn.action.text).toBe('CLEAR');
     });
   });
 
@@ -261,5 +277,22 @@ describe('Metrics & Indicators Calculation (各種指標の計算)', () => {
     const next8 = calculateNextMorning8Am_();
     expect(typeof next8).toBe('number');
     expect(next8).toBeGreaterThan(Date.now() - 1000);
+  });
+
+  test('parseJstDatetimepicker_ が正しいJST解釈を行い、過去日時の場合はnullを返す', () => {
+    const mockNow = new Date('2026-08-31T08:00:00Z').getTime(); // JSTでは 08-31 17:00
+
+    // JSTとして '2026-09-01T08:00' をパース -> UTCでは '2026-08-31T23:00'
+    const futureDt = parseJstDatetimepicker_('2026-09-01T08:00', mockNow);
+    const expectedFutureMs = Date.UTC(2026, 8, 1, 8 - 9, 0, 0);
+    expect(futureDt).toBe(expectedFutureMs);
+
+    // 過去日時: JSTとして '2026-08-30T08:00' -> mockNowより前
+    const pastDt = parseJstDatetimepicker_('2026-08-30T08:00', mockNow);
+    expect(pastDt).toBeNull();
+
+    // 無効な形式
+    expect(parseJstDatetimepicker_('invalid', mockNow)).toBeNull();
+    expect(parseJstDatetimepicker_(null, mockNow)).toBeNull();
   });
 });
