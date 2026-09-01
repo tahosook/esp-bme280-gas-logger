@@ -96,11 +96,23 @@ function runMonthlyAggregation_() {
       properties.setProperty(MONTHLY_AGGREGATION_PROPERTIES.lastRow, String(lastConfirmedRow));
     }
 
-    return {
+    const result = {
       processedMonths: sortedYearMonths.length,
       appendedMonths: appendedCount,
       lastProcessedRow: lastConfirmedRow
     };
+
+    try {
+      if (typeof runDataArchive_ === 'function') {
+        result.archive = runDataArchive_();
+      }
+    } catch (archiveError) {
+      if (typeof logError_ === 'function') {
+        logError_('monthly_aggregation', 'DataArchive', 'archive_failed', archiveError);
+      }
+    }
+
+    return result;
   } catch (error) {
     if (typeof logError_ === 'function') {
       logError_('monthly_aggregation', MONTHLY_TARGET_SHEET_NAME, 'aggregation_failed', error);

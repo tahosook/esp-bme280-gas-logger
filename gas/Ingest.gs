@@ -64,9 +64,14 @@ function checkAndAppendMeasurement_(payload, properties) {
     throw new Error('missing spreadsheet configuration');
   }
 
-  const sheetName = properties.getProperty(CONFIG_KEYS.sheetName) || 'DATA';
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  const sheet = spreadsheet.getSheetByName(sheetName);
+  let sheet;
+  if (typeof getRawDataSheet_ === 'function') {
+    sheet = getRawDataSheet_(spreadsheet, properties);
+  } else {
+    const sheetName = properties.getProperty(CONFIG_KEYS.sheetName) || 'RawData';
+    sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA');
+  }
   if (!sheet) {
     throw new Error('sheet not found');
   }

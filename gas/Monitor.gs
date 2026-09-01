@@ -321,13 +321,18 @@ function runWatchdogCheck_() {
     throw error;
   }
 
-  const sheetName = properties.getProperty(sheetNameKey) || 'DATA';
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  const dataSheet = spreadsheet.getSheetByName(sheetName);
+  let dataSheet;
+  if (typeof getRawDataSheet_ === 'function') {
+    dataSheet = getRawDataSheet_(spreadsheet, properties);
+  } else {
+    const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
+    dataSheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA');
+  }
   if (!dataSheet) {
-    const error = new Error('DATA sheet not found');
+    const error = new Error('Raw data sheet not found');
     if (typeof logError_ === 'function') {
-      logError_('monitor_watchdog', sheetName, 'data_sheet_not_found', error);
+      logError_('monitor_watchdog', 'RawData', 'data_sheet_not_found', error);
     }
     throw error;
   }

@@ -147,11 +147,12 @@ function debugTest_buildQuickChartUrl() {
     }
 
     const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-    const sheetName = properties.getProperty(sheetNameKey) || 'DATA';
-    let sheet = spreadsheet.getSheetByName(sheetName);
-    if (!sheet) {
-      Logger.log('⚠️ 設定シート「' + sheetName + '」が見つからないため、「2026」またはアクティブシートを探索します。');
-      sheet = spreadsheet.getSheetByName('2026') || spreadsheet.getActiveSheet();
+    let sheet;
+    if (typeof getRawDataSheet_ === 'function') {
+      sheet = getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
+    } else {
+      const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
+      sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA') || spreadsheet.getActiveSheet();
     }
 
     if (!sheet) {
@@ -221,10 +222,99 @@ function debugTest_handleLineWebhook_Trends() {
   }
 }
 
+/**
+ * DataArchive（生データアーカイブ）の月次バッチ処理をシミュレートするドライラン関数。
+ * 実際の行削除や新規シートへの書き込みは行わず、対象件数と処理内容をログに出力します。
+ */
+function debugTest_runDataArchiveDryRun() {
+  Logger.log('=== [DEBUG TEST] DataArchive Dry-Run 開始 ===');
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+    const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+
+    if (!spreadsheetId) {
+      Logger.log('❌ スクリプトプロパティ SPREADSHEET_ID が設定されていません。');
+      return;
+    }
+
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    let sourceSheet;
+    if (typeof getRawDataSheet_ === 'function') {
+      sourceSheet = getRawDataSheet_(spreadsheet, properties);
+    } else {
+      const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
+      const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
+      sourceSheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA');
+    }
+
+    if (!sourceSheet) {
+      Logger.log('❌ 探索可能な生データシートが見つかりません。');
+      return;
+    }
+
+    const lastRow = sourceSheet.getLastRow();
+    Logger.log('対象シート名: ' + sourceSheet.getName());
+    Logger.log('シート最終行番号: ' + lastRow);
+
+    if (lastRow < 2) {
+      Logger.log('⚠️ データ行が存在しません。');
+      return;
+    }
+
+    const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : { ARCHIVE_RETENTION_MONTHS: 2 };
+    const retentionMonths = config.ARCHIVE_RETENTION_MONTHS || 2;
+    const now = new Date();
+
+    let thresholdDate;
+    if (typeof getArchiveThresholdDate_ === 'function') {
+      thresholdDate = getArchiveThresholdDate_(now, retentionMonths);
+    } else {
+      Logger.log('❌ getArchiveThresholdDate_ 関数が見つかりません。DataArchive.gs が読み込まれているか確認してください。');
+      return;
+    }
+
+    Logger.log(`基準日 (現在): ${now.toISOString()} / 退避基準閾値: ${thresholdDate.toISOString()} (左記より前のデータをアーカイブ)`);
+
+    const values = sourceSheet.getRange(2, 1, lastRow - 1, sourceSheet.getLastColumn()).getValues();
+    let groupedData;
+
+    if (typeof groupDataForArchive_ === 'function') {
+      groupedData = groupDataForArchive_(values, thresholdDate);
+    } else {
+      Logger.log('❌ groupDataForArchive_ 関数が見つかりません。');
+      return;
+    }
+
+    if (groupedData.size === 0) {
+      Logger.log('ℹ️ アーカイブ対象となるデータはありませんでした。');
+      return;
+    }
+
+    let totalArchived = 0;
+    const sortedYearMonths = Array.from(groupedData.keys()).sort();
+
+    Logger.log(`\nアーカイブ対象年月: ${sortedYearMonths.join(', ')}`);
+
+    for (let i = 0; i < sortedYearMonths.length; i++) {
+      const ym = sortedYearMonths[i];
+      const rows = groupedData.get(ym);
+      totalArchived += rows.length;
+      Logger.log(` - 年月 [${ym}]: ${rows.length} 行をシート [Raw_${ym.replace('-', '')}] に退避予定`);
+    }
+
+    Logger.log(`\n✅ ドライラン完了: 合計 ${totalArchived} 行のデータがアーカイブ・削除対象です。 (実際の変更は行っていません)`);
+  } catch (err) {
+    Logger.log('❌ エラー発生: ' + (err && err.message ? err.message : String(err)));
+    Logger.log('エラー詳細: ' + (err && err.stack ? err.stack : 'スタック情報なし'));
+  }
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     debugTest_checkAlertLogic,
     debugTest_buildQuickChartUrl,
-    debugTest_handleLineWebhook_Trends
+    debugTest_handleLineWebhook_Trends,
+    debugTest_runDataArchiveDryRun
   };
 }

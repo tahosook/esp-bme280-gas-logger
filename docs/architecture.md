@@ -59,14 +59,16 @@ LINE Push通知（1回・復帰でリセット）
   - `SetupTriggers.gs`: 時間主導トリガー設定および LINE 接続テスト
   - `DebugTest.gs`: GAS エディタからワンクリック実行可能な手動デバッグ・動作検証用関数群（QuickChart URL 2,000文字検証、LINE Webhook 応答シミュレーション）
 - **Googleスプレッドシート**:
-  - DATA: `日時 | temp | press | hum | flag` の生ログ（追記専用）。シート名は `DATA`、`日時` は **Date値＋表示形式 `yyyy-MM-dd HH:mm:ss`**
+  - RawData: `日時 | temp | press | hum | flag` の生ログ（追記専用）。デフォルトシート名は `RawData`（旧名称 `2026` または `DATA` からのフォールバックあり）、`日時` は **Date値＋表示形式 `yyyy-MM-dd HH:mm:ss`**
+  - アーカイブ先シート (`Raw_YYYYMM`): 月次バッチにより `RawData` からパージされ退避された過去ログ
   - Daily: `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` の日次集計（1日1行）
   - Monthly: `年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count` の月次集計（1月1行）
 
 ## スプレッドシート設計
 
-- DATA は追記専用。旧方式の日別シート（タブ）・固定行範囲（`AVERAGE(B2:B290)` 等）・TOTALシートは採用しない。
-- シート名は `Sheet1` → `DATA` に変更（決定済み）。`flag` 列は Phase 7 で固定追加する。`device_id` 列は複数台化時に追加（未実装）。
+- RawData は追記専用。旧方式の日別シート（タブ）・固定行範囲（`AVERAGE(B2:B290)` 等）・TOTALシートは採用しない。
+- 生データの肥大化を防ぐため、毎月1日の月次集計処理の直後に、**直近2ヶ月以前のデータを自動的に `Raw_YYYYMM` シート（デフォルトは同一スプレッドシート、設定により外部スプレッドシートへ退避可能）へアーカイブし、RawDataシートからパージ（削除）する** ライフサイクル管理を行う。
+- シート名は `Sheet1` → `RawData` に変更。`flag` 列は Phase 7 で固定追加する。`device_id` 列は複数台化時に追加（未実装）。
 - Daily の `sample_count`（＝その日の anomaly を除いた有効行数。平均・最小・最大を計算した行数と一致）により、欠測・異常値除外を集計結果から把握できる。
 - Configシートを採用する（Phase 15・決定済み）。季節調整する閾値を置き、秘密/コード寄りの値（トークン等）は Script Properties に置く。
 

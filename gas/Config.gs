@@ -7,7 +7,9 @@ const SCRIPT_PROPERTY_KEYS = {
   lineUserId: 'LINE_USER_ID',
   alertSnoozeUntil: 'ALERT_SNOOZE_UNTIL',
   alertLastSentTime: 'ALERT_LAST_SENT_TIME',
-  alertCountToday: 'ALERT_COUNT_TODAY'
+  alertCountToday: 'ALERT_COUNT_TODAY',
+  archiveSpreadsheetId: 'ARCHIVE_SPREADSHEET_ID',
+  archiveRetentionMonths: 'ARCHIVE_RETENTION_MONTHS'
 };
 
 const DEFAULT_CONFIG = {
@@ -29,7 +31,8 @@ const DEFAULT_CONFIG = {
   SKIP_HOURS: 8,
   SKIP_UNTIL_HOUR: 8,
   INGEST_LOCK_TIMEOUT_MS: 15000,
-  LINE_LOCK_TIMEOUT_MS: 2000
+  LINE_LOCK_TIMEOUT_MS: 2000,
+  ARCHIVE_RETENTION_MONTHS: 2
 };
 
 function getMergedConfig_() {
@@ -121,10 +124,30 @@ function getSpreadsheetConfig_() {
   return {
     spreadsheetId: properties.getProperty(SCRIPT_PROPERTY_KEYS.spreadsheetId) || null,
     apiToken: properties.getProperty(SCRIPT_PROPERTY_KEYS.apiToken) || null,
-    sheetName: properties.getProperty(SCRIPT_PROPERTY_KEYS.sheetName) || 'DATA',
+    sheetName: properties.getProperty(SCRIPT_PROPERTY_KEYS.sheetName) || 'RawData',
     lineChannelSecret: properties.getProperty(SCRIPT_PROPERTY_KEYS.lineChannelSecret) || null,
     lineChannelAccessToken: properties.getProperty(SCRIPT_PROPERTY_KEYS.lineChannelAccessToken) || null
   };
+}
+
+function getRawDataSheet_(spreadsheet, properties) {
+  const customSheetName = properties ? properties.getProperty(SCRIPT_PROPERTY_KEYS.sheetName) : null;
+
+  if (customSheetName) {
+    const sheet = spreadsheet.getSheetByName(customSheetName);
+    if (sheet) return sheet;
+  }
+
+  let sheet = spreadsheet.getSheetByName('RawData');
+  if (sheet) return sheet;
+
+  sheet = spreadsheet.getSheetByName('2026');
+  if (sheet) return sheet;
+
+  sheet = spreadsheet.getSheetByName('DATA');
+  if (sheet) return sheet;
+
+  return null;
 }
 
 function getMergedConfigForTest_() {
@@ -138,6 +161,7 @@ if (typeof module !== 'undefined') {
     getMergedConfig_,
     getSheetConfig_,
     getSpreadsheetConfig_,
+    getRawDataSheet_,
     getMergedConfigForTest_
   };
 }

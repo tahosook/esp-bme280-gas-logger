@@ -381,7 +381,7 @@ describe('MonthlyAggregation (月次集計)', () => {
       customSheets: { DATA: null }
     });
     Object.assign(global, envNoData.globals);
-    expect(() => aggregateDaily()).toThrow('DATA sheet not found');
+    expect(() => aggregateDaily()).toThrow('Raw data sheet not found');
 
     // 3. Daily シート未検出
     const envNoDaily = createGasMockEnvironment({
