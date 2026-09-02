@@ -40,7 +40,7 @@ function doGet() {
     const properties = PropertiesService.getScriptProperties();
     const spreadsheetId = properties.getProperty(CONFIG_KEYS.spreadsheetId);
     const apiToken = properties.getProperty(CONFIG_KEYS.apiToken);
-    const sheetName = properties.getProperty(CONFIG_KEYS.sheetName) || 'DATA';
+    const sheetName = properties.getProperty(CONFIG_KEYS.sheetName) || 'RawData';
 
     if (!spreadsheetId || !apiToken) {
       return readinessResponse_(false);

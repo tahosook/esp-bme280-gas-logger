@@ -3,7 +3,7 @@ const DAILY_AGGREGATION_PROPERTIES = {
 };
 
 const DAILY_SHEET_NAME = 'Daily';
-const DATA_SHEET_NAME = 'DATA';
+const DATA_SHEET_NAME = 'RawData';
 const DAILY_LOCK_TIMEOUT_MS = 15000;
 
 function aggregateDaily() {
@@ -23,13 +23,12 @@ function runDailyAggregation_() {
     throw error;
   }
 
-  const dataSheetName = properties.getProperty(sheetNameKey) || DATA_SHEET_NAME;
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  const dataSheet = spreadsheet.getSheetByName(dataSheetName);
+  const dataSheet = getRawDataSheet_(spreadsheet, properties);
   if (!dataSheet) {
-    const error = new Error('DATA sheet not found');
+    const error = new Error('Raw data sheet not found');
     if (typeof logError_ === 'function') {
-      logError_('daily_aggregation', dataSheetName, 'data_sheet_not_found', error);
+      logError_('daily_aggregation', 'RawData', 'data_sheet_not_found', error);
     }
     throw error;
   }

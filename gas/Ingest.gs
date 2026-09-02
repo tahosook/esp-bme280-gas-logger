@@ -64,9 +64,8 @@ function checkAndAppendMeasurement_(payload, properties) {
     throw new Error('missing spreadsheet configuration');
   }
 
-  const sheetName = properties.getProperty(CONFIG_KEYS.sheetName) || 'DATA';
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  const sheet = spreadsheet.getSheetByName(sheetName);
+  const sheet = getRawDataSheet_(spreadsheet, properties);
   if (!sheet) {
     throw new Error('sheet not found');
   }

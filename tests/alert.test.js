@@ -340,7 +340,7 @@ describe('Watchdog (死活監視)', () => {
     // 2. DATA シートなし
     const envNoData = createGasMockEnvironment({ customSheets: { DATA: null } });
     Object.assign(global, envNoData.globals);
-    expect(() => checkWatchdog()).toThrow('DATA sheet not found');
+    expect(() => checkWatchdog()).toThrow('Raw data sheet not found');
 
     // 3. ヘッダーのみ (lastRow < 2)
     const envHeaderOnly = createGasMockEnvironment({ dataRows: [['日時', 'temp', 'press', 'hum', 'flag']] });

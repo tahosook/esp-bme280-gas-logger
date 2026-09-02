@@ -57,7 +57,8 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
    | --- | --- |
    | `SPREADSHEET_ID` | スプレッドシートURLの`/d/`と`/edit`の間にあるID |
    | `API_TOKEN` | 任意の十分に長いランダム文字列 |
-   | `SHEET_NAME` | 追記先シート名。Phase 7の決定により`DATA` |
+   | `SHEET_NAME` | 追記先生データシート名。省略時は`RawData`。以前の`DATA`や`2026`シートも自動的に探索・フォールバックされます |
+   | `ARCHIVE_SPREADSHEET_ID` | アーカイブ先の別スプレッドシートID（省略時はメインスプレッドシート内にアーカイブ先シート `Raw_YYYYMM` が作成されます） |
 
    Script Propertiesはスクリプト単位で共有される設定値で、コードへ秘密情報を埋め込まずに保存できる。設定後、キー名の誤字、対象シート名、スプレッドシートへの編集権限を確認する。
 
@@ -183,6 +184,8 @@ ESP8266への書き込みは人間の確認後に実施する。Codexは書き�
 | `ALERT_COUNT_TODAY` | 当日のアラート送信件数（JSON: `{"date":"YYYY-MM-DD","count":N}`。1日上限ガード用） | PR #26 |
 | `DAILY_LAST_ROW` | Daily集計の前回処理済み行番号（1始まり） | 15 |
 | `MONTHLY_LAST_ROW` | Monthly集計の前回処理済み行番号（1始まり） | 18 |
+| `ARCHIVE_SPREADSHEET_ID` | アーカイブ先の別スプレッドシートID |
+| `ARCHIVE_RETENTION_MONTHS` | RawDataシートに残すアーカイブ対象外の月数（デフォルト: 2） |
 | `MONITOR_STATE_*` | 監視状態（超過/正常など、temp/hum/discomfortIndex ごと） | 11 |
 | `MONITOR_LAST_VALID_*` | 異常値判定の比較元（temp/hum/press 等の直近有効データ） | 11 |
 | `WATCHDOG_NOTIFIED` | ウォッチドッグ通知済みフラグ | 17 |
