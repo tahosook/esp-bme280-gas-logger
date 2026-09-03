@@ -194,5 +194,6 @@ All date and time calculations, formatting, and comparisons (e.g., logging, snoo
 ### 5. Definition of Done (Quantitative Exit Criteria)
 
 Before a Pull Request can be considered complete:
-- The local test suite must pass with `exit code 0` by running either `npm test` or `npm run test:coverage`.
-- Test coverage must satisfy the thresholds defined in `jest.config.js`. Do not lower the existing coverage thresholds.
+- The local test suite must pass with `exit code 0` by running `npm test`.
+- Test coverage must satisfy the thresholds defined in `jest.config.js` by running `npm run test:coverage`.
+- Do not lower the existing coverage thresholds.
