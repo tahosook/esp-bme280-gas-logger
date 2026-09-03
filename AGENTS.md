@@ -146,3 +146,53 @@ Validate in this order:
 
 Do not describe a deployment or hardware test as complete without evidence from
 the user or an actual local test result.
+
+## Development Guidelines & Constraints
+
+This project requires careful handling due to its dual-environment nature and specific runtime constraints.
+
+### 1. Dual-Environment Context
+
+- **Production Environment**: Google Apps Script (GAS V8 engine).
+  - No Node.js built-in modules (e.g., `fs`, `path`).
+  - Global scope is shared across all `.gs` (`.js`) files in `gas/`.
+- **Local/CI Environment**: Node.js 20+ with Jest.
+  - Used strictly for unit testing and CI pipelines.
+
+### 2. GAS Compatibility & Export Guards (Good / Bad)
+
+Always guard `module.exports` to prevent runtime errors in the GAS environment. Do not bring Node.js `require` into production code.
+
+**Bad:**
+```javascript
+// Breaks in GAS!
+const someLib = require('some-lib');
+
+module.exports = { myFunction };
+```
+
+**Good:**
+```javascript
+function myFunction() { /* ... */ }
+
+// Export guard protects the GAS runtime while allowing Jest to test the functions locally.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { myFunction };
+}
+```
+
+### 3. Strict Timezone Management
+
+All date and time calculations, formatting, and comparisons (e.g., logging, snooze evaluation) must strictly use the **`Asia/Tokyo` (UTC+9)** timezone.
+
+### 4. Negative Constraints (Do NOT Do This)
+
+- **Do NOT** introduce TypeScript, bundlers, or transpilers. The project must maintain the simplicity and lightweight nature of raw JavaScript for GAS.
+- **Do NOT** alter the expected incoming JSON schema from the ESP8266 or the LINE Webhook contract.
+- **Do NOT** perform dangerous spreadsheet row operations, such as `sheet.deleteRows(2, 0)` or specifying out-of-bounds rows. Always validate indexes and counts before calling GAS APIs.
+
+### 5. Definition of Done (Quantitative Exit Criteria)
+
+Before a Pull Request can be considered complete:
+- The local test suite must pass with `exit code 0` by running either `npm test` or `npm run test:coverage`.
+- Test coverage must be preserved or improved (strictly >= 80%).
