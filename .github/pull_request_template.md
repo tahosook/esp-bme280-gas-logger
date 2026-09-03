@@ -38,6 +38,7 @@
 
 ## AIエージェント自己点検（Agent Self-Check）
 
-- [ ] テスト通過: `npm test` または `npm run test:coverage` が exit code 0 でパスしたか
+- [ ] テスト通過: `npm test` が exit code 0 でパスしたか
+- [ ] カバレッジ: `npm run test:coverage` が exit code 0 でパスしたか
 - [ ] エクスポートガード: `module.exports` に `if (typeof module !== 'undefined' && module.exports)` のガードが掛かっているか、Nodeの `require` が本番コードに混入していないか
 - [ ] JST基準: 日付・時刻の操作は `Asia/Tokyo` (UTC+9) 基準で行われているか

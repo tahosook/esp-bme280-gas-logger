@@ -161,7 +161,7 @@ This project requires careful handling due to its dual-environment nature and sp
 
 ### 2. GAS Compatibility & Export Guards (Good / Bad)
 
-Always guard `module.exports` to prevent runtime errors in the GAS environment. Do not bring Node.js `require` into production code.
+If a GAS source file needs to export functions for Node/Jest tests, guard `module.exports` as follows. Do not bring Node.js `require` into production code.
 
 **Bad:**
 ```javascript
@@ -195,4 +195,4 @@ All date and time calculations, formatting, and comparisons (e.g., logging, snoo
 
 Before a Pull Request can be considered complete:
 - The local test suite must pass with `exit code 0` by running either `npm test` or `npm run test:coverage`.
-- Test coverage must be preserved or improved (strictly >= 80%).
+- Test coverage must satisfy the thresholds defined in `jest.config.js`. Do not lower the existing coverage thresholds.
