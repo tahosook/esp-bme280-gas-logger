@@ -27,14 +27,19 @@
 
 作業を進めるにあたり、コード管理やセキュリティが適切に保たれているかを確認する。
 
-- `git diff --check`が成功する（不要なスペースや改行コードの乱れがないこと）
+- `npm test` が exit code 0 でパスする
+- `npm run test:coverage` が `jest.config.js` の閾値（branches: 80%, functions: 85%, lines: 85%, statements: 85%）を満たす
+- `npm run lint` が ESLint（complexity 12 基準）でパスする
+- `git diff --check` が成功する（不要なスペースや改行コードの乱れがないこと）
 - Publicリポジトリへ秘密情報（Wi-Fiパスワード、APIトークン、LINEトークン等）が含まれていない
 - `main`ブランチへ直接変更せず、作業ブランチとPull Requestを使う
 - README、構成、API、デプロイ、テスト方針が文書化されている
 
 ---
 
-## 3. GAS API単体テスト
+## 3. GAS API単体テスト（Jest自動テスト）
+
+GASコードの単体テストおよび各種ロジックテストは、Node.js 20+ と Jest（`tests/*.test.js`）により自動化されている。
 
 ### 3.1 リクエスト・レスポンス検証
 

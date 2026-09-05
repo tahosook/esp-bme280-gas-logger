@@ -52,6 +52,7 @@ LINE Push通知（1回・復帰でリセット）
   - `Monitor.gs`: 直近データ評価、状態遷移（正常⇄超過）判定、通知要否の決定、センサー未受信ウォッチドッグ、異常値判定の比較元（直近有効データ）を Script Properties で保持
   - `DailyAggregation.gs`: 日次集計（前回処理済み行以降を読み、Dailyへ1日1行）。処理済み行番号は Script Properties（`DAILY_LAST_ROW`）で管理し、追記確定時のみ更新する
   - `MonthlyAggregation.gs`: 月次集計（Dailyを読み、Monthlyへ1月1行）
+  - `DataArchive.gs`: 直近2ヶ月以前の生データを別シート（`Raw_YYYYMM`）または外部スプレッドシートへ退避・パージするデータライフサイクル管理（`MonthlyAggregation` から呼び出し）
   - `LineBot.gs`: Webhook署名検証、コマンド解析（状況/スキップ/クリア/グラフ/推移）、Reply/Push送信、QuickChart 24hグラフ画像返信（Config/状態変更は排他制御）
   - `Metrics.gs`: 不快指数 (DI)・容積絶対湿度 (AH) 計算、翌朝8時JST計算、QuickChart URL 生成（URL 圧縮・サンプリング）などの純粋関数群
   - `Config.gs`: Script Properties / Configシートへのアクセス集約、しきい値デフォルト定義。**Configシートは `getValues()` で一括取得し、Script Properties は `getProperties()` で一括取得する**。個別の `getRange().getValue()` は極力避ける。

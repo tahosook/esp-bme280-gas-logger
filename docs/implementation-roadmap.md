@@ -38,7 +38,7 @@ https://github.com/tahosook/sketch_ambidata
 | [architecture.md](architecture.md) | システム構成・アーキテクチャ |
 | [line-bot-ui.md](line-bot-ui.md) | LINE Bot UI/UX仕様 |
 | [deployment.md](deployment.md) | セットアップ・デプロイ手順 |
-| [release-plan.md](release-plan.md) | リリース・ロールバック計画 |
+| [archive/release-plan.md](archive/release-plan.md) | 旧リリース・ロールバック計画 |
 | [implementation-tasks.md](implementation-tasks.md) | タスク一覧（決定 / 実装 / 検証） |
 | [test-plan.md](test-plan.md) | テスト計画 |
 | [test-results/](test-results/) | 検証記録 |
@@ -135,6 +135,7 @@ PR #26, #27, #28 にて、LINE Bot の UI を視覚的な Flex Message に刷新
 | `Monitor.gs` | 直近データ評価、状態遷移（正常⇄超過）判定、通知要否の決定、センサー未受信ウォッチドッグ、異常値判定の比較元（直近有効データ）を Script Properties で保持 | 11 |
 | `DailyAggregation.gs` | 時間主導トリガー入口。前回処理済み行以降を読み、Dailyへ1日1行追記。`DAILY_LAST_ROW` は Script Properties で管理 | 15 |
 | `MonthlyAggregation.gs` | 月次集計。Dailyを読み、Monthlyへ1行追記 | 18 |
+| `DataArchive.gs` | 直近2ヶ月以前の生データのアーカイブ・パージ（MonthlyAggregationから呼び出し） | PR #34 |
 | `LineBot.gs` | Webhook署名検証、コマンド解析（状況/スキップ/クリア/グラフ/推移）、Reply/Push送信、Flex Message/グラフ画像返信（Config/状態変更は排他制御） | 12 / PR #26-#27 |
 | `Metrics.gs` | 不快指数 (DI)・容積絶対湿度 (AH) 計算、翌朝8時JST計算、QuickChart URL 生成（URL 圧縮・サンプリング）、5段階アラート優先度制御 | PR #26 |
 | `Config.gs` | Script Properties / Configシートへのアクセス集約、しきい値デフォルト定義 | 15 |
@@ -451,6 +452,20 @@ PR #26, #27, #28 にて実装・検証を完了。詳細は [docs/line-bot-ui.md
 | 27 | 実装 — LINE Bot UI 近代化と Flex Message 対応（NOW/SNOOZE/CLEAR/TRENDS、DIステータスバッジ、容積絶対湿度、スヌーズ期限表示、5段階アラート制御） | ✅ 完了（PR #26, #27） |
 | 28 | 実装 — QuickChart による直近24h温湿度推移グラフ画像生成（`buildQuickChartUrl`、URL 2,000文字圧縮、間引き・X軸ラベル最適化、フォールバック） | ✅ 完了（PR #26, #28） |
 | 29 | 実装・検証 — GAS 手動デバッグ・動作検証関数群（`DebugTest.gs` による URL 文字数検証、Webhook シミュレーション、全9本テストパス） | ✅ 完了（PR #28） |
+
+---
+
+## 完了済み：Phase 30〜34（テスト基盤近代化・生データアーカイブ・ESLint複雑度管理）
+
+PR #31〜#37 にて、GASアーキテクチャの整理、Jestテストスイートへの完全移行、CI自動化、生データのアーカイブ/パージ機能、およびESLint複雑度管理とマイクロヘルパーの集約を実施した。
+
+| Phase | 内容 | 状態 |
+| --- | --- | --- |
+| 30 | 実装 — GASバックエンドアーキテクチャのモジュール依存関係整理 | ✅ 完了（PR #31） |
+| 31 | 実装・検証 — Node 20+ / Jest テストスイート移行および CI 自動化（GitHub Actions で `npm run test:coverage` カバレッジ閾値検査） | ✅ 完了（PR #32） |
+| 32 | 実装 — SNOOZE カードの最小化および datetimepicker 対応 | ✅ 完了（PR #33） |
+| 33 | 実装・検証 — 生データの自動アーカイブ・パージ（`DataArchive.gs`、直近2ヶ月以前を `Raw_YYYYMM` へ退避、`RawData` フォールバック対応） | ✅ 完了（PR #34） |
+| 34 | 実装・リファクタリング — ESLint 循環的複雑度管理（threshold: 12）と過剰なマイクロヘルパーの集約・コールチェーン平坦化 | ✅ 完了（PR #36, #37） |
 
 ---
 

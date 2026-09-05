@@ -10,14 +10,16 @@ GASエディタの **プロジェクトの設定 → スクリプト プロパ�
 | --- | --- |
 | `SPREADSHEET_ID` | 追記先スプレッドシートのID |
 | `API_TOKEN` | ESP8266と共有する簡易トークン |
-| `SHEET_NAME` | 追記先シート名。省略時は`DATA` |
+| `SHEET_NAME` | 追記先生データシート名。省略時は`RawData`（旧名称`2026`、`DATA`への自動フォールバックあり） |
 | `DAILY_LAST_ROW` | 日次集計の前回処理済み行番号（1始まり） |
 | `MONTHLY_LAST_ROW` | 月次集計の前回処理済み行番号（1始まり） |
+| `ARCHIVE_SPREADSHEET_ID` | アーカイブ先の別スプレッドシートID（省略時は同一スプレッドシート内） |
+| `ARCHIVE_RETENTION_MONTHS` | RawDataシートに残すアーカイブ対象外の月数（デフォルト: 2） |
 | `WATCHDOG_NOTIFIED` | センサー未受信ウォッチドッグ通知済みフラグ |
 | `LINE_CHANNEL_SECRET` | LINE Developers のチャネルシークレット（署名検証用） |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Developers のチャネルアクセストークン（長期） |
 | `LINE_USER_ID` | LINE Push通知先のユーザーID |
-| `MONITOR_SKIP_UNTIL` | LINEスヌーズ停止期限（エポックミリ秒）。`ALERT_SNOOZE_UNTIL`も互換対応 |
+| `ALERT_SNOOZE_UNTIL` | LINEスヌーズ停止期限（エポックミリ秒。`MONITOR_SKIP_UNTIL`も互換対応） |
 | `ALERT_LAST_SENT_TIME` | 直近のアラートPush送信時刻（エポックミリ秒。クールダウン判定用） |
 | `ALERT_COUNT_TODAY` | 当日のアラート送信件数（JSON: `{"date":"YYYY-MM-DD","count":N}`。1日上限ガード用） |
 
@@ -27,7 +29,7 @@ GASエディタの **プロジェクトの設定 → スクリプト プロパ�
 
 本番デプロイのチェックリストとロールバック手順は、[GAS本番デプロイ手順](../docs/deployment.md#gasデプロイ)を使用してください。
 
-1. GASプロジェクトへ`Router.gs`、`Ingest.gs`、`Config.gs`、`ErrorLog.gs`、`Monitor.gs`、`DailyAggregation.gs`、`MonthlyAggregation.gs`、`LineBot.gs`、`Metrics.gs`、`SetupTriggers.gs`、`DebugTest.gs`と`appsscript.json`を配置する。`appsscript.json`には`USER_DEPLOYING`と`ANYONE_ANONYMOUS`のWebアプリ設定を含める。`doGet`・`doPost`・`jsonResponse_`は`Router.gs`に実装されている（`Code.gs`は削除済み）。
+1. GASプロジェクトへ`Router.gs`、`Ingest.gs`、`Config.gs`、`ErrorLog.gs`、`Monitor.gs`、`DailyAggregation.gs`、`MonthlyAggregation.gs`、`DataArchive.gs`、`LineBot.gs`、`Metrics.gs`、`SetupTriggers.gs`、`DebugTest.gs`と`appsscript.json`を配置する。`appsscript.json`には`USER_DEPLOYING`と`ANYONE_ANONYMOUS`のWebアプリ設定を含める。`doGet`・`doPost`・`jsonResponse_`は`Router.gs`に実装されている（`Code.gs`は削除済み）。
 2. Script Propertiesを設定する。
 3. **デプロイ → 新しいデプロイ → ウェブアプリ** を選択する。
 4. 実行ユーザーはスプレッドシートへ書き込めるアカウントを選択する。
@@ -67,18 +69,12 @@ curl -L -sS -X POST "$GAS_URL" \
 
 ## 自動テスト
 
-GASコードのローカル検証は、GASサービスをスタブ化した次のスクリプトで実行できます。
+GASコードのローカル検証は Node.js 20+ と Jest による単体テストスイート、および ESLint を使用して実行します。
 
 ```sh
-node scripts/test-gas-api.js
-node scripts/test-config-monitor.gs.js
-node scripts/test-errorlog.gs.js
-node scripts/test-monitor.gs.js
-node scripts/test-daily-aggregation.js
-node scripts/test-watchdog.js
-node scripts/test-monthly-aggregation.js
-node scripts/test-line-bot.js
-node scripts/test-metrics.js
+npm test              # 単体テスト実行（Jest）
+npm run test:coverage # カバレッジ測定（カバレッジ閾値の自動判定）
+npm run lint          # ESLint検査（complexity 12 基準）
 ```
 
 本番デプロイ後のスモークテストは、URLだけを指定するとReady確認と不正トークン確認を実行します。

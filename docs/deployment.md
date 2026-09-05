@@ -32,7 +32,7 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
 次の作業は、対象コードと設定値を人間が確認し、明示的に承認してから行う。
 
 1. 使用するコミットまたはPRの実装内容を確認する。可能なら`main`へマージ済みのコードを使用する。
-2. Googleスプレッドシートを作成し、1行目を次の列順にする。シート名は`DATA`とする（Phase 7で決定）。
+2. Googleスプレッドシートを作成し、1行目を次の列順にする。追記先生データシート名は`RawData`とする（旧名称`DATA`や`2026`へのフォールバックあり）。
 
    ```text
    日時 | temp | press | hum | flag
@@ -40,7 +40,7 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
 
    日時はDate値で書き、列の表示形式を`yyyy-MM-dd HH:mm:ss`にする（Phase 7で決定。Phase 8の実装で反映）。
 3. スプレッドシートのタイムゾーンを`Asia/Tokyo`に設定する。
-4. Google Apps Scriptプロジェクトを作成し、`gas/` の内容を配置する。Phase 0〜6 の受信基盤は単一の `Code.gs`。Phase 8 以降はモジュール群（`Router.gs` / `Ingest.gs` / `Config.gs` / `ErrorLog.gs` / `Monitor.gs` / `DailyAggregation.gs` / `MonthlyAggregation.gs` / `LineBot.gs` / `Metrics.gs` / `SetupTriggers.gs` / `DebugTest.gs`）をまとめて配置する。
+4. Google Apps Scriptプロジェクトを作成し、`gas/` の内容を配置する。Phase 0〜6 の受信基盤は単一の `Code.gs`。Phase 8 以降はモジュール群（`Router.gs` / `Ingest.gs` / `Config.gs` / `ErrorLog.gs` / `Monitor.gs` / `DailyAggregation.gs` / `MonthlyAggregation.gs` / `DataArchive.gs` / `LineBot.gs` / `Metrics.gs` / `SetupTriggers.gs` / `DebugTest.gs`）をまとめて配置する。
 5. GASプロジェクトのタイムゾーンを`Asia/Tokyo`に設定する。
 6. `appsscript.json`にWebアプリ設定があることを確認する。CLIで同期する場合は、次の設定を含める。
 
