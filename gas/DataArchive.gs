@@ -89,7 +89,9 @@ function runDataArchive_() {
   const totalArchived = writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths);
 
   // Purge
-  sourceSheet.deleteRows(2, totalArchived);
+  if (totalArchived > 0) {
+    sourceSheet.deleteRows(2, totalArchived);
+  }
 
   return {
     status: 'success',

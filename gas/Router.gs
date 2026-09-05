@@ -1,9 +1,3 @@
-const CONFIG_KEYS = {
-  spreadsheetId: 'SPREADSHEET_ID',
-  apiToken: 'API_TOKEN',
-  sheetName: 'SHEET_NAME'
-};
-
 const LIMITS = {
   temp: { min: -40.0, max: 85.0 },
   press: { min: 300.0, max: 1100.0 },
@@ -45,9 +39,13 @@ function isLineWebhookRequest_(e, payload) {
 function doGet() {
   try {
     const properties = PropertiesService.getScriptProperties();
-    const spreadsheetId = properties.getProperty(CONFIG_KEYS.spreadsheetId);
-    const apiToken = properties.getProperty(CONFIG_KEYS.apiToken);
-    const sheetName = properties.getProperty(CONFIG_KEYS.sheetName) || 'RawData';
+    const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+    const apiTokenKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.apiToken) || 'API_TOKEN';
+    const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
+
+    const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+    const apiToken = properties.getProperty(apiTokenKey);
+    const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
 
     if (!spreadsheetId || !apiToken) {
       return readinessResponse_(false);
@@ -85,7 +83,6 @@ function jsonResponse_(body) {
 if (typeof module !== 'undefined') {
   module.exports = {
     isLineWebhookRequest_,
-    CONFIG_KEYS,
     LIMITS,
     doPost,
     doGet,

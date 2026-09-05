@@ -17,7 +17,8 @@ function handleSensorPost_(e) {
 
   try {
     const properties = PropertiesService.getScriptProperties();
-    const apiToken = properties.getProperty(CONFIG_KEYS.apiToken);
+    const apiTokenKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.apiToken) || 'API_TOKEN';
+    const apiToken = properties.getProperty(apiTokenKey);
     if (typeof apiToken !== 'string' || payload.token !== apiToken) {
       return errorResponse_('invalid_token');
     }
@@ -120,7 +121,8 @@ function applyMonitorStateSafely_(sheet, lastAppendedRow, payload) {
 }
 
 function getIngestSheet_(properties) {
-  const spreadsheetId = properties.getProperty(CONFIG_KEYS.spreadsheetId);
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
   if (!spreadsheetId) {
     throw new Error('missing spreadsheet configuration');
   }
