@@ -356,7 +356,7 @@ function formatStatusMeasurements_(lastValid, states, pastPress) {
   const humText = humVal !== null
     ? (isHumAlert ? `${Math.round(humVal)} % (⚠️ 多湿)` : `${Math.round(humVal)} % (正常)`)
     : '-';
-  const trendStr = (typeof calculatePressureTrend_ === 'function' && pastPress !== null)
+  const trendStr = (pressVal !== null && typeof calculatePressureTrend_ === 'function' && pastPress !== null)
     ? calculatePressureTrend_(pressVal, pastPress)
     : '安定';
   const pressText = pressVal !== null ? `${pressVal.toFixed(1)} hPa (${trendStr})` : '-';
