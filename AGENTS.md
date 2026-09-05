@@ -209,3 +209,4 @@ git diff --check      # Check for whitespace and line break issues
 - 実装タスク一覧: [`docs/implementation-tasks.md`](docs/implementation-tasks.md)
 - 実装ロードマップ: [`docs/implementation-roadmap.md`](docs/implementation-roadmap.md)
 - Alert state machine spec: [`docs/specs/alert-state-machine.md`](docs/specs/alert-state-machine.md)
+- Data lifecycle & aggregation spec: [`docs/specs/data-lifecycle-and-aggregation.md`](docs/specs/data-lifecycle-and-aggregation.md)
