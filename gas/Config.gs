@@ -67,42 +67,21 @@ function getMergedConfig_() {
   return config;
 }
 
-function getSheetConfig_() {
-  const properties = PropertiesService.getScriptProperties();
-  const spreadsheetId = properties.getProperty(SCRIPT_PROPERTY_KEYS.spreadsheetId);
-  if (!spreadsheetId) {
-    return {};
-  }
-  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  const configSheet = spreadsheet.getSheetByName('Config');
-  if (!configSheet) {
-    return {};
-  }
-  const values = configSheet.getDataRange().getValues();
+function parseVerticalSheetConfig_(values) {
   const config = {};
-
-  if (values.length === 0) {
-    return config;
-  }
-
-  const header = values[0];
-  const firstHeader = String(header[0] || '').trim().toLowerCase();
-  const secondHeader = String(header[1] || '').trim().toLowerCase();
-
-  // Backward-compatible vertical format: key | value, one setting per row.
-  if (firstHeader === 'key' && secondHeader === 'value') {
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      const key = row[0];
-      const value = row[1];
-      if (key && value !== undefined && value !== null && value !== '') {
-        config[String(key).trim()] = String(value);
-      }
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const key = row[0];
+    const value = row[1];
+    if (key && value !== undefined && value !== null && value !== '') {
+      config[String(key).trim()] = String(value);
     }
-    return config;
   }
+  return config;
+}
 
-  // Documented horizontal format: setting names in row 1, values below them.
+function parseHorizontalSheetConfig_(header, values) {
+  const config = {};
   for (let column = 0; column < header.length; column += 1) {
     const key = header[column];
     if (!key) {
@@ -117,6 +96,35 @@ function getSheetConfig_() {
     }
   }
   return config;
+}
+
+function getSheetConfig_() {
+  const properties = PropertiesService.getScriptProperties();
+  const spreadsheetId = properties.getProperty(SCRIPT_PROPERTY_KEYS.spreadsheetId);
+  if (!spreadsheetId) {
+    return {};
+  }
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  const configSheet = spreadsheet.getSheetByName('Config');
+  if (!configSheet) {
+    return {};
+  }
+  const values = configSheet.getDataRange().getValues();
+  if (values.length === 0) {
+    return {};
+  }
+
+  const header = values[0];
+  const firstHeader = String(header[0] || '').trim().toLowerCase();
+  const secondHeader = String(header[1] || '').trim().toLowerCase();
+
+  // Backward-compatible vertical format: key | value, one setting per row.
+  if (firstHeader === 'key' && secondHeader === 'value') {
+    return parseVerticalSheetConfig_(values);
+  }
+
+  // Documented horizontal format: setting names in row 1, values below them.
+  return parseHorizontalSheetConfig_(header, values);
 }
 
 function getSpreadsheetConfig_() {
@@ -160,6 +168,8 @@ if (typeof module !== 'undefined') {
     DEFAULT_CONFIG,
     getMergedConfig_,
     getSheetConfig_,
+    parseVerticalSheetConfig_,
+    parseHorizontalSheetConfig_,
     getSpreadsheetConfig_,
     getRawDataSheet_,
     getMergedConfigForTest_

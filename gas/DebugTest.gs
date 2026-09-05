@@ -129,6 +129,62 @@ function debugTest_checkAlertLogic() {
   }
 }
 
+function getTestTargetSheet_(spreadsheet, properties, sheetNameKey) {
+  if (typeof getRawDataSheet_ === 'function') {
+    return getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
+  }
+  const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
+  return spreadsheet.getSheetByName(sheetName) ||
+    spreadsheet.getSheetByName('2026') ||
+    spreadsheet.getSheetByName('DATA') ||
+    spreadsheet.getActiveSheet();
+}
+
+function logQuickChartResult_(chartUrl, elapsedMs) {
+  if (!chartUrl) {
+    Logger.log('⚠️ buildQuickChartUrl の結果: null (描画可能なデータが不足しています)');
+    return;
+  }
+
+  const urlLength = chartUrl.length;
+  Logger.log('✅ QuickChart URL 生成成功 (所要時間: ' + elapsedMs + ' ms)');
+  Logger.log('生成 URL: ' + chartUrl);
+  Logger.log('URL 文字数: ' + urlLength + ' 文字 / 2,000文字制限');
+
+  if (urlLength <= 2000) {
+    Logger.log('🎉 判定: LINE Messaging API の 2,000 文字制限をクリアしています (残り許容: ' + (2000 - urlLength) + ' 文字)');
+  } else {
+    Logger.log('❌ 警告: LINE Messaging API の 2,000 文字制限を超過しています！ (+ ' + (urlLength - 2000) + ' 文字)');
+  }
+}
+
+function logDebugTestError_(funcName, err) {
+  const message = err && err.message ? err.message : String(err);
+  const stack = err && err.stack ? err.stack : 'スタック情報なし';
+  Logger.log('❌ エラー発生: ' + message);
+  Logger.log('エラー詳細: ' + stack);
+  console.error(funcName + ' failed:', err);
+}
+
+function getDebugChartTargetSheet_(properties) {
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
+
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+  if (!spreadsheetId) {
+    Logger.log('❌ スクリプトプロパティ SPREADSHEET_ID が設定されていません。');
+    return null;
+  }
+
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  const sheet = getTestTargetSheet_(spreadsheet, properties, sheetNameKey);
+  if (!sheet) {
+    Logger.log('❌ 探索可能なデータシートが見つかりません。');
+    return null;
+  }
+  return sheet;
+}
+
 /**
  * QuickChart グラフ URL 生成ロジック（buildQuickChartUrl）の単体手動検証関数。
  * GAS エディタで本関数を選択して「実行」をクリックしてください。
@@ -137,26 +193,8 @@ function debugTest_buildQuickChartUrl() {
   Logger.log('=== [DEBUG TEST] buildQuickChartUrl 開始 ===');
   try {
     const properties = PropertiesService.getScriptProperties();
-    const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-    const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
-
-    const spreadsheetId = properties.getProperty(spreadsheetIdKey);
-    if (!spreadsheetId) {
-      Logger.log('❌ スクリプトプロパティ SPREADSHEET_ID が設定されていません。');
-      return;
-    }
-
-    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-    let sheet;
-    if (typeof getRawDataSheet_ === 'function') {
-      sheet = getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
-    } else {
-      const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
-      sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.getSheetByName('2026') || spreadsheet.getSheetByName('DATA') || spreadsheet.getActiveSheet();
-    }
-
+    const sheet = getDebugChartTargetSheet_(properties);
     if (!sheet) {
-      Logger.log('❌ 探索可能なデータシートが見つかりません。');
       return;
     }
 
@@ -172,25 +210,22 @@ function debugTest_buildQuickChartUrl() {
     const chartUrl = buildQuickChartUrl(sheet);
     const elapsedMs = Date.now() - startTime;
 
-    if (!chartUrl) {
-      Logger.log('⚠️ buildQuickChartUrl の結果: null (描画可能なデータが不足しています)');
-      return;
-    }
-
-    const urlLength = chartUrl.length;
-    Logger.log('✅ QuickChart URL 生成成功 (所要時間: ' + elapsedMs + ' ms)');
-    Logger.log('生成 URL: ' + chartUrl);
-    Logger.log('URL 文字数: ' + urlLength + ' 文字 / 2,000文字制限');
-
-    if (urlLength <= 2000) {
-      Logger.log('🎉 判定: LINE Messaging API の 2,000 文字制限をクリアしています (残り許容: ' + (2000 - urlLength) + ' 文字)');
-    } else {
-      Logger.log('❌ 警告: LINE Messaging API の 2,000 文字制限を超過しています！ (+ ' + (urlLength - 2000) + ' 文字)');
-    }
+    logQuickChartResult_(chartUrl, elapsedMs);
   } catch (err) {
-    Logger.log('❌ エラー発生: ' + (err && err.message ? err.message : String(err)));
-    Logger.log('エラー詳細: ' + (err && err.stack ? err.stack : 'スタック情報なし'));
-    console.error('debugTest_buildQuickChartUrl failed:', err);
+    logDebugTestError_('debugTest_buildQuickChartUrl', err);
+  }
+}
+
+function logTrendsTestMessage_(messages) {
+  if (messages.length > 0 && messages[0].type === 'image') {
+    const imgMsg = messages[0];
+    Logger.log('✅ 正常な image メッセージが生成されました。');
+    Logger.log('originalContentUrl 長: ' + (imgMsg.originalContentUrl ? imgMsg.originalContentUrl.length : 0));
+    Logger.log('previewImageUrl 長: ' + (imgMsg.previewImageUrl ? imgMsg.previewImageUrl.length : 0));
+  } else if (messages.length > 0 && messages[0].type === 'text') {
+    Logger.log('ℹ️ フォールバックテキストメッセージが返却されました: ' + messages[0].text);
+  } else {
+    Logger.log('⚠️ 予期しないメッセージ形式です。');
   }
 }
 
@@ -205,21 +240,43 @@ function debugTest_handleLineWebhook_Trends() {
     Logger.log('生成されたメッセージ数: ' + messages.length);
     Logger.log('メッセージ内容:\n' + JSON.stringify(messages, null, 2));
 
-    if (messages.length > 0 && messages[0].type === 'image') {
-      const imgMsg = messages[0];
-      Logger.log('✅ 正常な image メッセージが生成されました。');
-      Logger.log('originalContentUrl 長: ' + (imgMsg.originalContentUrl ? imgMsg.originalContentUrl.length : 0));
-      Logger.log('previewImageUrl 長: ' + (imgMsg.previewImageUrl ? imgMsg.previewImageUrl.length : 0));
-    } else if (messages.length > 0 && messages[0].type === 'text') {
-      Logger.log('ℹ️ フォールバックテキストメッセージが返却されました: ' + messages[0].text);
-    } else {
-      Logger.log('⚠️ 予期しないメッセージ形式です。');
-    }
+    logTrendsTestMessage_(messages);
   } catch (err) {
-    Logger.log('❌ エラー発生: ' + (err && err.message ? err.message : String(err)));
-    Logger.log('エラー詳細: ' + (err && err.stack ? err.stack : 'スタック情報なし'));
-    console.error('debugTest_handleLineWebhook_Trends failed:', err);
+    logDebugTestError_('debugTest_handleLineWebhook_Trends', err);
   }
+}
+
+function logArchiveDryRunDetails_(groupedData, sortedYearMonths) {
+  let totalArchived = 0;
+  Logger.log(`\nアーカイブ対象年月: ${sortedYearMonths.join(', ')}`);
+
+  for (let i = 0; i < sortedYearMonths.length; i++) {
+    const ym = sortedYearMonths[i];
+    const rows = groupedData.get(ym);
+    totalArchived += rows.length;
+    Logger.log(` - 年月 [${ym}]: ${rows.length} 行をシート [Raw_${ym.replace('-', '')}] に退避予定`);
+  }
+
+  Logger.log(`\n✅ ドライラン完了: 合計 ${totalArchived} 行のデータがアーカイブ・削除対象です。 (実際の変更は行っていません)`);
+}
+
+function getDebugArchiveSourceSheet_(properties) {
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+
+  if (!spreadsheetId) {
+    Logger.log('❌ スクリプトプロパティ SPREADSHEET_ID が設定されていません。');
+    return null;
+  }
+
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  const sourceSheet = getRawDataSheet_(spreadsheet, properties);
+
+  if (!sourceSheet) {
+    Logger.log('❌ 探索可能な生データシートが見つかりません。');
+    return null;
+  }
+  return sourceSheet;
 }
 
 /**
@@ -230,19 +287,8 @@ function debugTest_runDataArchiveDryRun() {
   Logger.log('=== [DEBUG TEST] DataArchive Dry-Run 開始 ===');
   try {
     const properties = PropertiesService.getScriptProperties();
-    const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-    const spreadsheetId = properties.getProperty(spreadsheetIdKey);
-
-    if (!spreadsheetId) {
-      Logger.log('❌ スクリプトプロパティ SPREADSHEET_ID が設定されていません。');
-      return;
-    }
-
-    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-    const sourceSheet = getRawDataSheet_(spreadsheet, properties);
-
+    const sourceSheet = getDebugArchiveSourceSheet_(properties);
     if (!sourceSheet) {
-      Logger.log('❌ 探索可能な生データシートが見つかりません。');
       return;
     }
 
@@ -271,27 +317,22 @@ function debugTest_runDataArchiveDryRun() {
       return;
     }
 
-    let totalArchived = 0;
     const sortedYearMonths = Array.from(groupedData.keys()).sort();
-
-    Logger.log(`\nアーカイブ対象年月: ${sortedYearMonths.join(', ')}`);
-
-    for (let i = 0; i < sortedYearMonths.length; i++) {
-      const ym = sortedYearMonths[i];
-      const rows = groupedData.get(ym);
-      totalArchived += rows.length;
-      Logger.log(` - 年月 [${ym}]: ${rows.length} 行をシート [Raw_${ym.replace('-', '')}] に退避予定`);
-    }
-
-    Logger.log(`\n✅ ドライラン完了: 合計 ${totalArchived} 行のデータがアーカイブ・削除対象です。 (実際の変更は行っていません)`);
+    logArchiveDryRunDetails_(groupedData, sortedYearMonths);
   } catch (err) {
-    Logger.log('❌ エラー発生: ' + (err && err.message ? err.message : String(err)));
-    Logger.log('エラー詳細: ' + (err && err.stack ? err.stack : 'スタック情報なし'));
+    logDebugTestError_('debugTest_runDataArchiveDryRun', err);
   }
 }
 
 if (typeof module !== 'undefined') {
   module.exports = {
+    getTestTargetSheet_,
+    logQuickChartResult_,
+    logTrendsTestMessage_,
+    logArchiveDryRunDetails_,
+    logDebugTestError_,
+    getDebugChartTargetSheet_,
+    getDebugArchiveSourceSheet_,
     debugTest_checkAlertLogic,
     debugTest_buildQuickChartUrl,
     debugTest_handleLineWebhook_Trends,

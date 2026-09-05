@@ -10,20 +10,7 @@ function aggregateDaily() {
   return runDailyAggregation_();
 }
 
-function runDailyAggregation_() {
-  const properties = PropertiesService.getScriptProperties();
-  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-  const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
-  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
-  if (!spreadsheetId) {
-    const error = new Error('missing spreadsheet configuration');
-    if (typeof logError_ === 'function') {
-      logError_('daily_aggregation', 'Config', 'missing_spreadsheet_id', error);
-    }
-    throw error;
-  }
-
-  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+function getDailyAggregationSheets_(spreadsheet, properties) {
   const dataSheet = getRawDataSheet_(spreadsheet, properties);
   if (!dataSheet) {
     const error = new Error('Raw data sheet not found');
@@ -42,17 +29,68 @@ function runDailyAggregation_() {
     throw error;
   }
 
+  return { dataSheet, dailySheet };
+}
+
+function appendDailyDataRows_(dailySheet, dailyBuckets, existingDailyDates) {
+  const sortedDates = Array.from(dailyBuckets.keys()).sort();
+  let appendedCount = 0;
+
+  for (let j = 0; j < sortedDates.length; j += 1) {
+    const dateStr = sortedDates[j];
+    if (existingDailyDates.has(dateStr)) {
+      continue;
+    }
+
+    const bucket = dailyBuckets.get(dateStr);
+    const rowData = buildDailyRowData_(dateStr, bucket);
+
+    // 有効データが存在しない日は追記をスキップ
+    if (!rowData) {
+      continue;
+    }
+
+    dailySheet.appendRow(rowData);
+    appendedCount += 1;
+    existingDailyDates.add(dateStr);
+  }
+
+  return { sortedDates, appendedCount };
+}
+
+function openDailyAggregationSpreadsheet_(properties) {
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+  if (!spreadsheetId) {
+    const error = new Error('missing spreadsheet configuration');
+    if (typeof logError_ === 'function') {
+      logError_('daily_aggregation', 'Config', 'missing_spreadsheet_id', error);
+    }
+    throw error;
+  }
+  return SpreadsheetApp.openById(spreadsheetId);
+}
+
+function getLastProcessedDailyRow_(properties) {
+  const lastProcessedRowStr = properties.getProperty(DAILY_AGGREGATION_PROPERTIES.lastRow);
+  const lastProcessedRow = lastProcessedRowStr ? parseInt(lastProcessedRowStr, 10) : 1;
+  if (isNaN(lastProcessedRow) || lastProcessedRow < 1) {
+    return 1;
+  }
+  return lastProcessedRow;
+}
+
+function runDailyAggregation_() {
+  const properties = PropertiesService.getScriptProperties();
+  const spreadsheet = openDailyAggregationSpreadsheet_(properties);
+  const { dataSheet, dailySheet } = getDailyAggregationSheets_(spreadsheet, properties);
+
   const lock = LockService.getScriptLock();
   const timeoutMs = (typeof getMergedConfig_ === 'function' && getMergedConfig_().INGEST_LOCK_TIMEOUT_MS) || DAILY_LOCK_TIMEOUT_MS;
   lock.waitLock(timeoutMs);
 
   try {
-    const lastProcessedRowStr = properties.getProperty(DAILY_AGGREGATION_PROPERTIES.lastRow);
-    let lastProcessedRow = lastProcessedRowStr ? parseInt(lastProcessedRowStr, 10) : 1;
-    if (isNaN(lastProcessedRow) || lastProcessedRow < 1) {
-      lastProcessedRow = 1;
-    }
-
+    const lastProcessedRow = getLastProcessedDailyRow_(properties);
     const totalDataRows = dataSheet.getLastRow();
     if (totalDataRows <= lastProcessedRow) {
       return {
@@ -73,27 +111,7 @@ function runDailyAggregation_() {
 
     // 既存のDailyシートに存在する日付を取得し、二重集計を防止
     const existingDailyDates = getExistingDailyDates_(dailySheet);
-    const sortedDates = Array.from(dailyBuckets.keys()).sort();
-    let appendedCount = 0;
-
-    for (let j = 0; j < sortedDates.length; j += 1) {
-      const dateStr = sortedDates[j];
-      if (existingDailyDates.has(dateStr)) {
-        continue;
-      }
-
-      const bucket = dailyBuckets.get(dateStr);
-      const rowData = buildDailyRowData_(dateStr, bucket);
-
-      // 有効データが存在しない日は追記をスキップ
-      if (!rowData) {
-        continue;
-      }
-
-      dailySheet.appendRow(rowData);
-      appendedCount += 1;
-      existingDailyDates.add(dateStr);
-    }
+    const { sortedDates, appendedCount } = appendDailyDataRows_(dailySheet, dailyBuckets, existingDailyDates);
 
     // 確定済み行まで進んだ場合のみ DAILY_LAST_ROW を更新
     if (lastConfirmedRow > lastProcessedRow) {
@@ -135,38 +153,26 @@ function getExistingDailyDates_(dailySheet) {
   return existingDates;
 }
 
-function formatDateTokyo_(dateInput, format) {
+function parseDateInput_(dateInput, format) {
   if (!dateInput) {
     return null;
   }
 
-  let dateObj;
   if (Object.prototype.toString.call(dateInput) === '[object Date]') {
-    if (isNaN(dateInput.getTime())) {
-      return null;
-    }
-    dateObj = dateInput;
-  } else if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+    return isNaN(dateInput.getTime()) ? null : dateInput;
+  }
+
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateInput)) {
     if (!format || format === 'yyyy-MM-dd') {
       return dateInput.substring(0, 10);
     }
-    dateObj = new Date(dateInput);
-    if (isNaN(dateObj.getTime())) {
-      return null;
-    }
-  } else {
-    dateObj = new Date(dateInput);
-    if (isNaN(dateObj.getTime())) {
-      return null;
-    }
   }
 
-  const targetFormat = format || 'yyyy-MM-dd';
+  const dateObj = new Date(dateInput);
+  return isNaN(dateObj.getTime()) ? null : dateObj;
+}
 
-  if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
-    return Utilities.formatDate(dateObj, 'Asia/Tokyo', targetFormat);
-  }
-
+function formatTokyoFallback_(dateObj, targetFormat) {
   const tokyoTime = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
   const year = tokyoTime.getUTCFullYear();
   const month = String(tokyoTime.getUTCMonth() + 1).padStart(2, '0');
@@ -174,18 +180,37 @@ function formatDateTokyo_(dateInput, format) {
 
   if (targetFormat === 'yyyy-MM') {
     return `${year}-${month}`;
-  } else if (targetFormat === 'yyyy-MM-dd HH:mm:ss') {
+  }
+  if (targetFormat === 'yyyy-MM-dd HH:mm:ss') {
     const hours = String(tokyoTime.getUTCHours()).padStart(2, '0');
     const minutes = String(tokyoTime.getUTCMinutes()).padStart(2, '0');
     const seconds = String(tokyoTime.getUTCSeconds()).padStart(2, '0');
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  } else if (targetFormat === 'MM/dd HH:mm') {
+  }
+  if (targetFormat === 'MM/dd HH:mm') {
     const hours = String(tokyoTime.getUTCHours()).padStart(2, '0');
     const minutes = String(tokyoTime.getUTCMinutes()).padStart(2, '0');
     return `${month}/${day} ${hours}:${minutes}`;
   }
 
   return `${year}-${month}-${day}`;
+}
+
+function formatDateTokyo_(dateInput, format) {
+  const parsed = parseDateInput_(dateInput, format);
+  if (!parsed) {
+    return null;
+  }
+  if (typeof parsed === 'string') {
+    return parsed;
+  }
+
+  const targetFormat = format || 'yyyy-MM-dd';
+  if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
+    return Utilities.formatDate(parsed, 'Asia/Tokyo', targetFormat);
+  }
+
+  return formatTokyoFallback_(parsed, targetFormat);
 }
 
 function calcAvg_(numbers) {
@@ -200,6 +225,31 @@ function calcAvg_(numbers) {
 
 function roundTwoDecimals_(num) {
   return Math.round(num * 100) / 100;
+}
+
+function accumulateDailyRow_(bucket, temp, press, hum, flag) {
+  const flagStr = String(flag || '').trim().toLowerCase();
+  const isAnomaly = flagStr === 'anomaly';
+  const isAlert = flagStr === 'alert';
+
+  if (isAlert) {
+    bucket.alertCount += 1;
+  }
+
+  // anomaly 行は平均・最小・最大・sample_count から除外
+  if (isAnomaly) {
+    return;
+  }
+
+  const isValidTemp = typeof temp === 'number' && isFinite(temp);
+  const isValidPress = typeof press === 'number' && isFinite(press);
+  const isValidHum = typeof hum === 'number' && isFinite(hum);
+
+  if (isValidTemp && isValidPress && isValidHum) {
+    bucket.temps.push(temp);
+    bucket.presses.push(press);
+    bucket.hums.push(hum);
+  }
 }
 
 function processDailyDataRows_(dataValues, startRow, todayStr, lastProcessedRow) {
@@ -231,10 +281,6 @@ function processDailyDataRows_(dataValues, startRow, todayStr, lastProcessedRow)
 
     lastConfirmedRow = currentRowNumber;
 
-    const flagStr = String(flag || '').trim().toLowerCase();
-    const isAnomaly = flagStr === 'anomaly';
-    const isAlert = flagStr === 'alert';
-
     if (!dailyBuckets.has(rowDateStr)) {
       dailyBuckets.set(rowDateStr, {
         temps: [],
@@ -245,25 +291,7 @@ function processDailyDataRows_(dataValues, startRow, todayStr, lastProcessedRow)
     }
 
     const bucket = dailyBuckets.get(rowDateStr);
-
-    if (isAlert) {
-      bucket.alertCount += 1;
-    }
-
-    // anomaly 行は平均・最小・最大・sample_count から除外
-    if (isAnomaly) {
-      continue;
-    }
-
-    const isValidTemp = typeof temp === 'number' && isFinite(temp);
-    const isValidPress = typeof press === 'number' && isFinite(press);
-    const isValidHum = typeof hum === 'number' && isFinite(hum);
-
-    if (isValidTemp && isValidPress && isValidHum) {
-      bucket.temps.push(temp);
-      bucket.presses.push(press);
-      bucket.hums.push(hum);
-    }
+    accumulateDailyRow_(bucket, temp, press, hum, flag);
   }
 
   return { dailyBuckets, lastConfirmedRow };
@@ -310,11 +338,18 @@ if (typeof module !== 'undefined') {
     DATA_SHEET_NAME,
     DAILY_LOCK_TIMEOUT_MS,
     aggregateDaily,
+    openDailyAggregationSpreadsheet_,
+    getLastProcessedDailyRow_,
+    getDailyAggregationSheets_,
+    appendDailyDataRows_,
     runDailyAggregation_,
     getExistingDailyDates_,
+    parseDateInput_,
+    formatTokyoFallback_,
     formatDateTokyo_,
     calcAvg_,
     roundTwoDecimals_,
+    accumulateDailyRow_,
     processDailyDataRows_,
     buildDailyRowData_
   };

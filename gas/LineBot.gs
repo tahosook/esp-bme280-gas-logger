@@ -8,6 +8,28 @@ function getSnoozeUntilProperty_(properties) {
     properties.getProperty(LINE_BOT_PROPERTIES.legacySkipUntil);
 }
 
+function extractLineSignature_(e) {
+  if (!e) return null;
+  const headers = e.headers || {};
+  if (headers['X-Line-Signature']) return headers['X-Line-Signature'];
+  if (headers['x-line-signature']) return headers['x-line-signature'];
+  if (e.parameter) {
+    return e.parameter['X-Line-Signature'] || e.parameter['x-line-signature'] || null;
+  }
+  return null;
+}
+
+function dispatchLineEvents_(events) {
+  for (let i = 0; i < events.length; i += 1) {
+    const event = events[i];
+    if (event && event.type === 'message' && event.message && event.message.type === 'text') {
+      handleTextMessageEvent_(event);
+    } else if (event && event.type === 'postback') {
+      handlePostbackEvent_(event);
+    }
+  }
+}
+
 function handleLineWebhook_(e) {
   let body;
   try {
@@ -19,18 +41,12 @@ function handleLineWebhook_(e) {
     return errorResponse_('invalid_payload');
   }
 
-  const headers = e && e.headers ? e.headers : {};
-  const signature = headers['X-Line-Signature'] ||
-    headers['x-line-signature'] ||
-    (e && e.parameter ? (e.parameter['X-Line-Signature'] || e.parameter['x-line-signature']) : null);
-
+  const signature = extractLineSignature_(e);
   const properties = PropertiesService.getScriptProperties();
   const channelSecret = properties.getProperty(SCRIPT_PROPERTY_KEYS.lineChannelSecret);
 
-  if (signature) {
-    if (!channelSecret || !verifyLineSignature_(body, signature, channelSecret)) {
-      return errorResponse_('invalid_signature');
-    }
+  if (signature && (!channelSecret || !verifyLineSignature_(body, signature, channelSecret))) {
+    return errorResponse_('invalid_signature');
   }
 
   let payload;
@@ -40,52 +56,46 @@ function handleLineWebhook_(e) {
     return errorResponse_('invalid_json');
   }
 
-  const events = payload.events;
-  if (!Array.isArray(events)) {
-    return successResponse_();
-  }
-
-  for (let i = 0; i < events.length; i += 1) {
-    const event = events[i];
-    if (event && event.type === 'message' && event.message && event.message.type === 'text') {
-      handleTextMessageEvent_(event);
-    } else if (event && event.type === 'postback') {
-      handlePostbackEvent_(event);
-    }
+  if (Array.isArray(payload.events)) {
+    dispatchLineEvents_(payload.events);
   }
 
   return successResponse_();
+}
+
+function handleSnoozeCustomPostback_(event) {
+  const replyToken = event.replyToken;
+  const datetimeStr = event.postback.params ? event.postback.params.datetime : null;
+  if (!datetimeStr) {
+    return;
+  }
+  const targetMs = typeof parseJstDatetimepicker_ === 'function' ? parseJstDatetimepicker_(datetimeStr) : null;
+  if (!targetMs) {
+    replyMessage_(replyToken, '無効な日時、または過去の日時が指定されました。未来の日時を指定してください。');
+    return;
+  }
+
+  const lock = LockService.getScriptLock();
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+  const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
+  lock.waitLock(timeoutMs);
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(targetMs));
+    properties.setProperty(LINE_BOT_PROPERTIES.legacySkipUntil, String(targetMs));
+    const messages = buildSkipFlexMessage_(targetMs);
+    replyMessageObjects_(replyToken, messages);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function handlePostbackEvent_(event) {
   if (!event || !event.postback || !event.postback.data) {
     return;
   }
-  const replyToken = event.replyToken;
   if (event.postback.data === 'action=snooze_custom') {
-    const datetimeStr = event.postback.params ? event.postback.params.datetime : null;
-    if (!datetimeStr) {
-      return;
-    }
-    const targetMs = typeof parseJstDatetimepicker_ === 'function' ? parseJstDatetimepicker_(datetimeStr) : null;
-    if (!targetMs) {
-      replyMessage_(replyToken, '無効な日時、または過去の日時が指定されました。未来の日時を指定してください。');
-      return;
-    }
-
-    const lock = LockService.getScriptLock();
-    const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
-    const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
-    lock.waitLock(timeoutMs);
-    try {
-      const properties = PropertiesService.getScriptProperties();
-      properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(targetMs));
-      properties.setProperty(LINE_BOT_PROPERTIES.legacySkipUntil, String(targetMs));
-      const messages = buildSkipFlexMessage_(targetMs);
-      replyMessageObjects_(replyToken, messages);
-    } finally {
-      lock.releaseLock();
-    }
+    handleSnoozeCustomPostback_(event);
   }
 }
 
@@ -99,79 +109,98 @@ function verifyLineSignature_(body, signature, channelSecret) {
   }
 }
 
+function handleSnoozeCommand_(replyToken) {
+  const lock = LockService.getScriptLock();
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+  const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
+  lock.waitLock(timeoutMs);
+  try {
+    const targetHour = typeof config.SKIP_UNTIL_HOUR === 'number' ? config.SKIP_UNTIL_HOUR : 8;
+    const skipUntil = typeof calculateNextMorning8Am_ === 'function'
+      ? calculateNextMorning8Am_(Date.now(), targetHour)
+      : Date.now() + 8 * 3600 * 1000;
+    const properties = PropertiesService.getScriptProperties();
+    properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(skipUntil));
+    properties.setProperty(LINE_BOT_PROPERTIES.legacySkipUntil, String(skipUntil));
+    const messages = buildSkipFlexMessage_(skipUntil);
+    replyMessageObjects_(replyToken, messages);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function handleClearCommand_(replyToken) {
+  const lock = LockService.getScriptLock();
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+  const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
+  lock.waitLock(timeoutMs);
+  try {
+    if (typeof resetMonitorStates_ === 'function') {
+      resetMonitorStates_();
+    }
+    const properties = PropertiesService.getScriptProperties();
+    properties.deleteProperty(LINE_BOT_PROPERTIES.skipUntil);
+    properties.deleteProperty(LINE_BOT_PROPERTIES.legacySkipUntil);
+    replyMessage_(replyToken, '🔔 監視状態およびスヌーズ設定をリセットしました（監視再開）。');
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function dispatchTextMessageCommand_(normalized, replyToken) {
+  const nowCommands = ['now', '状況', '状態', '現在', 'status'];
+  const snoozeCommands = ['snooze', 'スキップ', 'おやすみ', 'skip'];
+  const trendsCommands = ['trends', 'グラフ', '24h', '推移'];
+  const clearCommands = ['clear', 'クリア', '解除'];
+
+  if (nowCommands.indexOf(normalized) !== -1) {
+    const messages = buildStatusFlexMessage_();
+    replyMessageObjects_(replyToken, messages);
+  } else if (trendsCommands.indexOf(normalized) !== -1) {
+    const messages = buildGraphMessage_();
+    replyMessageObjects_(replyToken, messages);
+  } else if (snoozeCommands.indexOf(normalized) !== -1) {
+    handleSnoozeCommand_(replyToken);
+  } else if (clearCommands.indexOf(normalized) !== -1) {
+    handleClearCommand_(replyToken);
+  } else {
+    const helpReply = [
+      '利用可能なコマンド:',
+      '・NOW (状況): 現在の室温・湿度・気圧・監視状態を表示',
+      '・SNOOZE (おやすみ/スキップ): アラート通知を翌朝8:00まで停止',
+      '・TRENDS (グラフ/24h): 直近24時間の温湿度推移グラフ画像を表示',
+      '・CLEAR (解除/クリア): 監視状態およびスヌーズ設定をリセット'
+    ].join('\n');
+    replyMessage_(replyToken, helpReply);
+  }
+}
+
+function handleTextMessageError_(err, replyToken) {
+  const errStr = err && err.toString ? err.toString() : String(err);
+  const errStack = err && err.stack ? err.stack : '';
+  console.error('LINE Webhook Error:', errStr, errStack);
+  if (typeof logError_ === 'function') {
+    logError_('linebot', 'webhook', 'unhandled_error', err);
+  }
+  if (replyToken) {
+    try {
+      const errMsg = err && err.message ? err.message : String(err);
+      replyMessage_(replyToken, '⚠️ GAS処理エラー: ' + errMsg);
+    } catch (replyErr) {
+      console.error('Failed to reply error message to LINE:', replyErr);
+    }
+  }
+}
+
 function handleTextMessageEvent_(event) {
-  const text = event.message.text || '';
-  const replyToken = event.replyToken;
+  const text = (event && event.message && event.message.text) || '';
+  const replyToken = event && event.replyToken;
   const normalized = normalizeText_(text);
 
   try {
-    const nowCommands = ['now', '状況', '状態', '現在', 'status'];
-    const snoozeCommands = ['snooze', 'スキップ', 'おやすみ', 'skip'];
-    const trendsCommands = ['trends', 'グラフ', '24h', '推移'];
-    const clearCommands = ['clear', 'クリア', '解除'];
-
-    if (nowCommands.indexOf(normalized) !== -1) {
-      const messages = buildStatusFlexMessage_();
-      replyMessageObjects_(replyToken, messages);
-    } else if (trendsCommands.indexOf(normalized) !== -1) {
-      const messages = buildGraphMessage_();
-      replyMessageObjects_(replyToken, messages);
-    } else if (snoozeCommands.indexOf(normalized) !== -1) {
-      const lock = LockService.getScriptLock();
-      const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
-      const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
-      lock.waitLock(timeoutMs);
-      try {
-        const targetHour = typeof config.SKIP_UNTIL_HOUR === 'number' ? config.SKIP_UNTIL_HOUR : 8;
-        const skipUntil = typeof calculateNextMorning8Am_ === 'function'
-          ? calculateNextMorning8Am_(Date.now(), targetHour)
-          : Date.now() + 8 * 3600 * 1000;
-        const properties = PropertiesService.getScriptProperties();
-        properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(skipUntil));
-        properties.setProperty(LINE_BOT_PROPERTIES.legacySkipUntil, String(skipUntil));
-        const messages = buildSkipFlexMessage_(skipUntil);
-        replyMessageObjects_(replyToken, messages);
-      } finally {
-        lock.releaseLock();
-      }
-    } else if (clearCommands.indexOf(normalized) !== -1) {
-      const lock = LockService.getScriptLock();
-      const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
-      const timeoutMs = config.LINE_LOCK_TIMEOUT_MS || 2000;
-      lock.waitLock(timeoutMs);
-      try {
-        if (typeof resetMonitorStates_ === 'function') {
-          resetMonitorStates_();
-        }
-        const properties = PropertiesService.getScriptProperties();
-        properties.deleteProperty(LINE_BOT_PROPERTIES.skipUntil);
-        properties.deleteProperty(LINE_BOT_PROPERTIES.legacySkipUntil);
-        replyMessage_(replyToken, '🔔 監視状態およびスヌーズ設定をリセットしました（監視再開）。');
-      } finally {
-        lock.releaseLock();
-      }
-    } else {
-      const helpReply = [
-        '利用可能なコマンド:',
-        '・NOW (状況): 現在の室温・湿度・気圧・監視状態を表示',
-        '・SNOOZE (おやすみ/スキップ): アラート通知を翌朝8:00まで停止',
-        '・TRENDS (グラフ/24h): 直近24時間の温湿度推移グラフ画像を表示',
-        '・CLEAR (解除/クリア): 監視状態およびスヌーズ設定をリセット'
-      ].join('\n');
-      replyMessage_(replyToken, helpReply);
-    }
+    dispatchTextMessageCommand_(normalized, replyToken);
   } catch (err) {
-    console.error('LINE Webhook Error:', err && err.toString ? err.toString() : String(err), err && err.stack ? err.stack : '');
-    if (typeof logError_ === 'function') {
-      logError_('linebot', 'webhook', 'unhandled_error', err);
-    }
-    if (replyToken) {
-      try {
-        replyMessage_(replyToken, '⚠️ GAS処理エラー: ' + (err && err.message ? err.message : String(err)));
-      } catch (replyErr) {
-        console.error('Failed to reply error message to LINE:', replyErr);
-      }
-    }
+    handleTextMessageError_(err, replyToken);
   }
 }
 
@@ -186,35 +215,34 @@ function normalizeText_(text) {
   return str.toLowerCase();
 }
 
-function buildGraphMessage_() {
-  const properties = PropertiesService.getScriptProperties();
+function getGraphTargetSheet_(properties) {
   const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-  const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
   const spreadsheetId = properties.getProperty(spreadsheetIdKey);
   if (!spreadsheetId) {
-    return [{ type: 'text', text: 'グラフを生成するためのデータが不足しています。' }];
+    return null;
   }
 
-  let spreadsheet;
   try {
-    spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    return getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
   } catch (err) {
     console.error('Failed to open spreadsheet:', err);
     if (typeof logError_ === 'function') {
       logError_('linebot', 'graph', 'spreadsheet_open_failed', err);
     }
-    return [{ type: 'text', text: 'グラフを生成するためのデータが不足しています。' }];
+    return null;
   }
+}
 
-  const sheet = getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
+function fetchGraphChartUrl_(properties) {
+  const sheet = getGraphTargetSheet_(properties);
   if (!sheet) {
-    return [{ type: 'text', text: 'グラフを生成するためのデータが不足しています。' }];
+    return null;
   }
 
-  let chartUrl = null;
   if (typeof buildQuickChartUrl === 'function') {
     try {
-      chartUrl = buildQuickChartUrl(sheet);
+      return buildQuickChartUrl(sheet);
     } catch (err) {
       console.error('buildQuickChartUrl error:', err);
       if (typeof logError_ === 'function') {
@@ -222,6 +250,12 @@ function buildGraphMessage_() {
       }
     }
   }
+  return null;
+}
+
+function buildGraphMessage_() {
+  const properties = PropertiesService.getScriptProperties();
+  const chartUrl = fetchGraphChartUrl_(properties);
 
   if (!chartUrl) {
     return [{ type: 'text', text: 'グラフを生成するためのデータが不足しています。' }];
@@ -236,129 +270,141 @@ function buildGraphMessage_() {
   ];
 }
 
-function buildStatusFlexMessage_() {
-  const properties = PropertiesService.getScriptProperties();
-  const skipUntil = typeof getSnoozeUntilProperty_ === 'function'
-    ? getSnoozeUntilProperty_(properties)
-    : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
-  const isSnooze = typeof isSnoozeActive_ === 'function' ? isSnoozeActive_(skipUntil, Date.now()) : false;
-  const snoozeTimeStr = typeof formatSnoozeUntilJst_ === 'function' ? formatSnoozeUntilJst_(skipUntil) : '';
-
-  const states = typeof loadMonitorStates_ === 'function' ? loadMonitorStates_(properties) : {
-    temp: { alert: false },
-    hum: { alert: false },
-    discomfortIndex: { alert: false }
-  };
-  const lastValid = typeof loadLastValidMeasurement_ === 'function' ? loadLastValidMeasurement_(properties) : null;
-
-  let tempText = '-';
-  let humText = '-';
-  let pressText = '-';
-  let diText = '-';
-  let timeStr = 'データなし';
-  let diColor = '#27ae60';
-  let diLabel = '快適';
-
-  let currentPress = null;
-  let pastPress = null;
-
-  if (lastValid) {
-    const tempVal = typeof lastValid.temp === 'number' ? lastValid.temp : null;
-    const humVal = typeof lastValid.hum === 'number' ? lastValid.hum : null;
-    const pressVal = typeof lastValid.press === 'number' ? lastValid.press : null;
-    currentPress = pressVal;
-    let diVal = typeof lastValid.discomfortIndex === 'number' ? lastValid.discomfortIndex : null;
-
-    if (tempVal !== null) {
-      const isTempAlert = states.temp && states.temp.alert;
-      tempText = isTempAlert ? `${tempVal.toFixed(1)} ℃ (⚠️ 超過)` : `${tempVal.toFixed(1)} ℃ (正常)`;
-    }
-
-    if (humVal !== null) {
-      const isHumAlert = states.hum && states.hum.alert;
-      humText = isHumAlert ? `${Math.round(humVal)} % (⚠️ 多湿)` : `${Math.round(humVal)} % (正常)`;
-    }
-
-    if (tempVal !== null && humVal !== null) {
-      if (typeof calculateDiscomfortIndex_ === 'function') {
-        diVal = calculateDiscomfortIndex_(tempVal, humVal);
-      }
-    }
-
-    if (diVal !== null) {
-      if (typeof classifyDiscomfortIndex_ === 'function') {
-        const diInfo = classifyDiscomfortIndex_(diVal);
-        diColor = diInfo.color;
-        diLabel = diInfo.label;
-      }
-      diText = `${diVal.toFixed(1)}（${diLabel}）`;
-    }
-
-    if (lastValid.timestamp) {
-      let formattedDate = '';
-      if (typeof formatDateTokyo_ === 'function') {
-        formattedDate = formatDateTokyo_(lastValid.timestamp, 'MM/dd HH:mm');
-      } else if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
-        const d = new Date(lastValid.timestamp);
-        formattedDate = Utilities.formatDate(d, 'Asia/Tokyo', 'MM/dd HH:mm');
-      } else {
-        const d = new Date(lastValid.timestamp);
-        const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-        const mm = String(jst.getUTCMonth() + 1).padStart(2, '0');
-        const dd = String(jst.getUTCDate()).padStart(2, '0');
-        const hh = String(jst.getUTCHours()).padStart(2, '0');
-        const min = String(jst.getUTCMinutes()).padStart(2, '0');
-        formattedDate = `${mm}/${dd} ${hh}:${min}`;
-      }
-      timeStr = `${formattedDate} 測定`;
-    }
-  }
-
-  // 直近3時間の気圧データ取得
+function getPastPressureFromSheet_(properties) {
   try {
     const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-    const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
     const spreadsheetId = properties.getProperty(spreadsheetIdKey);
-    if (spreadsheetId) {
-      const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-      const sheet = getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
-      if (sheet && sheet.getLastRow() >= 2) {
-        const lastRow = sheet.getLastRow();
-        const targetRow = Math.max(2, lastRow - 36);
-        const rowValues = sheet.getRange(targetRow, 1, 1, 4).getValues()[0];
-        const p = Number(rowValues[2]);
-        if (!isNaN(p) && isFinite(p)) {
-          pastPress = p;
-        }
-      }
+    if (!spreadsheetId) {
+      return null;
     }
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
+    if (!sheet || sheet.getLastRow() < 2) {
+      return null;
+    }
+    const targetRow = Math.max(2, sheet.getLastRow() - 36);
+    const rowValues = sheet.getRange(targetRow, 1, 1, 4).getValues()[0];
+    const p = Number(rowValues[2]);
+    return (!isNaN(p) && isFinite(p)) ? p : null;
   } catch (e) {
-    // ignore sheet lookup error
+    return null;
+  }
+}
+
+function formatStatusTimeString_(timestamp) {
+  if (!timestamp) return 'データなし';
+  let formattedDate = '';
+  if (typeof formatDateTokyo_ === 'function') {
+    formattedDate = formatDateTokyo_(timestamp, 'MM/dd HH:mm');
+  } else if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
+    formattedDate = Utilities.formatDate(new Date(timestamp), 'Asia/Tokyo', 'MM/dd HH:mm');
+  } else {
+    const jst = new Date(new Date(timestamp).getTime() + 9 * 60 * 60 * 1000);
+    const mm = String(jst.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(jst.getUTCDate()).padStart(2, '0');
+    const hh = String(jst.getUTCHours()).padStart(2, '0');
+    const min = String(jst.getUTCMinutes()).padStart(2, '0');
+    formattedDate = `${mm}/${dd} ${hh}:${min}`;
+  }
+  return `${formattedDate} 測定`;
+}
+
+function formatStatusTemperature_(tempVal, isTempAlert) {
+  if (tempVal === null) return '-';
+  return isTempAlert ? `${tempVal.toFixed(1)} ℃ (⚠️ 超過)` : `${tempVal.toFixed(1)} ℃ (正常)`;
+}
+
+function formatStatusHumidity_(humVal, isHumAlert) {
+  if (humVal === null) return '-';
+  return isHumAlert ? `${Math.round(humVal)} % (⚠️ 多湿)` : `${Math.round(humVal)} % (正常)`;
+}
+
+function formatStatusPressure_(pressVal, pastPress) {
+  if (pressVal === null) return '-';
+  const trendStr = (typeof calculatePressureTrend_ === 'function' && pastPress !== null)
+    ? calculatePressureTrend_(pressVal, pastPress)
+    : '安定';
+  return `${pressVal.toFixed(1)} hPa (${trendStr})`;
+}
+
+function formatStatusDiscomfortIndex_(tempVal, humVal, lastValidDi) {
+  let diVal = typeof lastValidDi === 'number' ? lastValidDi : null;
+  if (tempVal !== null && humVal !== null && typeof calculateDiscomfortIndex_ === 'function') {
+    diVal = calculateDiscomfortIndex_(tempVal, humVal);
+  }
+  if (diVal === null) {
+    return { diText: '-', diColor: '#27ae60' };
   }
 
-  if (currentPress !== null) {
-    const trendStr = (typeof calculatePressureTrend_ === 'function' && pastPress !== null)
-      ? calculatePressureTrend_(currentPress, pastPress)
-      : '安定';
-    pressText = `${currentPress.toFixed(1)} hPa (${trendStr})`;
+  let diLabel = '快適';
+  let diColor = '#27ae60';
+  if (typeof classifyDiscomfortIndex_ === 'function') {
+    const diInfo = classifyDiscomfortIndex_(diVal);
+    diColor = diInfo.color;
+    diLabel = diInfo.label;
+  }
+  return { diText: `${diVal.toFixed(1)}（${diLabel}）`, diColor };
+}
+
+function formatStatusMeasurements_(lastValid, states, pastPress) {
+  const isTempAlert = Boolean(states && states.temp && states.temp.alert);
+  const isHumAlert = Boolean(states && states.hum && states.hum.alert);
+
+  if (!lastValid) {
+    return {
+      tempText: '-',
+      humText: '-',
+      pressText: '-',
+      diText: '-',
+      timeStr: 'データなし',
+      diColor: '#27ae60',
+      isTempAlert,
+      isHumAlert
+    };
   }
 
-  const headerContents = isSnooze ? [
-    {
-      type: "text",
-      text: "🔕 SNOOZE中",
-      weight: "bold",
-      size: "lg",
-      color: "#ffffff"
-    },
-    {
-      type: "text",
-      text: `停止期限: ${snoozeTimeStr || '翌朝08:00'} まで (翌朝自動再開)`,
-      size: "xs",
-      color: "#ffffff",
-      margin: "xs"
-    }
-  ] : [
+  const tempVal = typeof lastValid.temp === 'number' ? lastValid.temp : null;
+  const humVal = typeof lastValid.hum === 'number' ? lastValid.hum : null;
+  const pressVal = typeof lastValid.press === 'number' ? lastValid.press : null;
+
+  const tempText = formatStatusTemperature_(tempVal, isTempAlert);
+  const humText = formatStatusHumidity_(humVal, isHumAlert);
+  const pressText = formatStatusPressure_(pressVal, pastPress);
+  const { diText, diColor } = formatStatusDiscomfortIndex_(tempVal, humVal, lastValid.discomfortIndex);
+
+  return {
+    tempText,
+    humText,
+    pressText,
+    diText,
+    timeStr: formatStatusTimeString_(lastValid.timestamp),
+    diColor,
+    isTempAlert,
+    isHumAlert
+  };
+}
+
+function buildStatusFlexHeader_(isSnooze, snoozeTimeStr) {
+  if (isSnooze) {
+    return [
+      {
+        type: "text",
+        text: "🔕 SNOOZE中",
+        weight: "bold",
+        size: "lg",
+        color: "#ffffff"
+      },
+      {
+        type: "text",
+        text: `停止期限: ${snoozeTimeStr || '翌朝08:00'} まで (翌朝自動再開)`,
+        size: "xs",
+        color: "#ffffff",
+        margin: "xs"
+      }
+    ];
+  }
+
+  return [
     {
       type: "text",
       text: "🔔 監視中（Active）",
@@ -367,19 +413,25 @@ function buildStatusFlexMessage_() {
       color: "#ffffff"
     }
   ];
+}
 
-  const footerContents = isSnooze ? [
-    {
-      type: "button",
-      style: "primary",
-      color: "#3498db",
-      action: {
-        type: "message",
-        label: "🔔 監視を再開（CLEAR）",
-        text: "CLEAR"
+function buildStatusFlexFooter_(isSnooze) {
+  if (isSnooze) {
+    return [
+      {
+        type: "button",
+        style: "primary",
+        color: "#3498db",
+        action: {
+          type: "message",
+          label: "🔔 監視を再開（CLEAR）",
+          text: "CLEAR"
+        }
       }
-    }
-  ] : [
+    ];
+  }
+
+  return [
     {
       type: "button",
       style: "primary",
@@ -400,9 +452,33 @@ function buildStatusFlexMessage_() {
       }
     }
   ];
+}
 
-  const isTempAlert = states.temp && states.temp.alert;
-  const isHumAlert = states.hum && states.hum.alert;
+function loadStatusFlexState_(properties) {
+  const skipUntil = typeof getSnoozeUntilProperty_ === 'function'
+    ? getSnoozeUntilProperty_(properties)
+    : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
+  const isSnooze = typeof isSnoozeActive_ === 'function' ? isSnoozeActive_(skipUntil, Date.now()) : false;
+  const snoozeTimeStr = typeof formatSnoozeUntilJst_ === 'function' ? formatSnoozeUntilJst_(skipUntil) : '';
+
+  const states = typeof loadMonitorStates_ === 'function' ? loadMonitorStates_(properties) : {
+    temp: { alert: false },
+    hum: { alert: false },
+    discomfortIndex: { alert: false }
+  };
+  const lastValid = typeof loadLastValidMeasurement_ === 'function' ? loadLastValidMeasurement_(properties) : null;
+  const pastPress = getPastPressureFromSheet_(properties);
+
+  return { isSnooze, snoozeTimeStr, states, lastValid, pastPress };
+}
+
+function buildStatusFlexMessage_() {
+  const properties = PropertiesService.getScriptProperties();
+  const { isSnooze, snoozeTimeStr, states, lastValid, pastPress } = loadStatusFlexState_(properties);
+  const m = formatStatusMeasurements_(lastValid, states, pastPress);
+
+  const headerContents = buildStatusFlexHeader_(isSnooze, snoozeTimeStr);
+  const footerContents = buildStatusFlexFooter_(isSnooze);
 
   const flexJson = {
     type: "flex",
@@ -424,7 +500,7 @@ function buildStatusFlexMessage_() {
             layout: "horizontal",
             contents: [
               { type: "text", text: "室温", size: "sm", color: "#555555", flex: 1 },
-              { type: "text", text: tempText, size: "sm", color: isTempAlert ? "#e74c3c" : "#111111", align: "end", flex: 3 }
+              { type: "text", text: m.tempText, size: "sm", color: m.isTempAlert ? "#e74c3c" : "#111111", align: "end", flex: 3 }
             ],
             margin: "md"
           },
@@ -433,7 +509,7 @@ function buildStatusFlexMessage_() {
             layout: "horizontal",
             contents: [
               { type: "text", text: "湿度", size: "sm", color: "#555555", flex: 1 },
-              { type: "text", text: humText, size: "sm", color: isHumAlert ? "#e74c3c" : "#111111", align: "end", flex: 3 }
+              { type: "text", text: m.humText, size: "sm", color: m.isHumAlert ? "#e74c3c" : "#111111", align: "end", flex: 3 }
             ],
             margin: "md"
           },
@@ -442,7 +518,7 @@ function buildStatusFlexMessage_() {
             layout: "horizontal",
             contents: [
               { type: "text", text: "気圧", size: "sm", color: "#555555", flex: 1 },
-              { type: "text", text: pressText, size: "sm", color: "#111111", align: "end", flex: 3 }
+              { type: "text", text: m.pressText, size: "sm", color: "#111111", align: "end", flex: 3 }
             ],
             margin: "md"
           },
@@ -455,7 +531,7 @@ function buildStatusFlexMessage_() {
             layout: "horizontal",
             contents: [
               { type: "text", text: "快適度", size: "sm", color: "#555555", flex: 1 },
-              { type: "text", text: diText, size: "sm", color: diColor, align: "end", flex: 3 }
+              { type: "text", text: m.diText, size: "sm", color: m.diColor, align: "end", flex: 3 }
             ],
             margin: "lg",
             alignItems: "center"
@@ -469,7 +545,7 @@ function buildStatusFlexMessage_() {
             layout: "horizontal",
             contents: [
               { type: "text", text: "計測日時", size: "xs", color: "#aaaaaa" },
-              { type: "text", text: timeStr, size: "xs", color: "#aaaaaa", align: "end" }
+              { type: "text", text: m.timeStr, size: "xs", color: "#aaaaaa", align: "end" }
             ],
             margin: "lg"
           }
@@ -622,20 +698,25 @@ function replyMessageObjects_(replyToken, messagesArray) {
   return sendLineApiRequest_('reply', payload, channelAccessToken, 'reply');
 }
 
+function isSnoozeActiveForPush_(properties) {
+  const skipUntilStr = typeof getSnoozeUntilProperty_ === 'function'
+    ? getSnoozeUntilProperty_(properties)
+    : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
+  if (!skipUntilStr) {
+    return false;
+  }
+  const skipUntil = parseInt(skipUntilStr, 10);
+  return !isNaN(skipUntil) && Date.now() < skipUntil;
+}
+
 function pushMonitorNotification_(text) {
   if (!text || typeof text !== 'string') {
     return false;
   }
 
   const properties = PropertiesService.getScriptProperties();
-  const skipUntilStr = typeof getSnoozeUntilProperty_ === 'function'
-    ? getSnoozeUntilProperty_(properties)
-    : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
-  if (skipUntilStr) {
-    const skipUntil = parseInt(skipUntilStr, 10);
-    if (!isNaN(skipUntil) && Date.now() < skipUntil) {
-      return false;
-    }
+  if (isSnoozeActiveForPush_(properties)) {
+    return false;
   }
 
   const userId = properties.getProperty(SCRIPT_PROPERTY_KEYS.lineUserId);
@@ -733,21 +814,41 @@ if (typeof module !== 'undefined') {
   module.exports = {
     LINE_BOT_PROPERTIES,
     getSnoozeUntilProperty_,
+    extractLineSignature_,
+    dispatchLineEvents_,
     handleLineWebhook_,
+    handleSnoozeCustomPostback_,
+    handlePostbackEvent_,
     verifyLineSignature_,
+    handleSnoozeCommand_,
+    handleClearCommand_,
+    dispatchTextMessageCommand_,
+    handleTextMessageError_,
     handleTextMessageEvent_,
     normalizeText_,
+    getGraphTargetSheet_,
+    fetchGraphChartUrl_,
     buildGraphMessage_,
+    getPastPressureFromSheet_,
+    formatStatusTimeString_,
+    formatStatusTemperature_,
+    formatStatusHumidity_,
+    formatStatusPressure_,
+    formatStatusDiscomfortIndex_,
+    formatStatusMeasurements_,
+    buildStatusFlexHeader_,
+    buildStatusFlexFooter_,
+    loadStatusFlexState_,
     buildStatusFlexMessage_,
     buildSkipFlexMessage_,
     buildAlertFlexMessage_,
     replyMessage_,
     replyMessageObjects_,
+    isSnoozeActiveForPush_,
     pushMonitorNotification_,
     pushMessage_,
     pushMessageObjects_,
     sendLineApiRequest_,
-    calculateNextMorning8Am_,
-    handlePostbackEvent_
+    calculateNextMorning8Am_
   };
 }

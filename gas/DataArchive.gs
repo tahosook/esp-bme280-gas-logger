@@ -1,56 +1,5 @@
-function runDataArchive_() {
-  const properties = PropertiesService.getScriptProperties();
-  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : { ARCHIVE_RETENTION_MONTHS: 2 };
-
-  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
-
-  if (!spreadsheetId) {
-    const error = new Error('missing spreadsheet configuration for archive');
-    if (typeof logError_ === 'function') {
-      logError_('data_archive', 'Config', 'missing_spreadsheet_id', error);
-    }
-    throw error;
-  }
-
-  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-
-  const sourceSheet = getRawDataSheet_(spreadsheet, properties);
-
-  if (!sourceSheet) {
-    const error = new Error('Source raw data sheet not found');
-    if (typeof logError_ === 'function') {
-      logError_('data_archive', 'SourceSheet', 'sheet_not_found', error);
-    }
-    throw error;
-  }
-
-  const retentionMonths = typeof config.ARCHIVE_RETENTION_MONTHS === 'number' ? config.ARCHIVE_RETENTION_MONTHS : 2;
-  const now = new Date();
-
-  const thresholdDate = getArchiveThresholdDate_(now, retentionMonths);
-
-  const archiveSpreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.archiveSpreadsheetId) || 'ARCHIVE_SPREADSHEET_ID';
-  const archiveSpreadsheetId = properties.getProperty(archiveSpreadsheetIdKey) || spreadsheetId;
-  const archiveSpreadsheet = SpreadsheetApp.openById(archiveSpreadsheetId);
-
-  const lastRow = sourceSheet.getLastRow();
-  if (lastRow < 2) {
-    return { status: 'skipped', reason: 'no_data' };
-  }
-
-  const maxRowsToRead = lastRow - 1;
-  const values = sourceSheet.getRange(2, 1, maxRowsToRead, sourceSheet.getLastColumn()).getValues();
-
-  const groupedData = groupDataForArchive_(values, thresholdDate);
-
+function writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths) {
   let totalArchived = 0;
-
-  if (groupedData.size === 0) {
-    return { status: 'skipped', reason: 'no_target_data', thresholdDate: thresholdDate.toISOString() };
-  }
-
-  const sortedYearMonths = Array.from(groupedData.keys()).sort();
 
   for (let i = 0; i < sortedYearMonths.length; i++) {
     const yearMonth = sortedYearMonths[i];
@@ -79,6 +28,69 @@ function runDataArchive_() {
 
     totalArchived += rows.length;
   }
+
+  return totalArchived;
+}
+
+function getArchiveSpreadsheets_(properties) {
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+
+  if (!spreadsheetId) {
+    const error = new Error('missing spreadsheet configuration for archive');
+    if (typeof logError_ === 'function') {
+      logError_('data_archive', 'Config', 'missing_spreadsheet_id', error);
+    }
+    throw error;
+  }
+
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  const sourceSheet = getRawDataSheet_(spreadsheet, properties);
+
+  if (!sourceSheet) {
+    const error = new Error('Source raw data sheet not found');
+    if (typeof logError_ === 'function') {
+      logError_('data_archive', 'SourceSheet', 'sheet_not_found', error);
+    }
+    throw error;
+  }
+
+  const archiveSpreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.archiveSpreadsheetId) || 'ARCHIVE_SPREADSHEET_ID';
+  const archiveSpreadsheetId = properties.getProperty(archiveSpreadsheetIdKey) || spreadsheetId;
+  const archiveSpreadsheet = SpreadsheetApp.openById(archiveSpreadsheetId);
+
+  return { sourceSheet, archiveSpreadsheet };
+}
+
+function getArchiveRetentionMonths_(config) {
+  return typeof config.ARCHIVE_RETENTION_MONTHS === 'number' ? config.ARCHIVE_RETENTION_MONTHS : 2;
+}
+
+function runDataArchive_() {
+  const properties = PropertiesService.getScriptProperties();
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : { ARCHIVE_RETENTION_MONTHS: 2 };
+  const { sourceSheet, archiveSpreadsheet } = getArchiveSpreadsheets_(properties);
+
+  const retentionMonths = getArchiveRetentionMonths_(config);
+  const now = new Date();
+  const thresholdDate = getArchiveThresholdDate_(now, retentionMonths);
+
+  const lastRow = sourceSheet.getLastRow();
+  if (lastRow < 2) {
+    return { status: 'skipped', reason: 'no_data' };
+  }
+
+  const maxRowsToRead = lastRow - 1;
+  const values = sourceSheet.getRange(2, 1, maxRowsToRead, sourceSheet.getLastColumn()).getValues();
+
+  const groupedData = groupDataForArchive_(values, thresholdDate);
+
+  if (groupedData.size === 0) {
+    return { status: 'skipped', reason: 'no_target_data', thresholdDate: thresholdDate.toISOString() };
+  }
+
+  const sortedYearMonths = Array.from(groupedData.keys()).sort();
+  const totalArchived = writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths);
 
   // Purge
   sourceSheet.deleteRows(2, totalArchived);
@@ -150,6 +162,9 @@ function groupDataForArchive_(values, thresholdDate) {
 
 if (typeof module !== 'undefined') {
   module.exports = {
+    writeToArchiveSheets_,
+    getArchiveSpreadsheets_,
+    getArchiveRetentionMonths_,
     runDataArchive_,
     getArchiveThresholdDate_,
     groupDataForArchive_
