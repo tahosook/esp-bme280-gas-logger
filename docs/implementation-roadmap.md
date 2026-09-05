@@ -103,6 +103,15 @@ PR #26, #27, #28 にて、LINE Bot の UI を視覚的な Flex Message に刷新
 | 28 | 実装 — QuickChart による直近24h温湿度推移グラフ画像生成（URL 2,000文字圧縮、サンプリング最適化） | ✅ 完了 |
 | 29 | 実装・検証 — 手動デバッグ関数（`DebugTest.gs` による URL 文字数検証、Webhook シミュレーション、全9本テスト通過） | ✅ 完了 |
 
+## 完了済み：Phase 30〜31（仕様駆動開発 SDD 正本仕様書配備・コードクリーンアップ・v1.3.0-stable）
+
+PR #40〜#44 およびコードクリーンアップにて、仕様駆動開発（SDD）の Single Source of Truth（SSOT）仕様書群の配備、AI エージェント品質ガードレール（AGENTS.md）、および重複ロジックのクリーンアップを実施し、安定版 `v1.3.0-stable` をリリースした。
+
+| Phase | 内容 | 状態 |
+| --- | --- | --- |
+| 30 | ドキュメント — SDD 正本仕様書配備（Alert State Machine, LINE Webhook Contracts, Data Lifecycle & Aggregation） | ✅ 完了 |
+| 31 | 実装・検証 — SDD コードクリーンアップ（`LineBot.gs` の `calculateNextMorning8Am_` 重複解消、SSOT 一元化）および `v1.3.0-stable` 安定版リリース | ✅ 完了 |
+
 ## 設計レビューによる確定方針（Phase 7以降の前提）
 
 受信基盤の上に日次集計・環境監視・LINE Bot を設計する設計レビュー
