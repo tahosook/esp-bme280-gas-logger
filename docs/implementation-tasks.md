@@ -163,3 +163,22 @@
 - 対象: `eslint.config.js`、`gas/*.gs`
 - 内容: ESLint の complexity ルール導入（PR #36）、閾値を 12 に調整した上で、不要に細分化されたマイクロヘルパーを凝集度の高いドメイン処理へ集約・コールチェーンを平坦化（PR #37）
 - 状態: 完了（PR #36, #37）
+
+---
+
+## 仕様駆動開発（SDD）正本配備・AIガードレール・コードクリーンアップタスク（Phase 35〜37）
+
+### 実装・文書T11（Phase 35）：AI駆動開発向けエージェント開発規約とPRテンプレート整備（✅ 完了）
+- 対象: `AGENTS.md`、`.github/pull_request_template.md`、`.github/workflows/ci.yml`
+- 内容: エージェント開発規約（AGENTS.md）の配備、PR テンプレートの品質ガードレール統合、CI への ESLint チェック追加
+- 状態: 完了（PR #39, #40, #41）
+
+### 文書T12（Phase 36）：仕様駆動開発（SDD）正本仕様書群の配備（✅ 完了）
+- 対象: `docs/specs/alert-state-machine.md`、`docs/specs/line-webhook-contracts.md`、`docs/specs/data-lifecycle-and-aggregation.md`
+- 内容: アラート判定・状態遷移ステートマシン、LINE Webhook 応答 & Flex Message UI 契約、データライフサイクル & 集計・アーカイブの SSOT 仕様書配備
+- 状態: 完了（PR #42, #43, #44）
+
+### 実装・検証T13（Phase 37）：SDD コードクリーンアップおよび安定版リリース（✅ 完了）
+- 対象: `gas/LineBot.gs`、`docs/implementation-roadmap.md`、`docs/implementation-tasks.md`
+- 内容: `LineBot.gs` に重複していた `calculateNextMorning8Am_` の削除と `Metrics.gs` への一元化、全テスト通過・カバレッジ向上（Funcs 100%、Lines 97.8%）、安定版 `v1.3.0-stable` のタグ付け・リリース
+- 状態: 完了

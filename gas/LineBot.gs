@@ -756,24 +756,6 @@ function sendLineApiRequest_(endpoint, payload, channelAccessToken, operation) {
   }
 }
 
-function calculateNextMorning8Am_(nowMs, targetHour) {
-  const hour = typeof targetHour === 'number' ? targetHour : 8;
-  const currentMs = typeof nowMs === 'number' ? nowMs : Date.now();
-
-  const jstNow = new Date(currentMs + 9 * 60 * 60 * 1000);
-  const jstYear = jstNow.getUTCFullYear();
-  const jstMonth = jstNow.getUTCMonth();
-  const jstDate = jstNow.getUTCDate();
-  const jstCurrentHour = jstNow.getUTCHours();
-
-  let targetDay = jstDate;
-  if (jstCurrentHour >= hour) {
-    targetDay += 1;
-  }
-
-  return Date.UTC(jstYear, jstMonth, targetDay, hour - 9, 0, 0, 0);
-}
-
 if (typeof module !== 'undefined') {
   module.exports = {
     LINE_BOT_PROPERTIES,
@@ -805,7 +787,6 @@ if (typeof module !== 'undefined') {
     pushMonitorNotification_,
     pushMessage_,
     pushMessageObjects_,
-    sendLineApiRequest_,
-    calculateNextMorning8Am_
+    sendLineApiRequest_
   };
 }
