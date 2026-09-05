@@ -92,6 +92,33 @@ function isDuplicateMeasurement_(sheet, payload, dupWindowSec, now) {
       lastHum === payload.hum;
 }
 
+function applyMonitorStateSafely_(sheet, lastAppendedRow, payload) {
+  if (typeof updateMonitorState_ !== 'function') {
+    return;
+  }
+  try {
+    const monitorResult = updateMonitorState_(payload);
+    if (monitorResult && monitorResult.anomaly) {
+      sheet.getRange(lastAppendedRow, 5).setValue('anomaly');
+    }
+    if (monitorResult && monitorResult.notification && typeof pushMonitorNotification_ === 'function') {
+      try {
+        pushMonitorNotification_(monitorResult.notification.text);
+      } catch (err) {
+        if (typeof logError_ === 'function') {
+          logError_('ingest', 'line_push', 'push_failed', err);
+        }
+      }
+    }
+  } catch (error) {
+    if (typeof logError_ === 'function') {
+      logError_('ingest', 'monitor', 'monitor_update_failed', error);
+    } else {
+      console.error('monitor_update_failed');
+    }
+  }
+}
+
 function getIngestSheet_(properties) {
   const spreadsheetId = properties.getProperty(CONFIG_KEYS.spreadsheetId);
   if (!spreadsheetId) {
@@ -106,63 +133,11 @@ function getIngestSheet_(properties) {
   return sheet;
 }
 
-function getIngestConfig_() {
+function checkAndAppendMeasurement_(payload, properties) {
+  const sheet = getIngestSheet_(properties);
   const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : (typeof DEFAULT_CONFIG !== 'undefined' ? DEFAULT_CONFIG : {});
   const lockTimeoutMs = config.INGEST_LOCK_TIMEOUT_MS || 15000;
   const dupWindowSec = typeof config.SENSOR_DUPLICATION_WINDOW_SECONDS === 'number' ? config.SENSOR_DUPLICATION_WINDOW_SECONDS : 180;
-  return { lockTimeoutMs, dupWindowSec };
-}
-
-function resetWatchdogSafely_() {
-  if (typeof resetWatchdogState_ !== 'function') {
-    return;
-  }
-  try {
-    resetWatchdogState_();
-  } catch (error) {
-    if (typeof logError_ === 'function') {
-      logError_('ingest', 'watchdog', 'watchdog_reset_failed', error);
-    }
-  }
-}
-
-function pushMonitorNotificationSafely_(notification) {
-  if (typeof pushMonitorNotification_ !== 'function') {
-    return;
-  }
-  try {
-    pushMonitorNotification_(notification.text);
-  } catch (err) {
-    if (typeof logError_ === 'function') {
-      logError_('ingest', 'line_push', 'push_failed', err);
-    }
-  }
-}
-
-function applyMonitorStateSafely_(sheet, lastAppendedRow, payload) {
-  if (typeof updateMonitorState_ !== 'function') {
-    return;
-  }
-  try {
-    const monitorResult = updateMonitorState_(payload);
-    if (monitorResult && monitorResult.anomaly) {
-      sheet.getRange(lastAppendedRow, 5).setValue('anomaly');
-    }
-    if (monitorResult && monitorResult.notification) {
-      pushMonitorNotificationSafely_(monitorResult.notification);
-    }
-  } catch (error) {
-    if (typeof logError_ === 'function') {
-      logError_('ingest', 'monitor', 'monitor_update_failed', error);
-    } else {
-      console.error('monitor_update_failed');
-    }
-  }
-}
-
-function checkAndAppendMeasurement_(payload, properties) {
-  const sheet = getIngestSheet_(properties);
-  const { lockTimeoutMs, dupWindowSec } = getIngestConfig_();
 
   const lock = LockService.getScriptLock();
   lock.waitLock(lockTimeoutMs);
@@ -177,7 +152,16 @@ function checkAndAppendMeasurement_(payload, properties) {
     const lastAppendedRow = sheet.getLastRow();
     sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
 
-    resetWatchdogSafely_();
+    if (typeof resetWatchdogState_ === 'function') {
+      try {
+        resetWatchdogState_();
+      } catch (error) {
+        if (typeof logError_ === 'function') {
+          logError_('ingest', 'watchdog', 'watchdog_reset_failed', error);
+        }
+      }
+    }
+
     applyMonitorStateSafely_(sheet, lastAppendedRow, payload);
 
     return true;
@@ -193,9 +177,6 @@ if (typeof module !== 'undefined') {
     validateSensorPayload_,
     isDuplicateMeasurement_,
     getIngestSheet_,
-    getIngestConfig_,
-    resetWatchdogSafely_,
-    pushMonitorNotificationSafely_,
     applyMonitorStateSafely_,
     checkAndAppendMeasurement_
   };

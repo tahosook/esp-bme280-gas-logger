@@ -10,7 +10,18 @@ function aggregateDaily() {
   return runDailyAggregation_();
 }
 
-function getDailyAggregationSheets_(spreadsheet, properties) {
+function getDailyAggregationSheets_(properties) {
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+  if (!spreadsheetId) {
+    const error = new Error('missing spreadsheet configuration');
+    if (typeof logError_ === 'function') {
+      logError_('daily_aggregation', 'Config', 'missing_spreadsheet_id', error);
+    }
+    throw error;
+  }
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+
   const dataSheet = getRawDataSheet_(spreadsheet, properties);
   if (!dataSheet) {
     const error = new Error('Raw data sheet not found');
@@ -58,39 +69,19 @@ function appendDailyDataRows_(dailySheet, dailyBuckets, existingDailyDates) {
   return { sortedDates, appendedCount };
 }
 
-function openDailyAggregationSpreadsheet_(properties) {
-  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
-  if (!spreadsheetId) {
-    const error = new Error('missing spreadsheet configuration');
-    if (typeof logError_ === 'function') {
-      logError_('daily_aggregation', 'Config', 'missing_spreadsheet_id', error);
-    }
-    throw error;
-  }
-  return SpreadsheetApp.openById(spreadsheetId);
-}
-
-function getLastProcessedDailyRow_(properties) {
-  const lastProcessedRowStr = properties.getProperty(DAILY_AGGREGATION_PROPERTIES.lastRow);
-  const lastProcessedRow = lastProcessedRowStr ? parseInt(lastProcessedRowStr, 10) : 1;
-  if (isNaN(lastProcessedRow) || lastProcessedRow < 1) {
-    return 1;
-  }
-  return lastProcessedRow;
-}
-
 function runDailyAggregation_() {
   const properties = PropertiesService.getScriptProperties();
-  const spreadsheet = openDailyAggregationSpreadsheet_(properties);
-  const { dataSheet, dailySheet } = getDailyAggregationSheets_(spreadsheet, properties);
+  const { dataSheet, dailySheet } = getDailyAggregationSheets_(properties);
 
   const lock = LockService.getScriptLock();
   const timeoutMs = (typeof getMergedConfig_ === 'function' && getMergedConfig_().INGEST_LOCK_TIMEOUT_MS) || DAILY_LOCK_TIMEOUT_MS;
   lock.waitLock(timeoutMs);
 
   try {
-    const lastProcessedRow = getLastProcessedDailyRow_(properties);
+    const lastProcessedRowStr = properties.getProperty(DAILY_AGGREGATION_PROPERTIES.lastRow);
+    const parsedRow = lastProcessedRowStr ? parseInt(lastProcessedRowStr, 10) : 1;
+    const lastProcessedRow = (isNaN(parsedRow) || parsedRow < 1) ? 1 : parsedRow;
+
     const totalDataRows = dataSheet.getLastRow();
     if (totalDataRows <= lastProcessedRow) {
       return {
@@ -338,8 +329,6 @@ if (typeof module !== 'undefined') {
     DATA_SHEET_NAME,
     DAILY_LOCK_TIMEOUT_MS,
     aggregateDaily,
-    openDailyAggregationSpreadsheet_,
-    getLastProcessedDailyRow_,
     getDailyAggregationSheets_,
     appendDailyDataRows_,
     runDailyAggregation_,

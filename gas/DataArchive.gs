@@ -62,16 +62,12 @@ function getArchiveSpreadsheets_(properties) {
   return { sourceSheet, archiveSpreadsheet };
 }
 
-function getArchiveRetentionMonths_(config) {
-  return typeof config.ARCHIVE_RETENTION_MONTHS === 'number' ? config.ARCHIVE_RETENTION_MONTHS : 2;
-}
-
 function runDataArchive_() {
   const properties = PropertiesService.getScriptProperties();
   const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : { ARCHIVE_RETENTION_MONTHS: 2 };
   const { sourceSheet, archiveSpreadsheet } = getArchiveSpreadsheets_(properties);
 
-  const retentionMonths = getArchiveRetentionMonths_(config);
+  const retentionMonths = typeof config.ARCHIVE_RETENTION_MONTHS === 'number' ? config.ARCHIVE_RETENTION_MONTHS : 2;
   const now = new Date();
   const thresholdDate = getArchiveThresholdDate_(now, retentionMonths);
 
@@ -164,7 +160,6 @@ if (typeof module !== 'undefined') {
   module.exports = {
     writeToArchiveSheets_,
     getArchiveSpreadsheets_,
-    getArchiveRetentionMonths_,
     runDataArchive_,
     getArchiveThresholdDate_,
     groupDataForArchive_

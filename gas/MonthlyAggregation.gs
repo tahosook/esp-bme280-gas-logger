@@ -10,7 +10,18 @@ function aggregateMonthly() {
   return runMonthlyAggregation_();
 }
 
-function getMonthlyAggregationSheets_(spreadsheet) {
+function getMonthlyAggregationSheets_(properties) {
+  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+  if (!spreadsheetId) {
+    const error = new Error('missing spreadsheet configuration');
+    if (typeof logError_ === 'function') {
+      logError_('monthly_aggregation', 'Config', 'missing_spreadsheet_id', error);
+    }
+    throw error;
+  }
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+
   const dailySheet = spreadsheet.getSheetByName(MONTHLY_SOURCE_DAILY_SHEET_NAME);
   if (!dailySheet) {
     const error = new Error('Daily sheet not found');
@@ -57,51 +68,20 @@ function appendMonthlyDataRows_(monthlySheet, monthlyBuckets, existingMonthlyDat
   return { sortedYearMonths, appendedCount };
 }
 
-function openMonthlyAggregationSpreadsheet_(properties) {
-  const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-  const spreadsheetId = properties.getProperty(spreadsheetIdKey);
-  if (!spreadsheetId) {
-    const error = new Error('missing spreadsheet configuration');
-    if (typeof logError_ === 'function') {
-      logError_('monthly_aggregation', 'Config', 'missing_spreadsheet_id', error);
-    }
-    throw error;
-  }
-  return SpreadsheetApp.openById(spreadsheetId);
-}
-
-function getLastProcessedMonthlyRow_(properties) {
-  const lastProcessedRowStr = properties.getProperty(MONTHLY_AGGREGATION_PROPERTIES.lastRow);
-  const lastProcessedRow = lastProcessedRowStr ? parseInt(lastProcessedRowStr, 10) : 1;
-  if (isNaN(lastProcessedRow) || lastProcessedRow < 1) {
-    return 1;
-  }
-  return lastProcessedRow;
-}
-
-function triggerMonthlyDataArchive_(result) {
-  try {
-    if (typeof runDataArchive_ === 'function') {
-      result.archive = runDataArchive_();
-    }
-  } catch (archiveError) {
-    if (typeof logError_ === 'function') {
-      logError_('monthly_aggregation', 'DataArchive', 'archive_failed', archiveError);
-    }
-  }
-}
-
+/* eslint-disable complexity -- Keep monthly aggregation workflow sequential and cohesive without intermediate wrapper layers. */
 function runMonthlyAggregation_() {
   const properties = PropertiesService.getScriptProperties();
-  const spreadsheet = openMonthlyAggregationSpreadsheet_(properties);
-  const { dailySheet, monthlySheet } = getMonthlyAggregationSheets_(spreadsheet);
+  const { dailySheet, monthlySheet } = getMonthlyAggregationSheets_(properties);
 
   const lock = LockService.getScriptLock();
   const timeoutMs = (typeof getMergedConfig_ === 'function' && getMergedConfig_().INGEST_LOCK_TIMEOUT_MS) || MONTHLY_LOCK_TIMEOUT_MS;
   lock.waitLock(timeoutMs);
 
   try {
-    const lastProcessedRow = getLastProcessedMonthlyRow_(properties);
+    const lastProcessedRowStr = properties.getProperty(MONTHLY_AGGREGATION_PROPERTIES.lastRow);
+    const parsedRow = lastProcessedRowStr ? parseInt(lastProcessedRowStr, 10) : 1;
+    const lastProcessedRow = (isNaN(parsedRow) || parsedRow < 1) ? 1 : parsedRow;
+
     const totalDailyRows = dailySheet.getLastRow();
     if (totalDailyRows <= lastProcessedRow) {
       return {
@@ -133,7 +113,15 @@ function runMonthlyAggregation_() {
       lastProcessedRow: lastConfirmedRow
     };
 
-    triggerMonthlyDataArchive_(result);
+    try {
+      if (typeof runDataArchive_ === 'function') {
+        result.archive = runDataArchive_();
+      }
+    } catch (archiveError) {
+      if (typeof logError_ === 'function') {
+        logError_('monthly_aggregation', 'DataArchive', 'archive_failed', archiveError);
+      }
+    }
 
     return result;
   } catch (error) {
@@ -145,6 +133,7 @@ function runMonthlyAggregation_() {
     lock.releaseLock();
   }
 }
+/* eslint-enable complexity */
 
 function getExistingMonthlyDates_(monthlySheet) {
   const existingDates = new Set();
@@ -311,9 +300,6 @@ if (typeof module !== 'undefined') {
     MONTHLY_SOURCE_DAILY_SHEET_NAME,
     MONTHLY_LOCK_TIMEOUT_MS,
     aggregateMonthly,
-    openMonthlyAggregationSpreadsheet_,
-    getLastProcessedMonthlyRow_,
-    triggerMonthlyDataArchive_,
     getMonthlyAggregationSheets_,
     appendMonthlyDataRows_,
     runMonthlyAggregation_,
