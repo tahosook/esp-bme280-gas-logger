@@ -81,3 +81,4 @@ Refer to canonical documentation for full operational details:
 - Deployment, triggers & clasp setup: [`docs/deployment.md`](docs/deployment.md)
 - LINE Bot commands & Flex UI: [`docs/line-bot-ui.md`](docs/line-bot-ui.md)
 - Test plan: [`docs/test-plan.md`](docs/test-plan.md)
+- Alert state machine spec: [`docs/specs/alert-state-machine.md`](docs/specs/alert-state-machine.md)
