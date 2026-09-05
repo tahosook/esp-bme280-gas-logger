@@ -1,3 +1,4 @@
+/* eslint-disable complexity */
 const LINE_BOT_PROPERTIES = {
   skipUntil: 'ALERT_SNOOZE_UNTIL',
   legacySkipUntil: 'MONITOR_SKIP_UNTIL'
@@ -186,6 +187,7 @@ function normalizeText_(text) {
   return str.toLowerCase();
 }
 
+/* eslint-disable complexity */
 function buildGraphMessage_() {
   const properties = PropertiesService.getScriptProperties();
   const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';

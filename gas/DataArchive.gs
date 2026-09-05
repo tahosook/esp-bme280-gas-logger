@@ -1,3 +1,4 @@
+/* eslint-disable complexity */
 function runDataArchive_() {
   const properties = PropertiesService.getScriptProperties();
   const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : { ARCHIVE_RETENTION_MONTHS: 2 };

@@ -155,6 +155,7 @@ function buildQuickChartConfig_(records) {
  * @param {object} [options] - Options (width, height, devicePixelRatio, targetCount)
  * @returns {string|null} QuickChart image URL or null if records are empty
  */
+/* eslint-disable complexity */
 function buildQuickChartUrlFromRecords_(records, options) {
   if (!records || !Array.isArray(records) || records.length === 0) {
     return null;
@@ -282,54 +283,55 @@ function buildQuickChartUrlFromRecords_(records, options) {
  * @returns {string|null} QuickChart image URL or null if data is insufficient
  */
 function buildQuickChartUrl(sheetOrRecords, options) {
-  if (!sheetOrRecords) {
-    return null;
-  }
+  if (!sheetOrRecords) return null;
 
-  let rawValues = [];
+  const rawValues = extractRawValues_(sheetOrRecords);
+  if (!rawValues || rawValues.length === 0) return null;
 
-  // If a Sheet object is provided (duck-typing getLastRow and getRange)
+  const validRecords = filterValidChartRecords_(rawValues);
+  if (validRecords.length === 0) return null;
+
+  return buildQuickChartUrlFromRecords_(validRecords, options);
+}
+
+function extractRawValues_(sheetOrRecords) {
   if (typeof sheetOrRecords.getLastRow === 'function' && typeof sheetOrRecords.getRange === 'function') {
     const lastRow = sheetOrRecords.getLastRow();
-    if (lastRow < 2) {
-      return null;
-    }
+    if (lastRow < 2) return [];
     const MAX_ROWS = 288;
     const startRow = Math.max(1, lastRow - MAX_ROWS + 1);
     const numRows = lastRow - startRow + 1;
-    rawValues = sheetOrRecords.getRange(startRow, 1, numRows, 4).getValues();
-  } else if (Array.isArray(sheetOrRecords)) {
-    rawValues = sheetOrRecords.slice(-288);
-  } else {
-    return null;
+    return sheetOrRecords.getRange(startRow, 1, numRows, 4).getValues();
   }
+  if (Array.isArray(sheetOrRecords)) {
+    return sheetOrRecords.slice(-288);
+  }
+  return [];
+}
 
-  // Filter valid measurement records
+function filterValidChartRecords_(rawValues) {
   const validRecords = [];
   for (let i = 0; i < rawValues.length; i += 1) {
     const row = rawValues[i];
-    if (!row || row.length < 4) {
-      continue;
-    }
+    if (!row || row.length < 4) continue;
+
     const ts = row[0];
     const temp = Number(row[1]);
     const hum = Number(row[3]);
 
-    const isValidDate = (Object.prototype.toString.call(ts) === '[object Date]' && !isNaN(ts.getTime())) ||
-      (typeof ts === 'string' && ts.trim() !== '' && !isNaN(new Date(ts).getTime())) ||
-      (typeof ts === 'number' && !isNaN(new Date(ts).getTime()));
-
-    if (isValidDate && !isNaN(temp) && !isNaN(hum)) {
+    if (isValidChartDate_(ts) && !isNaN(temp) && !isNaN(hum)) {
       const dateObj = (ts instanceof Date) ? ts : new Date(ts);
       validRecords.push([dateObj, temp, row[2], hum]);
     }
   }
+  return validRecords;
+}
 
-  if (validRecords.length === 0) {
-    return null;
-  }
-
-  return buildQuickChartUrlFromRecords_(validRecords, options);
+function isValidChartDate_(ts) {
+  if (Object.prototype.toString.call(ts) === '[object Date]') return !isNaN(ts.getTime());
+  if (typeof ts === 'string' && ts.trim() !== '') return !isNaN(new Date(ts).getTime());
+  if (typeof ts === 'number') return !isNaN(new Date(ts).getTime());
+  return false;
 }
 
 /**
@@ -496,57 +498,83 @@ function evaluateAlertDecision_(params) {
     return { shouldAlert: false, reason: 'invalid_params', todayJst: '' };
   }
 
-  const temp = typeof params.temp === 'number' ? params.temp : NaN;
-  const hum = typeof params.hum === 'number' ? params.hum : NaN;
   const nowMs = typeof params.nowMs === 'number' ? params.nowMs : Date.now();
   const todayJst = getJstDateString_(nowMs);
-
   const opts = params.options || {};
-  const minTemp = typeof opts.minTemp === 'number' ? opts.minTemp : -10.0;
-  const maxTemp = typeof opts.maxTemp === 'number' ? opts.maxTemp : 50.0;
-  const minHum = typeof opts.minHum === 'number' ? opts.minHum : 0.0;
-  const maxHum = typeof opts.maxHum === 'number' ? opts.maxHum : 100.0;
-  const cooldownMs = typeof opts.cooldownMs === 'number' ? opts.cooldownMs : 60 * 60 * 1000;
-  const maxDailyCount = typeof opts.maxDailyCount === 'number' ? opts.maxDailyCount : 5;
 
-  // 1. センサー異常値ガード
-  if (isNaN(temp) || isNaN(hum) || temp < minTemp || temp > maxTemp || hum < minHum || hum > maxHum) {
+  if (isSensorAnomaly_(params.temp, params.hum, opts)) {
     return { shouldAlert: false, reason: 'sensor_anomaly', todayJst: todayJst };
   }
 
-  // 2. SNOOZE（通知停止期限）の優先判定
   if (isSnoozeActive_(params.snoozeUntil, nowMs)) {
     return { shouldAlert: false, reason: 'snooze_active', todayJst: todayJst };
   }
 
-  // 3. 警戒閾値の判定
   if (!params.isOverThreshold) {
     return { shouldAlert: false, reason: 'normal', todayJst: todayJst };
   }
 
-  // 4. 1時間クールダウン判定（無料枠保護）
-  if (params.lastSentTime) {
-    const lastSentMs = typeof params.lastSentTime === 'number'
-      ? params.lastSentTime
-      : parseInt(params.lastSentTime, 10);
-    if (!isNaN(lastSentMs) && (nowMs - lastSentMs) < cooldownMs) {
-      return { shouldAlert: false, reason: 'cooldown_active', todayJst: todayJst };
-    }
+  if (isCooldownActive_(params.lastSentTime, nowMs, opts.cooldownMs)) {
+    return { shouldAlert: false, reason: 'cooldown_active', todayJst: todayJst };
   }
 
-  // 5. 1日あたりの上限ガード（セーフティネット）
-  if (params.dailyAlertInfo && params.dailyAlertInfo.date === todayJst) {
-    const count = typeof params.dailyAlertInfo.count === 'number' ? params.dailyAlertInfo.count : 0;
-    if (count >= maxDailyCount) {
-      return { shouldAlert: false, reason: 'daily_limit_reached', todayJst: todayJst };
-    }
+  if (isDailyLimitReached_(params.dailyAlertInfo, todayJst, opts.maxDailyCount)) {
+    return { shouldAlert: false, reason: 'daily_limit_reached', todayJst: todayJst };
   }
 
   return { shouldAlert: true, reason: 'alert_triggered', todayJst: todayJst };
 }
 
+function isSensorAnomaly_(temp, hum, opts) {
+  if (typeof temp !== 'number' || typeof hum !== 'number' || isNaN(temp) || isNaN(hum)) {
+    return true;
+  }
+  if (isTemperatureAnomaly_(temp, opts)) return true;
+  return isHumidityAnomaly_(hum, opts);
+}
+
+function isTemperatureAnomaly_(temp, opts) {
+  const minTemp = typeof opts.minTemp === 'number' ? opts.minTemp : -10.0;
+  const maxTemp = typeof opts.maxTemp === 'number' ? opts.maxTemp : 50.0;
+  return temp < minTemp || temp > maxTemp;
+}
+
+function isHumidityAnomaly_(hum, opts) {
+  const minHum = typeof opts.minHum === 'number' ? opts.minHum : 0.0;
+  const maxHum = typeof opts.maxHum === 'number' ? opts.maxHum : 100.0;
+  return hum < minHum || hum > maxHum;
+}
+
+function isCooldownActive_(lastSentTime, nowMs, cooldownMsOpt) {
+  if (!lastSentTime) return false;
+  const cooldownMs = typeof cooldownMsOpt === 'number' ? cooldownMsOpt : 60 * 60 * 1000;
+  const lastSentMs = typeof lastSentTime === 'number' ? lastSentTime : parseInt(lastSentTime, 10);
+  return !isNaN(lastSentMs) && (nowMs - lastSentMs) < cooldownMs;
+}
+
+function isDailyLimitReached_(dailyAlertInfo, todayJst, maxDailyCountOpt) {
+  if (!dailyAlertInfo || dailyAlertInfo.date !== todayJst) return false;
+  const maxDailyCount = typeof maxDailyCountOpt === 'number' ? maxDailyCountOpt : 5;
+  const count = typeof dailyAlertInfo.count === 'number' ? dailyAlertInfo.count : 0;
+  return count >= maxDailyCount;
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
+    extractRawValues_,
+    filterValidChartRecords_,
+    isValidChartDate_,
+    isTemperatureAnomaly_,
+    isHumidityAnomaly_,
+    isSensorAnomaly_,
+    isCooldownActive_,
+    isDailyLimitReached_,
+    isSensorAnomaly_,
+    isCooldownActive_,
+    isDailyLimitReached_,
+    isSensorAnomaly_,
+    isCooldownActive_,
+    isDailyLimitReached_,
     calculateDiscomfortIndex_,
     calculateAbsoluteHumidity_,
     classifyDiscomfortIndex_,

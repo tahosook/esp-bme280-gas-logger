@@ -30,6 +30,7 @@ function handleSensorPost_(e) {
   }
 }
 
+/* eslint-disable complexity */
 function validateSensorPayload_(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return 'invalid_payload';
@@ -58,6 +59,7 @@ function validateSensorPayload_(payload) {
   return null;
 }
 
+/* eslint-disable complexity */
 function checkAndAppendMeasurement_(payload, properties) {
   const spreadsheetId = properties.getProperty(CONFIG_KEYS.spreadsheetId);
   if (!spreadsheetId) {

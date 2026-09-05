@@ -22,17 +22,24 @@ function doPost(e) {
     return errorResponse_('invalid_json');
   }
 
-  const headers = e && e.headers ? e.headers : {};
-  const hasLineHeader = !!(headers['X-Line-Signature'] || headers['x-line-signature'] ||
-    (e && e.parameter && (e.parameter['X-Line-Signature'] || e.parameter['x-line-signature'])));
-
-  const isLinePayload = payload && (Array.isArray(payload.events) || typeof payload.destination === 'string');
-
-  if (hasLineHeader || isLinePayload) {
+  if (isLineWebhookRequest_(e, payload)) {
     return handleLineWebhook_(e);
   }
 
   return handleSensorPost_(e);
+}
+
+function isLineWebhookRequest_(e, payload) {
+  const hasLineHeader = hasLineSignatureHeader_(e);
+  const isLinePayload = payload && (Array.isArray(payload.events) || typeof payload.destination === 'string');
+  return hasLineHeader || isLinePayload;
+}
+
+function hasLineSignatureHeader_(e) {
+  if (!e) return false;
+  if (e.headers && (e.headers['X-Line-Signature'] || e.headers['x-line-signature'])) return true;
+  if (e.parameter && (e.parameter['X-Line-Signature'] || e.parameter['x-line-signature'])) return true;
+  return false;
 }
 
 function doGet() {
@@ -77,6 +84,8 @@ function jsonResponse_(body) {
 
 if (typeof module !== 'undefined') {
   module.exports = {
+    hasLineSignatureHeader_,
+    isLineWebhookRequest_,
     CONFIG_KEYS,
     LIMITS,
     doPost,

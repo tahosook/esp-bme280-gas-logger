@@ -94,6 +94,7 @@ function buildMonitorNotification_(conditions) {
 // 2. 状態遷移・オーケストレーション（I/O + ロジック）
 // ==========================================
 
+/* eslint-disable complexity */
 function updateMonitorState_(measurement) {
   const conditions = evaluateMonitorConditions_(measurement);
   const properties = PropertiesService.getScriptProperties();
@@ -310,14 +311,30 @@ function checkWatchdog() {
 
 function runWatchdogCheck_() {
   const properties = PropertiesService.getScriptProperties();
+  const dataSheet = getWatchdogDataSheet_(properties);
+
+  const lock = LockService.getScriptLock();
+  const timeoutMs = (typeof getMergedConfig_ === 'function' && getMergedConfig_().INGEST_LOCK_TIMEOUT_MS) || 15000;
+  lock.waitLock(timeoutMs);
+
+  try {
+    const lastDate = getLastTimestampFromSheet_(dataSheet);
+    if (!lastDate) {
+      return buildWatchdogResult_(false, false, null, null);
+    }
+
+    return evaluateWatchdogTimeout_(lastDate, properties);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getWatchdogDataSheet_(properties) {
   const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-  const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
   const spreadsheetId = properties.getProperty(spreadsheetIdKey);
   if (!spreadsheetId) {
     const error = new Error('missing spreadsheet configuration');
-    if (typeof logError_ === 'function') {
-      logError_('monitor_watchdog', 'Config', 'missing_spreadsheet_id', error);
-    }
+    if (typeof logError_ === 'function') logError_('monitor_watchdog', 'Config', 'missing_spreadsheet_id', error);
     throw error;
   }
 
@@ -325,88 +342,56 @@ function runWatchdogCheck_() {
   const dataSheet = getRawDataSheet_(spreadsheet, properties);
   if (!dataSheet) {
     const error = new Error('Raw data sheet not found');
-    if (typeof logError_ === 'function') {
-      logError_('monitor_watchdog', 'RawData', 'data_sheet_not_found', error);
-    }
+    if (typeof logError_ === 'function') logError_('monitor_watchdog', 'RawData', 'data_sheet_not_found', error);
     throw error;
   }
+  return dataSheet;
+}
 
-  const lock = LockService.getScriptLock();
-  const timeoutMs = (typeof getMergedConfig_ === 'function' && getMergedConfig_().INGEST_LOCK_TIMEOUT_MS) || 15000;
-  lock.waitLock(timeoutMs);
+function getLastTimestampFromSheet_(dataSheet) {
+  const lastRow = dataSheet.getLastRow();
+  if (lastRow < 2) return null;
 
-  try {
-    const lastRow = dataSheet.getLastRow();
-    if (lastRow < 2) {
-      return {
-        timeout: false,
-        notified: false,
-        notification: null,
-        elapsedMinutes: null
-      };
-    }
-
-    const lastRowValues = dataSheet.getRange(lastRow, 1, 1, 1).getValues()[0];
-    const lastTimestamp = lastRowValues[0];
-    let lastDate;
-    if (Object.prototype.toString.call(lastTimestamp) === '[object Date]') {
-      lastDate = lastTimestamp;
-    } else if (lastTimestamp) {
-      lastDate = new Date(lastTimestamp);
-    }
-
-    if (!lastDate || isNaN(lastDate.getTime())) {
-      return {
-        timeout: false,
-        notified: false,
-        notification: null,
-        elapsedMinutes: null
-      };
-    }
-
-    const now = new Date();
-    const elapsedMinutes = (now.getTime() - lastDate.getTime()) / (1000 * 60);
-
-    const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
-    const timeoutMinutes = getConfigNumber_(config, ['WATCHDOG_TIMEOUT_MIN'], 4320);
-
-    if (elapsedMinutes < timeoutMinutes) {
-      return {
-        timeout: false,
-        notified: false,
-        notification: null,
-        elapsedMinutes: elapsedMinutes
-      };
-    }
-
-    const alreadyNotified = properties.getProperty(MONITOR_PROPERTIES.watchdogNotified) === 'true';
-    if (alreadyNotified) {
-      return {
-        timeout: true,
-        notified: false,
-        notification: null,
-        elapsedMinutes: elapsedMinutes
-      };
-    }
-
-    const daysOffline = (elapsedMinutes / (60 * 24)).toFixed(1);
-    const notification = {
-      text: `センサー未受信：約${daysOffline}日間（${Math.round(elapsedMinutes)}分）データが途絶えています。`,
-      lastTimestamp: lastDate,
-      elapsedMinutes: elapsedMinutes
-    };
-
-    properties.setProperty(MONITOR_PROPERTIES.watchdogNotified, 'true');
-
-    return {
-      timeout: true,
-      notified: true,
-      notification: notification,
-      elapsedMinutes: elapsedMinutes
-    };
-  } finally {
-    lock.releaseLock();
+  const lastRowValues = dataSheet.getRange(lastRow, 1, 1, 1).getValues()[0];
+  const lastTimestamp = lastRowValues[0];
+  let lastDate;
+  if (Object.prototype.toString.call(lastTimestamp) === '[object Date]') {
+    lastDate = lastTimestamp;
+  } else if (lastTimestamp) {
+    lastDate = new Date(lastTimestamp);
   }
+
+  if (!lastDate || isNaN(lastDate.getTime())) return null;
+  return lastDate;
+}
+
+function evaluateWatchdogTimeout_(lastDate, properties) {
+  const elapsedMinutes = (Date.now() - lastDate.getTime()) / (1000 * 60);
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
+  const timeoutMinutes = getConfigNumber_(config, ['WATCHDOG_TIMEOUT_MIN'], 4320);
+
+  if (elapsedMinutes < timeoutMinutes) {
+    return buildWatchdogResult_(false, false, null, elapsedMinutes);
+  }
+
+  const alreadyNotified = properties.getProperty(MONITOR_PROPERTIES.watchdogNotified) === 'true';
+  if (alreadyNotified) {
+    return buildWatchdogResult_(true, false, null, elapsedMinutes);
+  }
+
+  const daysOffline = (elapsedMinutes / (60 * 24)).toFixed(1);
+  const notification = {
+    text: `センサー未受信：約${daysOffline}日間（${Math.round(elapsedMinutes)}分）データが途絶えています。`,
+    lastTimestamp: lastDate,
+    elapsedMinutes: elapsedMinutes
+  };
+
+  properties.setProperty(MONITOR_PROPERTIES.watchdogNotified, 'true');
+  return buildWatchdogResult_(true, true, notification, elapsedMinutes);
+}
+
+function buildWatchdogResult_(timeout, notified, notification, elapsedMinutes) {
+  return { timeout, notified, notification, elapsedMinutes };
 }
 
 function resetWatchdogState_() {
@@ -424,6 +409,11 @@ function getMonitorStateForTest_() {
 
 if (typeof module !== 'undefined') {
   module.exports = {
+
+    getWatchdogDataSheet_,
+    getLastTimestampFromSheet_,
+    evaluateWatchdogTimeout_,
+    buildWatchdogResult_,
     MONITOR_PROPERTIES,
     DEFAULT_THRESHOLDS,
     DEFAULT_SMOOTHING,

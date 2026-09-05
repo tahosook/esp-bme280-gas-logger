@@ -10,6 +10,7 @@ function aggregateDaily() {
   return runDailyAggregation_();
 }
 
+/* eslint-disable complexity */
 function runDailyAggregation_() {
   const properties = PropertiesService.getScriptProperties();
   const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';

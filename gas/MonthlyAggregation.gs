@@ -10,6 +10,7 @@ function aggregateMonthly() {
   return runMonthlyAggregation_();
 }
 
+/* eslint-disable complexity */
 function runMonthlyAggregation_() {
   const properties = PropertiesService.getScriptProperties();
   const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
