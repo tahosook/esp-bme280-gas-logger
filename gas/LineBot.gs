@@ -309,24 +309,6 @@ function formatStatusTimeString_(timestamp) {
   return `${formattedDate} 測定`;
 }
 
-function formatStatusTemperature_(tempVal, isTempAlert) {
-  if (tempVal === null) return '-';
-  return isTempAlert ? `${tempVal.toFixed(1)} ℃ (⚠️ 超過)` : `${tempVal.toFixed(1)} ℃ (正常)`;
-}
-
-function formatStatusHumidity_(humVal, isHumAlert) {
-  if (humVal === null) return '-';
-  return isHumAlert ? `${Math.round(humVal)} % (⚠️ 多湿)` : `${Math.round(humVal)} % (正常)`;
-}
-
-function formatStatusPressure_(pressVal, pastPress) {
-  if (pressVal === null) return '-';
-  const trendStr = (typeof calculatePressureTrend_ === 'function' && pastPress !== null)
-    ? calculatePressureTrend_(pressVal, pastPress)
-    : '安定';
-  return `${pressVal.toFixed(1)} hPa (${trendStr})`;
-}
-
 function formatStatusDiscomfortIndex_(tempVal, humVal, lastValidDi) {
   let diVal = typeof lastValidDi === 'number' ? lastValidDi : null;
   if (tempVal !== null && humVal !== null && typeof calculateDiscomfortIndex_ === 'function') {
@@ -346,6 +328,8 @@ function formatStatusDiscomfortIndex_(tempVal, humVal, lastValidDi) {
   return { diText: `${diVal.toFixed(1)}（${diLabel}）`, diColor };
 }
 
+// 直近計測値（温度・湿度・気圧・快適度・日時）の表示用文字列生成を一括で行う処理であり、マイクロヘルパーへの再細分化を防ぐため
+/* eslint-disable complexity */
 function formatStatusMeasurements_(lastValid, states, pastPress) {
   const isTempAlert = Boolean(states && states.temp && states.temp.alert);
   const isHumAlert = Boolean(states && states.hum && states.hum.alert);
@@ -367,9 +351,16 @@ function formatStatusMeasurements_(lastValid, states, pastPress) {
   const humVal = typeof lastValid.hum === 'number' ? lastValid.hum : null;
   const pressVal = typeof lastValid.press === 'number' ? lastValid.press : null;
 
-  const tempText = formatStatusTemperature_(tempVal, isTempAlert);
-  const humText = formatStatusHumidity_(humVal, isHumAlert);
-  const pressText = formatStatusPressure_(pressVal, pastPress);
+  const tempText = tempVal !== null
+    ? (isTempAlert ? `${tempVal.toFixed(1)} ℃ (⚠️ 超過)` : `${tempVal.toFixed(1)} ℃ (正常)`)
+    : '-';
+  const humText = humVal !== null
+    ? (isHumAlert ? `${Math.round(humVal)} % (⚠️ 多湿)` : `${Math.round(humVal)} % (正常)`)
+    : '-';
+  const trendStr = (typeof calculatePressureTrend_ === 'function' && pastPress !== null)
+    ? calculatePressureTrend_(pressVal, pastPress)
+    : '安定';
+  const pressText = pressVal !== null ? `${pressVal.toFixed(1)} hPa (${trendStr})` : '-';
   const { diText, diColor } = formatStatusDiscomfortIndex_(tempVal, humVal, lastValid.discomfortIndex);
 
   return {
@@ -383,28 +374,43 @@ function formatStatusMeasurements_(lastValid, states, pastPress) {
     isHumAlert
   };
 }
+/* eslint-enable complexity */
 
-function buildStatusFlexHeader_(isSnooze, snoozeTimeStr) {
-  if (isSnooze) {
-    return [
-      {
-        type: "text",
-        text: "🔕 SNOOZE中",
-        weight: "bold",
-        size: "lg",
-        color: "#ffffff"
-      },
-      {
-        type: "text",
-        text: `停止期限: ${snoozeTimeStr || '翌朝08:00'} まで (翌朝自動再開)`,
-        size: "xs",
-        color: "#ffffff",
-        margin: "xs"
-      }
-    ];
-  }
+// 監視状態Flex Messageの構築（ヘッダー・ボディ・フッターおよびスヌーズ状態表示）を一括で行うUIビルダーであり、細分化によるコールチェーン肥大化を防ぐため
+/* eslint-disable complexity */
+function buildStatusFlexMessage_() {
+  const properties = PropertiesService.getScriptProperties();
+  const skipUntil = typeof getSnoozeUntilProperty_ === 'function'
+    ? getSnoozeUntilProperty_(properties)
+    : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
+  const isSnooze = typeof isSnoozeActive_ === 'function' ? isSnoozeActive_(skipUntil, Date.now()) : false;
+  const snoozeTimeStr = typeof formatSnoozeUntilJst_ === 'function' ? formatSnoozeUntilJst_(skipUntil) : '';
 
-  return [
+  const states = typeof loadMonitorStates_ === 'function' ? loadMonitorStates_(properties) : {
+    temp: { alert: false },
+    hum: { alert: false },
+    discomfortIndex: { alert: false }
+  };
+  const lastValid = typeof loadLastValidMeasurement_ === 'function' ? loadLastValidMeasurement_(properties) : null;
+  const pastPress = getPastPressureFromSheet_(properties);
+  const m = formatStatusMeasurements_(lastValid, states, pastPress);
+
+  const headerContents = isSnooze ? [
+    {
+      type: "text",
+      text: "🔕 SNOOZE中",
+      weight: "bold",
+      size: "lg",
+      color: "#ffffff"
+    },
+    {
+      type: "text",
+      text: `停止期限: ${snoozeTimeStr || '翌朝08:00'} まで (翌朝自動再開)`,
+      size: "xs",
+      color: "#ffffff",
+      margin: "xs"
+    }
+  ] : [
     {
       type: "text",
       text: "🔔 監視中（Active）",
@@ -413,25 +419,19 @@ function buildStatusFlexHeader_(isSnooze, snoozeTimeStr) {
       color: "#ffffff"
     }
   ];
-}
 
-function buildStatusFlexFooter_(isSnooze) {
-  if (isSnooze) {
-    return [
-      {
-        type: "button",
-        style: "primary",
-        color: "#3498db",
-        action: {
-          type: "message",
-          label: "🔔 監視を再開（CLEAR）",
-          text: "CLEAR"
-        }
+  const footerContents = isSnooze ? [
+    {
+      type: "button",
+      style: "primary",
+      color: "#3498db",
+      action: {
+        type: "message",
+        label: "🔔 監視を再開（CLEAR）",
+        text: "CLEAR"
       }
-    ];
-  }
-
-  return [
+    }
+  ] : [
     {
       type: "button",
       style: "primary",
@@ -452,33 +452,6 @@ function buildStatusFlexFooter_(isSnooze) {
       }
     }
   ];
-}
-
-function loadStatusFlexState_(properties) {
-  const skipUntil = typeof getSnoozeUntilProperty_ === 'function'
-    ? getSnoozeUntilProperty_(properties)
-    : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
-  const isSnooze = typeof isSnoozeActive_ === 'function' ? isSnoozeActive_(skipUntil, Date.now()) : false;
-  const snoozeTimeStr = typeof formatSnoozeUntilJst_ === 'function' ? formatSnoozeUntilJst_(skipUntil) : '';
-
-  const states = typeof loadMonitorStates_ === 'function' ? loadMonitorStates_(properties) : {
-    temp: { alert: false },
-    hum: { alert: false },
-    discomfortIndex: { alert: false }
-  };
-  const lastValid = typeof loadLastValidMeasurement_ === 'function' ? loadLastValidMeasurement_(properties) : null;
-  const pastPress = getPastPressureFromSheet_(properties);
-
-  return { isSnooze, snoozeTimeStr, states, lastValid, pastPress };
-}
-
-function buildStatusFlexMessage_() {
-  const properties = PropertiesService.getScriptProperties();
-  const { isSnooze, snoozeTimeStr, states, lastValid, pastPress } = loadStatusFlexState_(properties);
-  const m = formatStatusMeasurements_(lastValid, states, pastPress);
-
-  const headerContents = buildStatusFlexHeader_(isSnooze, snoozeTimeStr);
-  const footerContents = buildStatusFlexFooter_(isSnooze);
 
   const flexJson = {
     type: "flex",
@@ -561,6 +534,7 @@ function buildStatusFlexMessage_() {
   };
   return [flexJson];
 }
+/* eslint-enable complexity */
 
 function buildSkipFlexMessage_(skipUntil) {
   const properties = PropertiesService.getScriptProperties();
@@ -698,24 +672,18 @@ function replyMessageObjects_(replyToken, messagesArray) {
   return sendLineApiRequest_('reply', payload, channelAccessToken, 'reply');
 }
 
-function isSnoozeActiveForPush_(properties) {
-  const skipUntilStr = typeof getSnoozeUntilProperty_ === 'function'
-    ? getSnoozeUntilProperty_(properties)
-    : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
-  if (!skipUntilStr) {
-    return false;
-  }
-  const skipUntil = parseInt(skipUntilStr, 10);
-  return !isNaN(skipUntil) && Date.now() < skipUntil;
-}
-
+// アラート通知の送信パイプライン（スヌーズ・宛先ID・アクセストークン検証および送信）を一連の直列フローとして表現するため
+/* eslint-disable complexity */
 function pushMonitorNotification_(text) {
   if (!text || typeof text !== 'string') {
     return false;
   }
 
   const properties = PropertiesService.getScriptProperties();
-  if (isSnoozeActiveForPush_(properties)) {
+  const skipUntil = typeof getSnoozeUntilProperty_ === 'function'
+    ? getSnoozeUntilProperty_(properties)
+    : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
+  if (typeof isSnoozeActive_ === 'function' && isSnoozeActive_(skipUntil, Date.now())) {
     return false;
   }
 
@@ -738,6 +706,7 @@ function pushMonitorNotification_(text) {
   const messages = typeof buildAlertFlexMessage_ === 'function' ? buildAlertFlexMessage_(text) : [{ type: 'text', text: text }];
   return pushMessageObjects_(userId, messages, channelAccessToken);
 }
+/* eslint-enable complexity */
 
 function pushMessage_(userId, text, channelAccessToken) {
   return pushMessageObjects_(userId, [{ type: 'text', text: text }], channelAccessToken);
@@ -831,20 +800,13 @@ if (typeof module !== 'undefined') {
     buildGraphMessage_,
     getPastPressureFromSheet_,
     formatStatusTimeString_,
-    formatStatusTemperature_,
-    formatStatusHumidity_,
-    formatStatusPressure_,
     formatStatusDiscomfortIndex_,
     formatStatusMeasurements_,
-    buildStatusFlexHeader_,
-    buildStatusFlexFooter_,
-    loadStatusFlexState_,
     buildStatusFlexMessage_,
     buildSkipFlexMessage_,
     buildAlertFlexMessage_,
     replyMessage_,
     replyMessageObjects_,
-    isSnoozeActiveForPush_,
     pushMonitorNotification_,
     pushMessage_,
     pushMessageObjects_,

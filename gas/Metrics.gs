@@ -505,6 +505,8 @@ function getJstDateString_(ms) {
  * @param {object} [params.options] - Custom options
  * @returns {object} { shouldAlert: boolean, reason: string, todayJst: string }
  */
+// アラート通知の5段階ガード条件（異常値ガード・スヌーズ・閾値・クールダウン・日次上限）を上から順に直列評価する単一責務のドメインロジックであり、分割すると処理フローの可読性が低下するため
+/* eslint-disable complexity */
 function evaluateAlertDecision_(params) {
   if (!params) {
     return { shouldAlert: false, reason: 'invalid_params', todayJst: '' };
@@ -513,63 +515,59 @@ function evaluateAlertDecision_(params) {
   const nowMs = typeof params.nowMs === 'number' ? params.nowMs : Date.now();
   const todayJst = getJstDateString_(nowMs);
   const opts = params.options || {};
+  const cooldownMs = typeof opts.cooldownMs === 'number' ? opts.cooldownMs : 60 * 60 * 1000;
+  const maxDailyCount = typeof opts.maxDailyCount === 'number' ? opts.maxDailyCount : 5;
 
+  // 1. センサー異常値ガード
   if (isSensorAnomaly_(params.temp, params.hum, opts)) {
     return { shouldAlert: false, reason: 'sensor_anomaly', todayJst: todayJst };
   }
 
+  // 2. SNOOZE（通知停止期限）の優先判定
   if (isSnoozeActive_(params.snoozeUntil, nowMs)) {
     return { shouldAlert: false, reason: 'snooze_active', todayJst: todayJst };
   }
 
+  // 3. 警戒閾値の判定
   if (!params.isOverThreshold) {
     return { shouldAlert: false, reason: 'normal', todayJst: todayJst };
   }
 
-  if (isCooldownActive_(params.lastSentTime, nowMs, opts.cooldownMs)) {
-    return { shouldAlert: false, reason: 'cooldown_active', todayJst: todayJst };
+  // 4. 1時間クールダウン判定（無料枠保護）
+  if (params.lastSentTime) {
+    const lastSentMs = typeof params.lastSentTime === 'number'
+      ? params.lastSentTime
+      : parseInt(params.lastSentTime, 10);
+    if (!isNaN(lastSentMs) && (nowMs - lastSentMs) < cooldownMs) {
+      return { shouldAlert: false, reason: 'cooldown_active', todayJst: todayJst };
+    }
   }
 
-  if (isDailyLimitReached_(params.dailyAlertInfo, todayJst, opts.maxDailyCount)) {
-    return { shouldAlert: false, reason: 'daily_limit_reached', todayJst: todayJst };
+  // 5. 1日あたりの上限ガード（セーフティネット）
+  if (params.dailyAlertInfo && params.dailyAlertInfo.date === todayJst) {
+    const count = typeof params.dailyAlertInfo.count === 'number' ? params.dailyAlertInfo.count : 0;
+    if (count >= maxDailyCount) {
+      return { shouldAlert: false, reason: 'daily_limit_reached', todayJst: todayJst };
+    }
   }
 
   return { shouldAlert: true, reason: 'alert_triggered', todayJst: todayJst };
 }
+/* eslint-enable complexity */
 
+// センサー値（温度・湿度）の異常値判定（数値妥当性および上下限ガード）を一括で行う純粋ロジックであり、分割すると可読性が低下するため
+/* eslint-disable complexity */
 function isSensorAnomaly_(temp, hum, opts) {
   if (typeof temp !== 'number' || typeof hum !== 'number' || isNaN(temp) || isNaN(hum)) {
     return true;
   }
-  if (isTemperatureAnomaly_(temp, opts)) return true;
-  return isHumidityAnomaly_(hum, opts);
-}
-
-function isTemperatureAnomaly_(temp, opts) {
   const minTemp = typeof opts.minTemp === 'number' ? opts.minTemp : -10.0;
   const maxTemp = typeof opts.maxTemp === 'number' ? opts.maxTemp : 50.0;
-  return temp < minTemp || temp > maxTemp;
-}
-
-function isHumidityAnomaly_(hum, opts) {
   const minHum = typeof opts.minHum === 'number' ? opts.minHum : 0.0;
   const maxHum = typeof opts.maxHum === 'number' ? opts.maxHum : 100.0;
-  return hum < minHum || hum > maxHum;
+  return temp < minTemp || temp > maxTemp || hum < minHum || hum > maxHum;
 }
-
-function isCooldownActive_(lastSentTime, nowMs, cooldownMsOpt) {
-  if (!lastSentTime) return false;
-  const cooldownMs = typeof cooldownMsOpt === 'number' ? cooldownMsOpt : 60 * 60 * 1000;
-  const lastSentMs = typeof lastSentTime === 'number' ? lastSentTime : parseInt(lastSentTime, 10);
-  return !isNaN(lastSentMs) && (nowMs - lastSentMs) < cooldownMs;
-}
-
-function isDailyLimitReached_(dailyAlertInfo, todayJst, maxDailyCountOpt) {
-  if (!dailyAlertInfo || dailyAlertInfo.date !== todayJst) return false;
-  const maxDailyCount = typeof maxDailyCountOpt === 'number' ? maxDailyCountOpt : 5;
-  const count = typeof dailyAlertInfo.count === 'number' ? dailyAlertInfo.count : 0;
-  return count >= maxDailyCount;
-}
+/* eslint-enable complexity */
 
 if (typeof module !== 'undefined') {
   module.exports = {
@@ -578,11 +576,7 @@ if (typeof module !== 'undefined') {
     isValidChartDate_,
     sampleRecordsForChart_,
     buildLineChartConfig_,
-    isTemperatureAnomaly_,
-    isHumidityAnomaly_,
     isSensorAnomaly_,
-    isCooldownActive_,
-    isDailyLimitReached_,
     calculateDiscomfortIndex_,
     calculateAbsoluteHumidity_,
     classifyDiscomfortIndex_,

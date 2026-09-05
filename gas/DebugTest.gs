@@ -140,24 +140,6 @@ function getTestTargetSheet_(spreadsheet, properties, sheetNameKey) {
     spreadsheet.getActiveSheet();
 }
 
-function logQuickChartResult_(chartUrl, elapsedMs) {
-  if (!chartUrl) {
-    Logger.log('⚠️ buildQuickChartUrl の結果: null (描画可能なデータが不足しています)');
-    return;
-  }
-
-  const urlLength = chartUrl.length;
-  Logger.log('✅ QuickChart URL 生成成功 (所要時間: ' + elapsedMs + ' ms)');
-  Logger.log('生成 URL: ' + chartUrl);
-  Logger.log('URL 文字数: ' + urlLength + ' 文字 / 2,000文字制限');
-
-  if (urlLength <= 2000) {
-    Logger.log('🎉 判定: LINE Messaging API の 2,000 文字制限をクリアしています (残り許容: ' + (2000 - urlLength) + ' 文字)');
-  } else {
-    Logger.log('❌ 警告: LINE Messaging API の 2,000 文字制限を超過しています！ (+ ' + (urlLength - 2000) + ' 文字)');
-  }
-}
-
 function logDebugTestError_(funcName, err) {
   const message = err && err.message ? err.message : String(err);
   const stack = err && err.stack ? err.stack : 'スタック情報なし';
@@ -210,22 +192,23 @@ function debugTest_buildQuickChartUrl() {
     const chartUrl = buildQuickChartUrl(sheet);
     const elapsedMs = Date.now() - startTime;
 
-    logQuickChartResult_(chartUrl, elapsedMs);
+    if (!chartUrl) {
+      Logger.log('⚠️ buildQuickChartUrl の結果: null (描画可能なデータが不足しています)');
+      return;
+    }
+
+    const urlLength = chartUrl.length;
+    Logger.log('✅ QuickChart URL 生成成功 (所要時間: ' + elapsedMs + ' ms)');
+    Logger.log('生成 URL: ' + chartUrl);
+    Logger.log('URL 文字数: ' + urlLength + ' 文字 / 2,000文字制限');
+
+    if (urlLength <= 2000) {
+      Logger.log('🎉 判定: LINE Messaging API の 2,000 文字制限をクリアしています (残り許容: ' + (2000 - urlLength) + ' 文字)');
+    } else {
+      Logger.log('❌ 警告: LINE Messaging API の 2,000 文字制限を超過しています！ (+ ' + (urlLength - 2000) + ' 文字)');
+    }
   } catch (err) {
     logDebugTestError_('debugTest_buildQuickChartUrl', err);
-  }
-}
-
-function logTrendsTestMessage_(messages) {
-  if (messages.length > 0 && messages[0].type === 'image') {
-    const imgMsg = messages[0];
-    Logger.log('✅ 正常な image メッセージが生成されました。');
-    Logger.log('originalContentUrl 長: ' + (imgMsg.originalContentUrl ? imgMsg.originalContentUrl.length : 0));
-    Logger.log('previewImageUrl 長: ' + (imgMsg.previewImageUrl ? imgMsg.previewImageUrl.length : 0));
-  } else if (messages.length > 0 && messages[0].type === 'text') {
-    Logger.log('ℹ️ フォールバックテキストメッセージが返却されました: ' + messages[0].text);
-  } else {
-    Logger.log('⚠️ 予期しないメッセージ形式です。');
   }
 }
 
@@ -240,24 +223,19 @@ function debugTest_handleLineWebhook_Trends() {
     Logger.log('生成されたメッセージ数: ' + messages.length);
     Logger.log('メッセージ内容:\n' + JSON.stringify(messages, null, 2));
 
-    logTrendsTestMessage_(messages);
+    if (messages.length > 0 && messages[0].type === 'image') {
+      const imgMsg = messages[0];
+      Logger.log('✅ 正常な image メッセージが生成されました。');
+      Logger.log('originalContentUrl 長: ' + (imgMsg.originalContentUrl ? imgMsg.originalContentUrl.length : 0));
+      Logger.log('previewImageUrl 長: ' + (imgMsg.previewImageUrl ? imgMsg.previewImageUrl.length : 0));
+    } else if (messages.length > 0 && messages[0].type === 'text') {
+      Logger.log('ℹ️ フォールバックテキストメッセージが返却されました: ' + messages[0].text);
+    } else {
+      Logger.log('⚠️ 予期しないメッセージ形式です。');
+    }
   } catch (err) {
     logDebugTestError_('debugTest_handleLineWebhook_Trends', err);
   }
-}
-
-function logArchiveDryRunDetails_(groupedData, sortedYearMonths) {
-  let totalArchived = 0;
-  Logger.log(`\nアーカイブ対象年月: ${sortedYearMonths.join(', ')}`);
-
-  for (let i = 0; i < sortedYearMonths.length; i++) {
-    const ym = sortedYearMonths[i];
-    const rows = groupedData.get(ym);
-    totalArchived += rows.length;
-    Logger.log(` - 年月 [${ym}]: ${rows.length} 行をシート [Raw_${ym.replace('-', '')}] に退避予定`);
-  }
-
-  Logger.log(`\n✅ ドライラン完了: 合計 ${totalArchived} 行のデータがアーカイブ・削除対象です。 (実際の変更は行っていません)`);
 }
 
 function getDebugArchiveSourceSheet_(properties) {
@@ -317,8 +295,18 @@ function debugTest_runDataArchiveDryRun() {
       return;
     }
 
+    let totalArchived = 0;
     const sortedYearMonths = Array.from(groupedData.keys()).sort();
-    logArchiveDryRunDetails_(groupedData, sortedYearMonths);
+    Logger.log(`\nアーカイブ対象年月: ${sortedYearMonths.join(', ')}`);
+
+    for (let i = 0; i < sortedYearMonths.length; i++) {
+      const ym = sortedYearMonths[i];
+      const rows = groupedData.get(ym);
+      totalArchived += rows.length;
+      Logger.log(` - 年月 [${ym}]: ${rows.length} 行をシート [Raw_${ym.replace('-', '')}] に退避予定`);
+    }
+
+    Logger.log(`\n✅ ドライラン完了: 合計 ${totalArchived} 行のデータがアーカイブ・削除対象です。 (実際の変更は行っていません)`);
   } catch (err) {
     logDebugTestError_('debugTest_runDataArchiveDryRun', err);
   }
@@ -327,9 +315,6 @@ function debugTest_runDataArchiveDryRun() {
 if (typeof module !== 'undefined') {
   module.exports = {
     getTestTargetSheet_,
-    logQuickChartResult_,
-    logTrendsTestMessage_,
-    logArchiveDryRunDetails_,
     logDebugTestError_,
     getDebugChartTargetSheet_,
     getDebugArchiveSourceSheet_,

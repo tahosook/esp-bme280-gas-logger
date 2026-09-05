@@ -94,17 +94,6 @@ function buildMonitorNotification_(conditions) {
 // 2. 状態遷移・オーケストレーション（I/O + ロジック）
 // ==========================================
 
-function buildAlertDecisionOptions_(mergedConfig) {
-  return {
-    cooldownMs: getConfigNumber_(mergedConfig, ['ALERT_COOLDOWN_MIN'], 60) * 60 * 1000,
-    maxDailyCount: getConfigNumber_(mergedConfig, ['ALERT_MAX_DAILY_COUNT'], 5),
-    minTemp: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MIN_TEMP'], -10.0),
-    maxTemp: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MAX_TEMP'], 50.0),
-    minHum: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MIN_HUM'], 0.0),
-    maxHum: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MAX_HUM'], 100.0)
-  };
-}
-
 function resolveAlertDecision_(conditions, isOverThreshold, currentStates, properties, mergedConfig) {
   if (typeof evaluateAlertDecision_ !== 'function') {
     return { shouldAlert: isOverThreshold && !(currentStates.temp.alert || currentStates.hum.alert || currentStates.discomfortIndex.alert) };
@@ -123,7 +112,14 @@ function resolveAlertDecision_(conditions, isOverThreshold, currentStates, prope
     snoozeUntil: snoozeUntil,
     lastSentTime: lastSentTime,
     dailyAlertInfo: dailyAlertInfo,
-    options: buildAlertDecisionOptions_(mergedConfig)
+    options: {
+      cooldownMs: getConfigNumber_(mergedConfig, ['ALERT_COOLDOWN_MIN'], 60) * 60 * 1000,
+      maxDailyCount: getConfigNumber_(mergedConfig, ['ALERT_MAX_DAILY_COUNT'], 5),
+      minTemp: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MIN_TEMP'], -10.0),
+      maxTemp: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MAX_TEMP'], 50.0),
+      minHum: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MIN_HUM'], 0.0),
+      maxHum: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MAX_HUM'], 100.0)
+    }
   });
 }
 
@@ -336,7 +332,7 @@ function runWatchdogCheck_() {
   try {
     const lastDate = getLastTimestampFromSheet_(dataSheet);
     if (!lastDate) {
-      return buildWatchdogResult_(false, false, null, null);
+      return { timeout: false, notified: false, notification: null, elapsedMinutes: null };
     }
 
     return evaluateWatchdogTimeout_(lastDate, properties);
@@ -387,12 +383,12 @@ function evaluateWatchdogTimeout_(lastDate, properties) {
   const timeoutMinutes = getConfigNumber_(config, ['WATCHDOG_TIMEOUT_MIN'], 4320);
 
   if (elapsedMinutes < timeoutMinutes) {
-    return buildWatchdogResult_(false, false, null, elapsedMinutes);
+    return { timeout: false, notified: false, notification: null, elapsedMinutes: elapsedMinutes };
   }
 
   const alreadyNotified = properties.getProperty(MONITOR_PROPERTIES.watchdogNotified) === 'true';
   if (alreadyNotified) {
-    return buildWatchdogResult_(true, false, null, elapsedMinutes);
+    return { timeout: true, notified: false, notification: null, elapsedMinutes: elapsedMinutes };
   }
 
   const daysOffline = (elapsedMinutes / (60 * 24)).toFixed(1);
@@ -403,11 +399,7 @@ function evaluateWatchdogTimeout_(lastDate, properties) {
   };
 
   properties.setProperty(MONITOR_PROPERTIES.watchdogNotified, 'true');
-  return buildWatchdogResult_(true, true, notification, elapsedMinutes);
-}
-
-function buildWatchdogResult_(timeout, notified, notification, elapsedMinutes) {
-  return { timeout, notified, notification, elapsedMinutes };
+  return { timeout: true, notified: true, notification: notification, elapsedMinutes: elapsedMinutes };
 }
 
 function resetWatchdogState_() {
@@ -429,7 +421,6 @@ if (typeof module !== 'undefined') {
     getWatchdogDataSheet_,
     getLastTimestampFromSheet_,
     evaluateWatchdogTimeout_,
-    buildWatchdogResult_,
     MONITOR_PROPERTIES,
     DEFAULT_THRESHOLDS,
     DEFAULT_SMOOTHING,
@@ -437,7 +428,6 @@ if (typeof module !== 'undefined') {
     evaluateConditionState_,
     detectAnomaly_,
     buildMonitorNotification_,
-    buildAlertDecisionOptions_,
     resolveAlertDecision_,
     recordAlertNotification_,
     updateMonitorState_,
