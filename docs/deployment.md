@@ -1,48 +1,63 @@
 # セットアップとデプロイ
 
-## 開発環境
+本ドキュメントは、`esp-bme280-gas-logger` における開発環境構築、秘密情報管理、Google Apps Script（GAS）デプロイ、ESP8266ファームウェア書き込み、および各種トリガー設定の手順書です。
+
+> [!IMPORTANT]
+> **正本仕様書（Single Source of Truth: SSOT）**:
+> 各機能の詳細仕様は以下を参照してください。
+> - アラート判定・状態遷移: [`docs/specs/alert-state-machine.md`](specs/alert-state-machine.md)
+> - LINE Webhook / UI 契約: [`docs/specs/line-webhook-contracts.md`](specs/line-webhook-contracts.md)
+> - データ集計・アーカイブ: [`docs/specs/data-lifecycle-and-aggregation.md`](specs/data-lifecycle-and-aggregation.md)
+
+---
+
+## 1. 開発環境
 
 - macOS（Apple Siliconを含む）
 - Arduino IDE
 - ESP8266ボードパッケージ
-- BME280用の既存処理に必要なライブラリ
+- BME280用ライブラリ（手動I2C読み取り）
 - ArduinoJson（GAS送信用）
 
-ESP8266の書き込みポートは接続状況で変わるため、固定値として文書やコードに保存しない。シリアルモニターは115200 baudを使用する。
+ESP8266の書き込みポートは接続状況で変わるため、固定値として文書やコードに保存しません。シリアルモニターは 115200 baud を使用します。
 
-## 秘密情報
+---
 
-Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンはローカル設定ファイルへ記載する。実ファイルは`.gitignore`対象とし、Publicリポジトリへ追加しない。
+## 2. 秘密情報管理
 
-ファームウェアの`secrets.h`は、`secrets.example.h`をコピーして次の4項目を設定する。
+Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークン、LINE秘密情報はローカル設定ファイルへ記載します。実ファイルは `.gitignore` 対象とし、Publicリポジトリへコミットしません。
+
+ファームウェアの `secrets.h` は、`secrets.example.h` をコピーして次の4項目を設定します。
 
 | 定義名 | 設定値 |
-| --- | --- |
+| :--- | :--- |
 | `WIFI_SSID` | Wi-Fi SSID |
 | `WIFI_PASSWORD` | Wi-Fiパスワード |
-| `GAS_URL` | GAS Webアプリの`/exec` URL |
-| `GAS_API_TOKEN` | GASのScript Propertiesに設定した`API_TOKEN`と同じ値 |
+| `GAS_URL` | GAS Webアプリの `/exec` URL |
+| `GAS_API_TOKEN` | GASのScript Propertiesに設定した `API_TOKEN` と同じ値 |
 
-秘密情報を含むファイルを誤ってコミットした場合は、単に削除するだけでなく、該当するパスワードやトークンを無効化・再発行する。
+秘密情報を含むファイルを誤ってコミットした場合は、単に削除するだけでなく、該当するパスワードやトークンを無効化・再発行してください。
 
-## GASデプロイ
+---
 
-### 本番デプロイ前の準備
+## 3. GAS デプロイ
 
-次の作業は、対象コードと設定値を人間が確認し、明示的に承認してから行う。
+### 3.1 本番デプロイ前の準備
 
-1. 使用するコミットまたはPRの実装内容を確認する。可能なら`main`へマージ済みのコードを使用する。
-2. Googleスプレッドシートを作成し、1行目を次の列順にする。追記先の生データシート名は`RawData`とする（旧名称`DATA`や`2026`へのフォールバックあり）。
+次の作業は、対象コードと設定値を人間が確認し、明示的に承認してから行います。
+
+1. 使用するコミットまたはPRの実装内容を確認する。可能なら `main` へマージ済みのコードを使用する。
+2. Googleスプレッドシートを作成し、1行目を次の列順にする。追記先の生データシート名は `RawData` とする（旧名称 `DATA` や `2026` へのフォールバックあり）。
 
    ```text
    日時 | temp | press | hum | flag
    ```
 
-   日時はDate値で書き、列の表示形式を`yyyy-MM-dd HH:mm:ss`にする（Phase 7で決定。Phase 8の実装で反映）。
-3. スプレッドシートのタイムゾーンを`Asia/Tokyo`に設定する。
-4. Google Apps Scriptプロジェクトを作成し、`gas/` の内容を配置する。Phase 0〜6 の受信基盤は単一の `Code.gs`。Phase 8 以降はモジュール群（`Router.gs` / `Ingest.gs` / `Config.gs` / `ErrorLog.gs` / `Monitor.gs` / `DailyAggregation.gs` / `MonthlyAggregation.gs` / `DataArchive.gs` / `LineBot.gs` / `Metrics.gs` / `SetupTriggers.gs` / `DebugTest.gs`）をまとめて配置する。
-5. GASプロジェクトのタイムゾーンを`Asia/Tokyo`に設定する。
-6. `appsscript.json`にWebアプリ設定があることを確認する。CLIで同期する場合は、次の設定を含める。
+   日時は Date 値で書き、列の表示形式を `yyyy-MM-dd HH:mm:ss` に設定する。
+3. スプレッドシートのタイムゾーンを `Asia/Tokyo` に設定する。
+4. Google Apps Script プロジェクトを作成し、`gas/` 配下の全 `.gs` ファイルを配置する。
+5. GAS プロジェクトのタイムゾーンを `Asia/Tokyo` に設定する。
+6. `appsscript.json` に Web アプリ設定があることを確認する。CLI で同期する場合は、次の設定を含める。
 
    ```json
    "webapp": {
@@ -51,33 +66,49 @@ Wi-Fi SSID、Wi-Fiパスワード、GAS WebアプリURL、GAS APIトークンは
    }
    ```
 
-7. GASエディタの **プロジェクトの設定 → スクリプト プロパティ** で、次の3項目を登録する。値は公開リポジトリ、Issue、ログ、スクリーンショットへ記録しない。
+7. GASエディタの **プロジェクトの設定 → スクリプト プロパティ** で必要なプロパティを登録する（後述の「Script Properties 一覧」参照）。
 
-   | 名前 | 設定値 |
-   | --- | --- |
-   | `SPREADSHEET_ID` | スプレッドシートURLの`/d/`と`/edit`の間にあるID |
-   | `API_TOKEN` | 任意の十分に長いランダム文字列 |
-   | `SHEET_NAME` | 追記先の生データシート名。省略時は`RawData`。以前の`DATA`や`2026`シートも自動的に探索・フォールバックされます |
-   | `ARCHIVE_SPREADSHEET_ID` | アーカイブ先の別スプレッドシートID（省略時はメインスプレッドシート内にアーカイブ先シート `Raw_YYYYMM` が作成されます） |
+---
 
-   Script Propertiesはスクリプト単位で共有される設定値で、コードへ秘密情報を埋め込まずに保存できる。設定後、キー名の誤字、対象シート名、スプレッドシートへの編集権限を確認する。
+### 3.2 Script Properties 一覧
 
-### Webアプリの本番デプロイ（GASエディタ）
+Script Properties はスクリプト単位で共有される設定値で、コードへ秘密情報を埋め込まずに安全に保存できます。実値は公開資料へ記載しません。
 
+| プロパティ名 | 必須 | 既定値 / 例 | 説明 |
+| :--- | :---: | :--- | :--- |
+| **`SPREADSHEET_ID`** | **必須** | `1abc...` | メインスプレッドシートのID（URLの `/d/` と `/edit` の間） |
+| **`API_TOKEN`** | **必須** | 任意のランダム文字列 | センサーからの POST を認証するトークン |
+| `SHEET_NAME` | 任意 | `RawData` | 追記先の生データシート名。省略時は `RawData`（`2026`, `DATA` フォールバック対応） |
+| `ARCHIVE_SPREADSHEET_ID` | 任意 | (未設定時は同一シート内) | 長期アーカイブ先の別スプレッドシートID |
+| `ARCHIVE_RETENTION_MONTHS` | 任意 | `2` | `RawData` シートに残す月数（デフォルトは直近2ヶ月分） |
+| `LINE_CHANNEL_SECRET` | 任意 | LINE Developers 参照 | LINE Webhook 署名検証用チャネルシークレット |
+| `LINE_CHANNEL_ACCESS_TOKEN` | 任意 | LINE Developers 参照 | LINE メッセージ送信用アクセストークン |
+| `LINE_USER_ID` | 任意 | `U1234...` | アラート Push 送信先ユーザーID |
+| `ALERT_SNOOZE_UNTIL` | 自動 | UNIX epoch (ms) | スヌーズ停止期限（旧互換: `MONITOR_SKIP_UNTIL`） |
+| `ALERT_LAST_SENT_TIME` | 自動 | UNIX epoch (ms) | 直近のアラート Push 送信時刻（クールダウン判定用） |
+| `ALERT_COUNT_TODAY` | 自動 | JSON文字列 | 当日のアラート送信件数（`{"date":"YYYY-MM-DD","count":N}`） |
+| `DAILY_LAST_ROW` | 自動 | 数値 | 日次集計の前回処理済み行番号（1始まり） |
+| `MONTHLY_LAST_ROW` | 自動 | 数値 | 月次集計の前回処理済み行番号（1始まり） |
+| `MONITOR_STATE_*` | 自動 | 文字列 | 監視状態キャッシュ（temp, hum, discomfortIndex ごと） |
+| `MONITOR_LAST_VALID_*` | 自動 | 数値 | 直近の有効測定値キャッシュ（急変判定比較元） |
+| `WATCHDOG_NOTIFIED` | 自動 | `true`/`false` | ウォッチドッグ通知済みフラグ |
+| `ERROR_LOG_ENTRIES` | 自動 | JSON配列 | エラーログ履歴（直近最大100件の診断情報） |
+
+※ 監視閾値や各種パラメータのチューニング値は、Config シート（後述）または `gas/Config.gs` のデフォルト値で管理されます。
+
+---
+
+### 3.3 Webアプリの本番デプロイ（GASエディタ / clasp）
+
+#### GASエディタからデプロイ
 1. GASエディタ右上の **デプロイ → 新しいデプロイ** を選択する。
 2. 種類で **ウェブアプリ** を選択する。
-3. 実行ユーザーは、スプレッドシートへ書き込めるデプロイ担当者（通常は自分）を選択する。
-4. アクセスできるユーザーは、ESP8266がOAuthなしでPOSTできるよう **全員（匿名ユーザーを含む）** を選択する。
+3. 実行ユーザー: **自分**
+4. アクセスできるユーザー: **全員（匿名ユーザーを含む）**
 5. **デプロイ** を押し、初回の権限確認が表示されたら、内容を確認して承認する。
-6. 発行された本番URLの `/exec` URLをコピーする。開発用の `/dev` URLは編集権限が必要で、最新保存コードのテスト専用なので、ESP8266や本番curlには使用しない。
-7. `/exec` URLと`API_TOKEN`を、ローカルの`secrets.h`などの無視対象設定へ登録する。URLとトークンを同じ公開資料へ記録しない。
+6. 発行された本番URLの `/exec` URL をコピーして `secrets.h` に設定する。
 
-匿名アクセスを有効にできないGoogle Workspace環境では、このESP8266構成のままでは利用できない。アクセス設定を緩める前に、組織の管理者ポリシーを確認する。トークンは偶発的アクセスの防止用であり、強固な認証ではない。
-
-### Webアプリの本番デプロイ（clasp）
-
-`gas/`ディレクトリに`.clasp.json`があり、対象GASプロジェクトへログイン済みであることを前提とする。
-
+#### clasp からデプロイ
 ```sh
 cd gas
 clasp push --force
@@ -86,29 +117,23 @@ clasp deployments
 clasp open-web-app DEPLOYMENT_ID --json
 ```
 
-`clasp open-web-app --json` がURLを返し、`/exec`で終わることを確認する。`No web app entry point found` と表示された場合、そのデプロイはWebアプリとして作成されていないため、GASエディタの **デプロイ → 新しいデプロイ → ウェブアプリ** から作成する。
-### GASデプロイURL固定ルール
+> [!CAUTION]
+> **GAS デプロイ URL 固定ルール**:
+> ESP8266 ファームウェアの `GAS_URL` はビルド時に固定されます。コード変更時は **既存デプロイのバージョン更新（デプロイを管理）** を行い、`/exec` URL を絶対に変更しないでください。
 
-ESP8266ファームウェアの`GAS_URL`はビルド時に固定される。このため、GASを更新する際は**本番Webアプリの`/exec` URLを変更してはならない**。以下のルールに従う。
+---
 
-- **既存デプロイを更新する**。新しいWebアプリデプロイを作ってURLを変更してはならない。
-- **デプロイIDを維持する**。`clasp deployments` または GASエディタの**デプロイを管理**で既存デプロイのIDを確認し、同じIDでバージョン更新する。
-- **更新前後でURLを確認する**。更新前の`/exec` URLを記録し、更新後も同一であることを`curl -L -sS -i \"$GAS_URL\"`などで確認する。
-- **ロールバック可能にしておく**。デプロイID、バージョン、実施日時は個人用の非公開記録へ残す。問題が発生した場合は、同じデプロイIDで直前の正常バージョンに戻す。
-- **公開記録へURLやトークンを残さない**。`docs/test-results/` や公開リポジトリへ`/exec` URL、`API_TOKEN`、スプレッドシートIDを記載しない。
+### 3.4 本番スモークテスト
 
-### 本番スモークテスト
-
-実URLへのテストは、テスト用シートまたは削除してよいテスト行を使う。シェル履歴やCIログへトークンを出さない。
-
-まず、トークンを送らないGETで設定状態を確認する。
+まず GET リクエストで Ready 状態を確認します。
 
 ```sh
 read -r GAS_URL
 curl -L -sS -i "$GAS_URL"
 ```
+成功時の応答: `{"ok":true,"ready":true}`
 
-設定済みで対象シートへアクセスできる場合は`{"ok":true,"ready":true}`、未設定またはアクセス不能の場合は`{"ok":false,"ready":false,"error":"not_ready"}`を期待する。Ready確認は行を追加しない。
+続いて POST テストを行います。
 
 ```sh
 read -r -s API_TOKEN
@@ -118,143 +143,65 @@ curl -L -sS -i -X POST "$GAS_URL" \
   -H 'Content-Type: application/json' \
   -d "{\"api_version\":1,\"token\":\"$API_TOKEN\",\"temp\":24.5,\"press\":1012.3,\"hum\":55.8}"
 ```
+成功時の応答: `{"ok":true}`（HTTP 200、`RawData` シートに 1 行追加）
 
-確認結果：
+---
 
-- HTTPステータスが200である。
-- 本文が`{"ok":true}`である。
-- シートに`Asia/Tokyo`の日時、`24.5`、`1012.3`、`55.8`の1行が追加される。
-- レスポンス本文やシートにトークンが出力されていない。
+## 4. ESP8266 ファームウェア書き込み
 
-次に、行が追加されないことを確認する異常系を実施する。
-
-```sh
-# 不正トークン: invalid_token
-curl -L -sS -i -X POST "$GAS_URL" \
-  -H 'Content-Type: application/json' \
-  -d '{"api_version":1,"token":"wrong-token","temp":24.5,"press":1012.3,"hum":55.8}'
-
-# 範囲外: invalid_payload
-curl -L -sS -i -X POST "$GAS_URL" \
-  -H 'Content-Type: application/json' \
-  -d "{\"api_version\":1,\"token\":\"$API_TOKEN\",\"temp\":85.1,\"press\":1012.3,\"hum\":55.8}"
-```
-
-異常系はHTTPステータスではなく、本文の`{"ok":false,"error":"..."}`で判定する。テスト後、実施日時（JST）、成功・異常系の結果、使用したデプロイのバージョンを秘密情報なしで`docs/test-results/`へ記録する。
-
-最初にHTTP 302が返るのはGASのContent Serviceによるリダイレクトとして正常である。`-L`で追従する。リダイレクト後にHTTP 405（`Allow: HEAD, GET`）が返る場合は、URLが`/exec`か、デプロイがWebアプリか、匿名アクセスが有効か、`doPost(e)`を含むバージョンをデプロイしたかを確認する。
-
-### 更新とロールバック
-
-- コードを変更した場合は、まず`/dev`のテストデプロイで確認する。
-- 本番反映は **デプロイ → デプロイを管理** から既存デプロイを新しいバージョンへ更新する。既存の`/exec` URLを維持できるため、設定済みのESP8266 URLを変更しない運用にする。
-- 更新後に正常系・異常系のcurlスモークテストを再実施する。
-- 問題が出た場合は、**デプロイを管理** から直前の正常バージョンへ戻し、再度curlで確認する。
-- デプロイID、バージョン、実施日時は個人用の非公開記録へ残す。URL、トークン、スプレッドシートIDは公開記録へ残さない。
-
-公式手順：[Apps Script Web Apps](https://developers.google.com/apps-script/guides/web)、[Properties Service](https://developers.google.com/apps-script/guides/properties)
-
-## ESP8266書き込み
-
-1. Arduino IDEで対象スケッチを開く
-2. ESPr Developer / ESP8266向けのボード設定を選択する
+1. Arduino IDE で対象スケッチを開く
+2. ESPr Developer / ESP8266 向けのボード設定を選択する
 3. シリアルポートを接続状態から確認する
 4. コンパイルする
 5. 内容を確認したうえで書き込む
-6. 115200 baudでシリアルログを確認する
+6. 115200 baud でシリアルログ（`[sensor]`, `[wifi]`, `[gas]`, `[sleep]`）を確認する
 
-ESP8266への書き込みは人間の確認後に実施する。Codexは書き込み完了を、実際のログなしに推測しない。
+---
 
-## 追加機能のセットアップ（Phase 11 / 12 / 15 対応）
+## 5. シート構成・トリガー・LINE Bot 設定
 
-以下は監視・LINE・日次集計を有効化する際の追加設定。実装済みのPhase（Phase 8以降）に応じて、
-該当するものを人間が確認・承認してから設定する。
+### 5.1 各種シートの初期作成
 
-### Script Properties の追加キー（監視・LINE・日次集計）
+1. **`RawData` シート**:
+   - ヘッダー: `日時 | temp | press | hum | flag`
+   - 表示形式: A列の日時を `yyyy-MM-dd HH:mm:ss` に設定
+2. **`Daily` シート**:
+   - ヘッダー: `日付 | temp_avg | temp_min | temp_max | hum_avg | hum_min | hum_max | press_avg | press_min | press_max | sample_count | alert_count`
+3. **`Monthly` シート**:
+   - ヘッダー: `年月 | temp_avg | temp_min | temp_max | hum_avg | hum_min | hum_max | press_avg | press_min | press_max | days_count`
+4. **`Config` シート（任意）**:
+   - 1行目にキー名、2行目以降に値を配置（横形式または縦形式 `key | value` をサポート）。未設定キーは `gas/Config.gs` の既定値が自動適用されます。
 
-受信基盤の `SPREADSHEET_ID` / `API_TOKEN` / `SHEET_NAME` に加え、機能に応じて追加する。実値は公開資料へ記載しない。
+### 5.2 時間主導型トリガー設定
 
-| キー | 内容 | 対応Phase / 機能 |
-| --- | --- | --- |
-| `LINE_CHANNEL_SECRET` | LINEチャネルシークレット（Webhook署名検証用） | 12 |
-| `LINE_CHANNEL_ACCESS_TOKEN` | LINEアクセストークン（Push/Reply送信用） | 12 |
-| `LINE_USER_ID` | 通知送信先ユーザーID | 12 |
-| `MONITOR_SKIP_UNTIL` | スキップ・スヌーズ解除時刻（UNIXミリ秒エポックタイム。`ALERT_SNOOZE_UNTIL`も互換対応） | 12 / 24 / PR #27 |
-| `ALERT_LAST_SENT_TIME` | 直近のアラートPush送信時刻（UNIXミリ秒エポックタイム。クールダウン判定用） | PR #26 |
-| `ALERT_COUNT_TODAY` | 当日のアラート送信件数（JSON: `{"date":"YYYY-MM-DD","count":N}`。1日上限ガード用） | PR #26 |
-| `DAILY_LAST_ROW` | Daily集計の前回処理済み行番号（1始まり） | 15 |
-| `MONTHLY_LAST_ROW` | Monthly集計の前回処理済み行番号（1始まり） | 18 |
-| `ARCHIVE_SPREADSHEET_ID` | アーカイブ先の別スプレッドシートID |
-| `ARCHIVE_RETENTION_MONTHS` | RawDataシートに残すアーカイブ対象外の月数（デフォルト: 2） |
-| `MONITOR_STATE_*` | 監視状態（超過/正常など、temp/hum/discomfortIndex ごと） | 11 |
-| `MONITOR_LAST_VALID_*` | 異常値判定の比較元（temp/hum/press 等の直近有効データ） | 11 |
-| `WATCHDOG_NOTIFIED` | ウォッチドッグ通知済みフラグ | 17 |
-| `ERROR_LOG_ENTRIES` | エラーログ履歴（直近最大100件の診断情報） | 15 |
+GAS の時間主導型トリガーは、`SetupTriggers.gs` のワンクリック関数 `setupAllTriggers()` を実行するか、手動で登録します。
 
-監視閾値など頻繁に調整する値は、Configシート（Phase 15で採用決定）へ置く。
+| 関数名 | 実行周期（正本仕様） | 概要 |
+| :--- | :--- | :--- |
+| `aggregateDaily` | **毎日 00:00〜01:00 JST** | 前日分の確定データを日次集計し `Daily` シートへ追記 |
+| `aggregateMonthly` | **毎月 1日 00:00〜01:00 JST** | 前月分の確定データを月次集計し `Monthly` へ追記後、`DataArchive` を連動実行して 2 ヶ月前の生データを退避・パージ |
+| `checkWatchdog` | **毎時 0 分** | `RawData` の最終記録時刻が 3 日以上途絶えた場合に 1 回通知 |
 
-### LINEチャネル / Webhook設定（Phase 12）
+※ `SetupTriggers.gs` をプログラム実行した場合、GAS の制約上それぞれ指定の時刻（`aggregateDaily`: 02:00 JST, `aggregateMonthly`: 1日 01:00 JST, `checkWatchdog`: 毎時）に作成されます。手動でスケジュールを調整する場合は上記正本仕様の時間帯（00:00〜01:00 JST）を推奨します。
 
-1. LINE Developerコンソールでチャネルを作成し、チャネルシークレットとアクセストークンを取得する。
-2. Webhook URL に GAS Webアプリの `/exec` URL を設定する。
-3. 送信はReply API（`/message/reply`）とPush API（`/message/push`）を使う。無料プランではPushの月200通制限があり、Replyはカウントされない。
+### 5.3 LINE Developer コンソール設定
 
-### Configシート / Dailyシート（Phase 15）
+1. LINE Developers コンソールで Messaging API チャネルを作成する。
+2. チャネルシークレットとチャネルアクセストークン（長期）を取得し、Script Properties（`LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_USER_ID`）に登録する。
+3. Webhook URL に本番の `/exec` URL を登録し、「Webhookの利用」を ON に設定する。
+4. 応答設定で「応答メッセージ: OFF」「Webhook: ON」にする。
+5. `SetupTriggers.gs` の `testLineBotConnection()` を GAS エディタから実行し、LINE への接続・通知テストを行う。
 
-1. Configシートを作成し、1行目にキー名、2行目以降に値を配置する（採用は決定済み。縦形式 `key \| value` も互換サポート）。未設定キーは **Config.gs に定義されたデフォルト値** へフォールバックする。既定値は下表のとおり。
+---
 
-   | キー | 既定値（決定済み） | 内容 |
-   | --- | --- | --- |
-   | `TEMP_HIGH` | 30.0 | 気温超過しきい値（℃） |
-   | `HUM_HIGH` | 70 | 湿度超過しきい値（%） |
-   | `HEAT_INDEX_HIGH` | 80.0 | 簡易暑さ指数（不快指数DI）超過しきい値 |
-   | `HYSTERESIS_TEMP` | 0.5 | 気温ヒステリシス幅（℃） |
-   | `HYSTERESIS_HUM` | 5 | 湿度ヒステリシス幅（%） |
-   | `HYSTERESIS_HEAT_INDEX` | 0.5 | 簡易暑さ指数ヒステリシス幅 |
-   | `SMOOTH_K` | 2 | 連続超過判定の件数K |
-   | `ANOMALY_TEMP` | 5.0 | 異常値判定の気温変化量（℃） |
-   | `ANOMALY_HUM` | 30 | 異常値判定の湿度変化量（%） |
-   | `ANOMALY_PRESS` | 20 | 異常値判定の気圧変化量（hPa） |
-   | `SKIP_UNTIL_HOUR` | 8 | LINEスヌーズ解除時刻（JSTの時、0〜23。既定は翌朝8:00） |
-   | `ALERT_COOLDOWN_MIN` | 60 | アラートPush通知の最小間隔（分）。連続通知を防止 |
-   | `ALERT_MAX_DAILY_COUNT` | 5 | 1日あたりのアラートPush通知最大件数（無料枠保護） |
-   | `SENSOR_GUARD_MIN_TEMP` | -10.0 | センサー異常ガード下限温度（℃） |
-   | `SENSOR_GUARD_MAX_TEMP` | 50.0 | センサー異常ガード上限温度（℃） |
-   | `SENSOR_GUARD_MIN_HUM` | 0.0 | センサー異常ガード下限湿度（%） |
-   | `SENSOR_GUARD_MAX_HUM` | 100.0 | センサー異常ガード上限湿度（%） |
-   | `SENSOR_DUPLICATION_WINDOW_SECONDS` | 180 | 重複POST排除の時間窓（秒） |
-   | `WATCHDOG_TIMEOUT_MIN` | 4320 | センサー未受信ウォッチドッグのしきい値（分）。4320＝3日 |
+## 6. 手動検証・デバッグ手順（`DebugTest.gs`）
 
-2. Dailyシートを作成し、1行目を `日付 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | sample_count | alert_count` にする。
-3. 時間主導トリガーを設定し、毎日 02:00 JST に日次集計を実行する（`SetupTriggers.gs` の `setupDailyAggregationTrigger` で登録可能）。
-4. Monthlyシートを作成し、1行目を `年月 | temp_avg/min/max | hum_avg/min/max | press_avg/min/max | days_count` にする。月次トリガー（毎月 1日 01:00 JST）で前月分を月次集計する。
-5. ウォッチドッグ用の時間主導トリガー（毎時 0分）を設定する。DATA最終日時が `WATCHDOG_TIMEOUT_MIN`（既定4320＝3日）を超えると1回だけ通知し、復帰（追記再開）でリセットする。
+デプロイ後や不具合調査時にワンクリックで検証できる関数群が用意されています。
 
-※LINE設定・Config/Daily/Monthlyシート作成・トリガー設定は人間の承認後に実施する。
-
-### デプロイ後の手動検証・デバッグ手順（QuickChart / LINE Bot）
-
-GAS エディタ上で動作検証を行える手動テスト関数（`DebugTest.gs`）が用意されています。デプロイ後や不具合調査時に以下の手順で検証します。
-
-1. **QuickChart URL 生成と文字長検証**:
-   - GAS エディタの関数一覧から `debugTest_buildQuickChartUrl` を選択し、「実行」をクリックする。
-   - 実行ログ（「ログ表示」または Cloud Logging）を確認する。
-   - 生成された QuickChart URL が表示され、**文字数が 2,000 文字未満（LINE Messaging API 制限以内）** であること（「🎉 判定: 2,000 文字制限をクリア」）を確認する。
-   - ログに出力された URL をブラウザで直接開き、2軸折れ線グラフ（温度: 赤 `#ef4444`、湿度: 青 `#3b82f6`）が正しく描画されることを確認する。
-
-2. **LINE Webhook（TRENDS 応答）擬似実行テスト**:
-   - GAS エディタの関数一覧から `debugTest_handleLineWebhook_Trends` を選択し、「実行」をクリックする。
-   - 実行ログを確認し、LINE への実送信を行わずに `type: 'image'` のメッセージオブジェクトが正しく生成されていることを確認する。
-
-3. **LINE 実機での検証**:
-   - LINE トーク画面で「`グラフ`」または「`TRENDS`」「`推移`」「`24h`」を送信し、直近24時間の温湿度グラフ画像が即座に返信されることを確認する。
-
-## リリース
-
-実機で安定動作を確認したファームウェアには、例えば次のタグを付ける。
-
-```text
-v0.1.0-gas-api
-v0.2.0-first-device-upload
-v1.0.0-stable
-```
+1. **QuickChart URL 生成と文字数検証 (`debugTest_buildQuickChartUrl`)**:
+   - GAS エディタで実行し、生成された QuickChart URL が 2,000 文字以内（LINE 制限クリア）であることを確認。
+   - ログの URL をブラウザで開き、2軸折れ線グラフが描画されることを確認。
+2. **LINE Webhook（TRENDS 応答）シミュレーション (`debugTest_handleLineWebhook_Trends`)**:
+   - LINE への実送信を行わずに、`type: 'image'` のメッセージオブジェクトが正しく構築されることを確認。
+3. **アラート判定パイプライン検証 (`debugTest_checkAlertLogic`)**:
+   - 正常値、異常値ガード、警戒超過、スヌーズ中、クールダウン中、1日上限到達の各ケースをシミュレートし、判定ロジックが期待通りに動作することを検証。
