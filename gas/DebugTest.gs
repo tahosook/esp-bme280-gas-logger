@@ -312,6 +312,100 @@ function debugTest_runDataArchiveDryRun() {
   }
 }
 
+/**
+ * スクリプトプロパティ（ERROR_LOG_ENTRIES）に記録されたエラーログ一覧を表示するデバッグ関数。
+ * GAS エディタで本関数を選択して「実行」をクリックしてください。
+ */
+function debugTest_showErrorLogs() {
+  Logger.log('=== [DEBUG TEST] showErrorLogs 開始 ===');
+  try {
+    const entries = typeof getErrorLogEntries_ === 'function' ? getErrorLogEntries_() : [];
+    if (!entries || entries.length === 0) {
+      Logger.log('ℹ️ 記録されているエラーログはありません（正常）。');
+      return;
+    }
+
+    Logger.log(`合計 ${entries.length} 件のエラーログが記録されています:\n`);
+    for (let i = 0; i < entries.length; i += 1) {
+      const entry = entries[i];
+      Logger.log(`[#${i + 1}] 時刻: ${entry.timestamp} | 操作: ${entry.operation} | 対象: ${entry.target} | エラーコード: ${entry.errorCode}`);
+      Logger.log(`     詳細メッセージ: ${entry.message}\n`);
+    }
+  } catch (err) {
+    logDebugTestError_('debugTest_showErrorLogs', err);
+  }
+}
+
+/**
+ * スクリプトプロパティ（ERROR_LOG_ENTRIES）に記録されたエラーログを全消去するデバッグ関数。
+ * GAS エディタで本関数を選択して「実行」をクリックしてください。
+ */
+function debugTest_clearErrorLogs() {
+  Logger.log('=== [DEBUG TEST] clearErrorLogs 開始 ===');
+  try {
+    if (typeof clearErrorLog_ === 'function') {
+      clearErrorLog_();
+      Logger.log('✅ エラーログをすべて消去しました。');
+    } else {
+      PropertiesService.getScriptProperties().deleteProperty('ERROR_LOG_ENTRIES');
+      Logger.log('✅ エラーログプロパティを消去しました。');
+    }
+  } catch (err) {
+    logDebugTestError_('debugTest_clearErrorLogs', err);
+  }
+}
+
+/**
+ * センサーデータ書き込み（Ingest）を手動シミュレート検証するデバッグ関数。
+ * 有効な API トークンとダミー測定値で checkAndAppendMeasurement_ を実行し、
+ * シートへの追記および監視更新が正常に行われるか検証します。
+ * GAS エディタで本関数を選択して「実行」をクリックしてください。
+ */
+function debugTest_simulateSensorPost() {
+  Logger.log('=== [DEBUG TEST] simulateSensorPost 開始 ===');
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const tokenKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.apiToken) || 'API_TOKEN';
+    const apiToken = properties.getProperty(tokenKey);
+
+    if (!apiToken) {
+      Logger.log('❌ スクリプトプロパティ API_TOKEN が未設定です。');
+      return;
+    }
+
+    const testPayload = {
+      api_version: 1,
+      token: apiToken,
+      temp: 24.5,
+      press: 1012.3,
+      hum: 55.8
+    };
+
+    Logger.log('テスト用ペイロード: ' + JSON.stringify(testPayload));
+
+    const startTime = Date.now();
+    const appended = checkAndAppendMeasurement_(testPayload, properties);
+    const elapsedMs = Date.now() - startTime;
+
+    if (appended) {
+      Logger.log(`✅ センサーデータ書き込み成功 (所要時間: ${elapsedMs} ms)`);
+      const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+      const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+      if (spreadsheetId) {
+        const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+        const targetSheet = getTestTargetSheet_(spreadsheet, properties, 'SHEET_NAME');
+        if (targetSheet) {
+          Logger.log(`シート名 [${targetSheet.getName()}] の最終行番号: ${targetSheet.getLastRow()}`);
+        }
+      }
+    } else {
+      Logger.log(`ℹ️ 重複測定値判定によりシート追記はスキップされました（直近180秒以内に同値が存在 / 所要時間: ${elapsedMs} ms）`);
+    }
+  } catch (err) {
+    logDebugTestError_('debugTest_simulateSensorPost', err);
+  }
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     getTestTargetSheet_,
@@ -321,6 +415,9 @@ if (typeof module !== 'undefined') {
     debugTest_checkAlertLogic,
     debugTest_buildQuickChartUrl,
     debugTest_handleLineWebhook_Trends,
-    debugTest_runDataArchiveDryRun
+    debugTest_runDataArchiveDryRun,
+    debugTest_showErrorLogs,
+    debugTest_clearErrorLogs,
+    debugTest_simulateSensorPost
   };
 }

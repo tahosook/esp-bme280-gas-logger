@@ -401,7 +401,7 @@ describe('LineBot & Ingest Edge Cases', () => {
     const resBadJson = handleSensorPost_({ postData: { contents: '{bad json' } });
     expect(JSON.parse(resBadJson.getContent())).toEqual({ ok: false, error: 'invalid_json' });
 
-    // 3. checkAndAppendMeasurement_ で内部例外発生時の internal_error
+    // 3. checkAndAppendMeasurement_ で内部例外発生時の internal_error および logError_ 記録
     const envBrokenIngest = createGasMockEnvironment({
       initialProperties: { API_TOKEN: 'valid-token', SPREADSHEET_ID: 'test-id' },
       customSheets: { DATA: null }
@@ -413,6 +413,24 @@ describe('LineBot & Ingest Edge Cases', () => {
       }
     });
     expect(JSON.parse(resInternal.getContent())).toEqual({ ok: false, error: 'internal_error' });
+    const errorLogs = getErrorLogEntries_();
+    expect(errorLogs.length).toBeGreaterThan(0);
+    expect(errorLogs[errorLogs.length - 1].errorCode).toBe('internal_error');
+    expect(errorLogs[errorLogs.length - 1].operation).toBe('ingest');
+
+    // 4. logError_ 未定義時のフォールバック (console.error)
+    const origLogError = global.logError_;
+    try {
+      delete global.logError_;
+      const resFallback = handleSensorPost_({
+        postData: {
+          contents: JSON.stringify({ api_version: 1, token: 'valid-token', temp: 25.0, press: 1010.0, hum: 50.0 })
+        }
+      });
+      expect(JSON.parse(resFallback.getContent())).toEqual({ ok: false, error: 'internal_error' });
+    } finally {
+      global.logError_ = origLogError;
+    }
   });
 
   test('pushMessage_ および pushMessageObjects_ の引数バリデーション', () => {
@@ -467,6 +485,51 @@ describe('LineBot & Ingest Edge Cases', () => {
     } finally {
       global.updateMonitorState_ = origUpdate;
       global.pushMonitorNotification_ = origPush;
+    }
+  });
+
+  test('Ingest: setNumberFormat が例外をスローしても（型付き列など）データ追記と更新が成功する', () => {
+    Object.assign(global, env.globals);
+    const mockSheet = SpreadsheetApp.openById('test-spreadsheet-id').getSheetByName('DATA');
+    const origGetRange = mockSheet.getRange.bind(mockSheet);
+    mockSheet.getRange = (row, col, numRows, numCols) => {
+      const range = origGetRange(row, col, numRows, numCols);
+      range.setNumberFormat = () => {
+        throw new Error('型付きの列でセルの数値形式を設定することはできません。');
+      };
+      return range;
+    };
+
+    const initialRowCount = env.dataRows.length;
+    const payload = {
+      api_version: 1,
+      token: 'test-token',
+      temp: 23.4,
+      press: 1011.2,
+      hum: 52.3
+    };
+
+    const res = handleSensorPost_({
+      postData: { contents: JSON.stringify(payload) }
+    });
+    expect(JSON.parse(res.getContent())).toEqual({ ok: true });
+    expect(env.dataRows.length).toBe(initialRowCount + 1);
+
+    const logEntries = getErrorLogEntries_();
+    const formatLog = logEntries.find(e => e.errorCode === 'typed_column_format_skipped');
+    expect(formatLog).toBeDefined();
+    expect(formatLog.operation).toBe('ingest');
+
+    // logError_ が未定義の際も握りつぶされて追記が成功する
+    const origLogError = global.logError_;
+    try {
+      delete global.logError_;
+      const resWithoutLog = handleSensorPost_({
+        postData: { contents: JSON.stringify({ ...payload, temp: 23.5 }) }
+      });
+      expect(JSON.parse(resWithoutLog.getContent())).toEqual({ ok: true });
+    } finally {
+      global.logError_ = origLogError;
     }
   });
 
@@ -840,6 +903,38 @@ describe('SetupTriggers & DebugTest Handlers', () => {
     expect(() => debugTest_checkAlertLogic()).not.toThrow();
     expect(() => debugTest_buildQuickChartUrl()).not.toThrow();
     expect(() => debugTest_handleLineWebhook_Trends()).not.toThrow();
+  });
+
+  test('DebugTest: debugTest_showErrorLogs / debugTest_clearErrorLogs / debugTest_simulateSensorPost が正常動作する', () => {
+    Object.assign(global, env.globals);
+
+    // 1. showErrorLogs (空の場合)
+    expect(() => debugTest_showErrorLogs()).not.toThrow();
+
+    // 2. エラーを1件記録して表示
+    logError_('test_op', 'test_target', 'test_code', new Error('test error'));
+    expect(() => debugTest_showErrorLogs()).not.toThrow();
+
+    // 3. clearErrorLogs
+    expect(() => debugTest_clearErrorLogs()).not.toThrow();
+    expect(getErrorLogEntries_().length).toBe(0);
+
+    // 4. simulateSensorPost (トークン未設定)
+    env.propertiesStore.delete('API_TOKEN');
+    expect(() => debugTest_simulateSensorPost()).not.toThrow();
+
+    // 5. simulateSensorPost (正常書き込み)
+    env.propertiesStore.set('API_TOKEN', 'valid-test-token');
+    expect(() => debugTest_simulateSensorPost()).not.toThrow();
+
+    // 6. simulateSensorPost (重複スキップ)
+    expect(() => debugTest_simulateSensorPost()).not.toThrow();
+
+    // 7. simulateSensorPost (スプレッドシート例外時)
+    const origOpen = SpreadsheetApp.openById;
+    SpreadsheetApp.openById = () => { throw new Error('spreadsheet open failed'); };
+    expect(() => debugTest_simulateSensorPost()).not.toThrow();
+    SpreadsheetApp.openById = origOpen;
   });
 
   test('SetupTriggers: testLineBotConnection / authorizeUrlFetch が正常実行される', () => {
