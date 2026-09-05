@@ -155,120 +155,132 @@ function buildQuickChartConfig_(records) {
  * @param {object} [options] - Options (width, height, devicePixelRatio, targetCount)
  * @returns {string|null} QuickChart image URL or null if records are empty
  */
-/* eslint-disable complexity */
+function sampleRecordsForChart_(records, count) {
+  const step = Math.max(1, Math.floor(records.length / count));
+  const sampled = [];
+  for (let i = 0; i < records.length; i += step) {
+    sampled.push(records[i]);
+  }
+  const lastRecord = records[records.length - 1];
+  if (sampled[sampled.length - 1] !== lastRecord) {
+    sampled.push(lastRecord);
+  }
+
+  const labels = [];
+  const temps = [];
+  const hums = [];
+  let lastLabeledHour = -1;
+
+  for (let i = 0; i < sampled.length; i += 1) {
+    const row = sampled[i];
+    const ts = row[0];
+    const d = (ts instanceof Date) ? ts : new Date(ts);
+    const h = d.getHours();
+    const m = d.getMinutes();
+    let label = '';
+    // Show label on first point, last point, or every 3 hours
+    if (i === 0 || i === sampled.length - 1 || (h % 3 === 0 && h !== lastLabeledHour)) {
+      label = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+      lastLabeledHour = h;
+    }
+    labels.push(label);
+    temps.push(Number(Number(row[1]).toFixed(1)));
+    hums.push(Number(Number(row[3]).toFixed(1)));
+  }
+
+  return { labels, temps, hums };
+}
+
+function buildLineChartConfig_(labels, temps, hums) {
+  return {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: '温度 (℃)',
+          data: temps,
+          borderColor: '#ef4444',
+          fill: false,
+          yAxisID: 'yTemp',
+          pointRadius: 0,
+          borderWidth: 2
+        },
+        {
+          label: '湿度 (%)',
+          data: hums,
+          borderColor: '#3b82f6',
+          fill: false,
+          yAxisID: 'yHum',
+          pointRadius: 0,
+          borderWidth: 2
+        }
+      ]
+    },
+    options: {
+      title: {
+        display: true,
+        text: '直近24時間の温湿度推移'
+      },
+      scales: {
+        yAxes: [
+          {
+            id: 'yTemp',
+            position: 'left',
+            scaleLabel: {
+              display: true,
+              labelString: '℃'
+            }
+          },
+          {
+            id: 'yHum',
+            position: 'right',
+            scaleLabel: {
+              display: true,
+              labelString: '%'
+            },
+            gridLines: {
+              drawOnChartArea: false
+            }
+          }
+        ]
+      }
+    }
+  };
+}
+
+function normalizeQuickChartOptions_(options) {
+  const opts = options || {};
+  return {
+    width: opts.width || 600,
+    height: opts.height || 360,
+    dpr: typeof opts.devicePixelRatio === 'number' ? opts.devicePixelRatio : 2.0,
+    targetCount: opts.targetCount || 30
+  };
+}
+
+function generateQuickChartUrlString_(records, count, width, height, dpr) {
+  const { labels, temps, hums } = sampleRecordsForChart_(records, count);
+  const chartConfig = buildLineChartConfig_(labels, temps, hums);
+  const chartJson = JSON.stringify(chartConfig);
+  return `https://quickchart.io/chart?w=${width}&h=${height}&devicePixelRatio=${dpr.toFixed(1)}&c=${encodeURIComponent(chartJson)}`;
+}
+
 function buildQuickChartUrlFromRecords_(records, options) {
   if (!records || !Array.isArray(records) || records.length === 0) {
     return null;
   }
 
-  const opts = options || {};
-  const width = opts.width || 600;
-  const height = opts.height || 360;
-  const dpr = typeof opts.devicePixelRatio === 'number' ? opts.devicePixelRatio : 2.0;
-  let targetCount = opts.targetCount || 30;
+  const { width, height, dpr, targetCount } = normalizeQuickChartOptions_(options);
 
-  // Helper to generate URL given target sample count
-  function generateWithTargetCount(count) {
-    const step = Math.max(1, Math.floor(records.length / count));
-    const sampled = [];
-    for (let i = 0; i < records.length; i += step) {
-      sampled.push(records[i]);
-    }
-    const lastRecord = records[records.length - 1];
-    if (sampled[sampled.length - 1] !== lastRecord) {
-      sampled.push(lastRecord);
-    }
-
-    const labels = [];
-    const temps = [];
-    const hums = [];
-    let lastLabeledHour = -1;
-
-    for (let i = 0; i < sampled.length; i += 1) {
-      const row = sampled[i];
-      const ts = row[0];
-      const d = (ts instanceof Date) ? ts : new Date(ts);
-      const h = d.getHours();
-      const m = d.getMinutes();
-      let label = '';
-      // Show label on first point, last point, or every 3 hours
-      if (i === 0 || i === sampled.length - 1 || (h % 3 === 0 && h !== lastLabeledHour)) {
-        label = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-        lastLabeledHour = h;
-      }
-      labels.push(label);
-      temps.push(Number(Number(row[1]).toFixed(1)));
-      hums.push(Number(Number(row[3]).toFixed(1)));
-    }
-
-    const chartConfig = {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: '温度 (℃)',
-            data: temps,
-            borderColor: '#ef4444',
-            fill: false,
-            yAxisID: 'yTemp',
-            pointRadius: 0,
-            borderWidth: 2
-          },
-          {
-            label: '湿度 (%)',
-            data: hums,
-            borderColor: '#3b82f6',
-            fill: false,
-            yAxisID: 'yHum',
-            pointRadius: 0,
-            borderWidth: 2
-          }
-        ]
-      },
-      options: {
-        title: {
-          display: true,
-          text: '直近24時間の温湿度推移'
-        },
-        scales: {
-          yAxes: [
-            {
-              id: 'yTemp',
-              position: 'left',
-              scaleLabel: {
-                display: true,
-                labelString: '℃'
-              }
-            },
-            {
-              id: 'yHum',
-              position: 'right',
-              scaleLabel: {
-                display: true,
-                labelString: '%'
-              },
-              gridLines: {
-                drawOnChartArea: false
-              }
-            }
-          ]
-        }
-      }
-    };
-
-    const chartJson = JSON.stringify(chartConfig);
-    return `https://quickchart.io/chart?w=${width}&h=${height}&devicePixelRatio=${dpr.toFixed(1)}&c=${encodeURIComponent(chartJson)}`;
-  }
-
-  let url = generateWithTargetCount(targetCount);
+  let url = generateQuickChartUrlString_(records, targetCount, width, height, dpr);
 
   // Safeguard: if URL still exceeds 2000 chars, progressively reduce sampling
   if (url.length > 2000 && targetCount > 15) {
-    url = generateWithTargetCount(20);
+    url = generateQuickChartUrlString_(records, 20, width, height, dpr);
   }
   if (url.length > 2000 && targetCount > 10) {
-    url = generateWithTargetCount(12);
+    url = generateQuickChartUrlString_(records, 12, width, height, dpr);
   }
 
   return url;
@@ -564,14 +576,10 @@ if (typeof module !== 'undefined') {
     extractRawValues_,
     filterValidChartRecords_,
     isValidChartDate_,
+    sampleRecordsForChart_,
+    buildLineChartConfig_,
     isTemperatureAnomaly_,
     isHumidityAnomaly_,
-    isSensorAnomaly_,
-    isCooldownActive_,
-    isDailyLimitReached_,
-    isSensorAnomaly_,
-    isCooldownActive_,
-    isDailyLimitReached_,
     isSensorAnomaly_,
     isCooldownActive_,
     isDailyLimitReached_,
@@ -579,6 +587,8 @@ if (typeof module !== 'undefined') {
     calculateAbsoluteHumidity_,
     classifyDiscomfortIndex_,
     buildQuickChartConfig_,
+    normalizeQuickChartOptions_,
+    generateQuickChartUrlString_,
     buildQuickChartUrlFromRecords_,
     buildQuickChartUrl,
     calculateNextMorning8Am_,

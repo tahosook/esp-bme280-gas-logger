@@ -94,7 +94,55 @@ function buildMonitorNotification_(conditions) {
 // 2. 状態遷移・オーケストレーション（I/O + ロジック）
 // ==========================================
 
-/* eslint-disable complexity */
+function buildAlertDecisionOptions_(mergedConfig) {
+  return {
+    cooldownMs: getConfigNumber_(mergedConfig, ['ALERT_COOLDOWN_MIN'], 60) * 60 * 1000,
+    maxDailyCount: getConfigNumber_(mergedConfig, ['ALERT_MAX_DAILY_COUNT'], 5),
+    minTemp: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MIN_TEMP'], -10.0),
+    maxTemp: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MAX_TEMP'], 50.0),
+    minHum: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MIN_HUM'], 0.0),
+    maxHum: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MAX_HUM'], 100.0)
+  };
+}
+
+function resolveAlertDecision_(conditions, isOverThreshold, currentStates, properties, mergedConfig) {
+  if (typeof evaluateAlertDecision_ !== 'function') {
+    return { shouldAlert: isOverThreshold && !(currentStates.temp.alert || currentStates.hum.alert || currentStates.discomfortIndex.alert) };
+  }
+
+  const snoozeUntil = loadAlertSnoozeUntil_(properties);
+  const lastSentTime = loadAlertLastSentTime_(properties);
+  const dailyAlertInfo = loadDailyAlertInfo_(properties);
+
+  return evaluateAlertDecision_({
+    temp: conditions.temp,
+    hum: conditions.hum,
+    press: conditions.press,
+    isOverThreshold: isOverThreshold,
+    nowMs: Date.now(),
+    snoozeUntil: snoozeUntil,
+    lastSentTime: lastSentTime,
+    dailyAlertInfo: dailyAlertInfo,
+    options: buildAlertDecisionOptions_(mergedConfig)
+  });
+}
+
+function recordAlertNotification_(properties, decision, conditions, dailyAlertInfo) {
+  if (!decision || !decision.shouldAlert) {
+    return null;
+  }
+
+  const notification = buildMonitorNotification_(conditions);
+  const nowMs = Date.now();
+  saveAlertLastSentTime_(properties, nowMs);
+
+  const todayJst = decision.todayJst || (typeof getJstDateString_ === 'function' ? getJstDateString_(nowMs) : new Date().toISOString().slice(0, 10));
+  const newCount = (dailyAlertInfo && dailyAlertInfo.date === todayJst) ? (dailyAlertInfo.count + 1) : 1;
+  saveDailyAlertInfo_(properties, { date: todayJst, count: newCount });
+
+  return notification;
+}
+
 function updateMonitorState_(measurement) {
   const conditions = evaluateMonitorConditions_(measurement);
   const properties = PropertiesService.getScriptProperties();
@@ -118,41 +166,9 @@ function updateMonitorState_(measurement) {
   };
 
   const isOverThreshold = states.temp.alert || states.hum.alert || states.discomfortIndex.alert;
-
-  const snoozeUntil = loadAlertSnoozeUntil_(properties);
-  const lastSentTime = loadAlertLastSentTime_(properties);
   const dailyAlertInfo = loadDailyAlertInfo_(properties);
-
-  const decision = typeof evaluateAlertDecision_ === 'function'
-    ? evaluateAlertDecision_({
-        temp: conditions.temp,
-        hum: conditions.hum,
-        press: conditions.press,
-        isOverThreshold: isOverThreshold,
-        nowMs: Date.now(),
-        snoozeUntil: snoozeUntil,
-        lastSentTime: lastSentTime,
-        dailyAlertInfo: dailyAlertInfo,
-        options: {
-          cooldownMs: getConfigNumber_(mergedConfig, ['ALERT_COOLDOWN_MIN'], 60) * 60 * 1000,
-          maxDailyCount: getConfigNumber_(mergedConfig, ['ALERT_MAX_DAILY_COUNT'], 5),
-          minTemp: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MIN_TEMP'], -10.0),
-          maxTemp: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MAX_TEMP'], 50.0),
-          minHum: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MIN_HUM'], 0.0),
-          maxHum: getConfigNumber_(mergedConfig, ['SENSOR_GUARD_MAX_HUM'], 100.0)
-        }
-      })
-    : { shouldAlert: isOverThreshold && !(currentStates.temp.alert || currentStates.hum.alert || currentStates.discomfortIndex.alert) };
-
-  let notification = null;
-  if (decision.shouldAlert) {
-    notification = buildMonitorNotification_(conditions);
-    const nowMs = Date.now();
-    saveAlertLastSentTime_(properties, nowMs);
-    const todayJst = decision.todayJst || (typeof getJstDateString_ === 'function' ? getJstDateString_(nowMs) : new Date().toISOString().slice(0, 10));
-    const newCount = (dailyAlertInfo && dailyAlertInfo.date === todayJst) ? (dailyAlertInfo.count + 1) : 1;
-    saveDailyAlertInfo_(properties, { date: todayJst, count: newCount });
-  }
+  const decision = resolveAlertDecision_(conditions, isOverThreshold, currentStates, properties, mergedConfig);
+  const notification = recordAlertNotification_(properties, decision, conditions, dailyAlertInfo);
 
   saveMonitorStates_(properties, states);
 
@@ -421,6 +437,9 @@ if (typeof module !== 'undefined') {
     evaluateConditionState_,
     detectAnomaly_,
     buildMonitorNotification_,
+    buildAlertDecisionOptions_,
+    resolveAlertDecision_,
+    recordAlertNotification_,
     updateMonitorState_,
     loadDailyAlertInfo_,
     saveDailyAlertInfo_,
