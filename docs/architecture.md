@@ -3,7 +3,7 @@
 ## 目的
 
 ESP8266で取得したBME280の測定値を、Google Apps Script（GAS）のWeb APIへHTTPS POSTし、
-GoogleスプレッドシートのDATAシートへ追記する。あわせて、監視・通知（LINE）と日次集計（Daily）を
+GoogleスプレッドシートのRawDataシートへ追記する（旧名称DATAまたは2026へのフォールバックあり）。あわせて、監視・通知（LINE）と日次集計（Daily）を
 同じGASプロジェクト内で実現する。
 
 ## データフロー
@@ -15,7 +15,7 @@ ESP8266 / ESPr Developer
   ↓ Wi-Fi / HTTPS POST（5分間隔、最大3回再送）
 GAS Webアプリ（Router → Ingest）
   ↓ appendRow（重複排除あり、排他制御）
-DATAシート（生ログ、追記専用）
+RawDataシート（生ログ、追記専用）
 
 LINEプラットフォーム
   ↓ Webhook POST（events 配列）
@@ -48,10 +48,11 @@ LINE Push通知（1回・復帰でリセット）
 - **ESP8266ファームウェア**: Wi-Fi接続、測定、JSON生成、HTTPS POST、ログ出力、deep sleepを担当
 - **GAS Web API（1プロジェクト内でモジュール分割）**:
   - `Router.gs`: `doGet`/`doPost` 入口。ペイロードの形でセンサー取り込みかLINEイベントかを振り分け
-  - `Ingest.gs`: JSON検証・トークン照合・数値範囲チェック・重複排除・DATAへの追記・`flag`列固定5列化・Watchdog復帰リセット
+  - `Ingest.gs`: JSON検証・トークン照合・数値範囲チェック・重複排除・RawDataへの追記・`flag`列固定5列化・Watchdog復帰リセット
   - `Monitor.gs`: 直近データ評価、状態遷移（正常⇄超過）判定、通知要否の決定、センサー未受信ウォッチドッグ、異常値判定の比較元（直近有効データ）を Script Properties で保持
   - `DailyAggregation.gs`: 日次集計（前回処理済み行以降を読み、Dailyへ1日1行）。処理済み行番号は Script Properties（`DAILY_LAST_ROW`）で管理し、追記確定時のみ更新する
   - `MonthlyAggregation.gs`: 月次集計（Dailyを読み、Monthlyへ1月1行）
+  - `DataArchive.gs`: 直近2ヶ月以前の生データを別シート（`Raw_YYYYMM`）または外部スプレッドシートへ退避・パージするデータライフサイクル管理（`MonthlyAggregation` から呼び出し）
   - `LineBot.gs`: Webhook署名検証、コマンド解析（状況/スキップ/クリア/グラフ/推移）、Reply/Push送信、QuickChart 24hグラフ画像返信（Config/状態変更は排他制御）
   - `Metrics.gs`: 不快指数 (DI)・容積絶対湿度 (AH) 計算、翌朝8時JST計算、QuickChart URL 生成（URL 圧縮・サンプリング）などの純粋関数群
   - `Config.gs`: Script Properties / Configシートへのアクセス集約、しきい値デフォルト定義。**Configシートは `getValues()` で一括取得し、Script Properties は `getProperties()` で一括取得する**。個別の `getRange().getValue()` は極力避ける。
@@ -90,7 +91,7 @@ LINE Push通知（1回・復帰でリセット）
   4. 1時間クールダウン判定: 直近送信から `ALERT_COOLDOWN_MIN`（既定60分）以内の再通知を抑制
   5. 1日上限ガード: 1日のPush送信件数を `ALERT_MAX_DAILY_COUNT`（既定5通）までに制限
 - 異常値（急変）判定（決定済み）: 気温 **±5.0℃** / 湿度 **±30%** / 気圧 **±20hPa** の変化を `anomaly` 扱いとして記録し、集計から除外する（受信契約の範囲チェックとは別レイヤー）。比較元は **直近の異常でない（有効な）受信データ** とし、その値は Script Properties に保持する。キャッシュ未存在時は異常判定をスキップする。`anomaly` が **2〜3回連続で互いに近い値** の場合は、正当な環境変化とみなし比較基準を更新してよい。
-- センサー未受信ウォッチドッグ: DATAへの追記がしきい値（`WATCHDOG_TIMEOUT_MIN=4320`＝3日）を超えて途絶えたら、時間主導トリガーで判定し1回だけLINE通知する。**復帰リセットは Ingest が DATA 追記成功時に担当**し、この際 **Monitor の超過状態も通常状態へリセット**して復帰後最初の評価を確実に行う（Phase 17・決定済み）。
+- センサー未受信ウォッチドッグ: RawDataへの追記がしきい値（`WATCHDOG_TIMEOUT_MIN=4320`＝3日）を超えて途絶えたら、時間主導トリガーで判定し1回だけLINE通知する。**復帰リセットは Ingest が RawData 追記成功時に担当**し、この際 **Monitor の超過状態も通常状態へリセット**して復帰後最初の評価を確実に行う（Phase 17・決定済み）。
 
 ## 実行サイクル
 

@@ -134,3 +134,32 @@
 - 対象: `gas/DebugTest.gs`、`scripts/test-metrics.js`、`scripts/test-line-bot.js`、`docs/deployment.md`
 - 内容: GAS エディタでのワンクリック検証関数（`debugTest_buildQuickChartUrl`, `debugTest_handleLineWebhook_Trends`）、全9本の単体テスト全件通過確認
 - 状態: 完了（PR #28）
+
+---
+
+## テスト基盤近代化・生データアーカイブ・ESLint複雑度管理タスク（Phase 30〜34）
+
+### 実装T7（Phase 30）：GASバックエンドアーキテクチャのモジュール依存関係整理（✅ 完了）
+- 対象: `gas/*`
+- 内容: GASバックエンド全体のモジュール責務と依存関係の整理
+- 状態: 完了（PR #31）
+
+### 実装・検証T8（Phase 31）：Jest テストスイート移行および CI 自動化（✅ 完了）
+- 対象: `package.json`、`jest.config.js`、`tests/*`、`.github/workflows/ci.yml`
+- 内容: レガシーな検証スクリプト群から Jest 単体テストスイートへの移行、GitHub Actions での `npm run test:coverage` によるカバレッジ閾値の自動検証
+- 状態: 完了（PR #32）
+
+### 実装UI3（Phase 32）：SNOOZE カードの最小化と datetimepicker UI（✅ 完了）
+- 対象: `gas/LineBot.gs`、`docs/line-bot-ui.md`
+- 内容: SNOOZE カードの UI をコンパクト化し、LINE の datetimepicker アクションによる柔軟なスヌーズ日時設定をサポート
+- 状態: 完了（PR #33）
+
+### 実装・検証T9（Phase 33）：生データの自動アーカイブ・パージ（✅ 完了）
+- 対象: `gas/DataArchive.gs`、`gas/MonthlyAggregation.gs`、`gas/Config.gs`、`tests/archive.test.js`
+- 内容: 直近2ヶ月以前の生データを別シート（`Raw_YYYYMM`）または外部スプレッドシートへ退避・パージする月次アーカイブ処理の実装、`RawData` へのフォールバック対応
+- 状態: 完了（PR #34）
+
+### 実装・リファクタリングT10（Phase 34）：ESLint 循環的複雑度管理とマイクロヘルパー集約（✅ 完了）
+- 対象: `eslint.config.js`、`gas/*.gs`
+- 内容: ESLint の complexity ルール導入（PR #36）、閾値を 12 に調整した上で、不要に細分化されたマイクロヘルパーを凝集度の高いドメイン処理へ集約・コールチェーンを平坦化（PR #37）
+- 状態: 完了（PR #36, #37）
