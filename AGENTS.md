@@ -12,7 +12,7 @@ Personal ESP8266 (ESPr Developer) + BME280 environmental logger that records tem
 Always run and verify local checks before submitting changes:
 
 ```bash
-npm test              # Run Jest unit test suite (115+ tests)
+npm test              # Run Jest unit test suite
 npm run test:coverage # Enforce coverage thresholds (branches: 80%, others: 85%)
 npm run lint          # Check ESLint rules (complexity threshold: 12)
 git diff --check      # Check for whitespace and line break issues
@@ -34,9 +34,10 @@ Do NOT alter production behavior or domain logic just to pass lint; diagnose str
      }
      ```
 
-## Strict Timezone Management
+## Timezone & Datetime Semantics
 
-All date and time calculations, comparisons, log formatting, and snooze deadlines must strictly use **`Asia/Tokyo` (UTC+9)**.
+- User-facing timestamps, spreadsheet display formats (`yyyy-MM-dd HH:mm:ss`), daily/monthly aggregation boundaries, and domain alert/snooze evaluation must strictly maintain **`Asia/Tokyo` (JST / UTC+9)** semantics.
+- When handling external timestamps or Unix epochs, preserve their precise time meaning and perform explicit timezone conversions when mapping to JST.
 
 ## Complexity & Refactoring Principles
 
@@ -64,7 +65,7 @@ All date and time calculations, comparisons, log formatting, and snooze deadline
    - Public repository: NEVER commit Wi-Fi passwords, API tokens, GAS deployment URLs, or LINE channel secrets.
    - Local secrets reside in ignored files (`secrets.h`, `gas/.clasp.json`); commit only placeholders in `secrets.example.h`.
 2. **External I/O & Spreadsheet Operations**:
-   - Critical sections: use `LockService` for concurrent `doPost` calls (sensor POST vs LINE Webhook).
+   - Preserve existing concurrency protection and `LockService` boundaries around spreadsheet read-modify-write operations; do not bypass or remove existing locks.
    - Safe row operations: validate indexes and counts before calling Spreadsheet APIs; avoid dangerous calls like `sheet.deleteRows(2, 0)`.
    - Default raw data sheet is `RawData` (with fallback to `2026` or `DATA`).
 3. **Human-Gated Operations**:
