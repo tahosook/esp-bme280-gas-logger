@@ -55,8 +55,6 @@ npm run test:coverage # カバレッジ測定
 npm run lint          # ESLint検査
 ```
 
-Phaseごとの作業内容は[実装ロードマップ](docs/implementation-roadmap.md)に記載しています。
-
 ## ドキュメント
 
 設計・運用・テストの詳細は[docs/README.md](docs/README.md)の目次を起点として参照してください。

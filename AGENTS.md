@@ -207,8 +207,6 @@ git diff --check      # Check for whitespace and line break issues
 - デプロイ・トリガー・clasp 設定: [`docs/deployment.md`](docs/deployment.md)
 - LINE Bot UI/UX コンセプト概要: [`docs/line-bot-ui.md`](docs/line-bot-ui.md)
 - テスト計画 & CI ゲート: [`docs/test-plan.md`](docs/test-plan.md)
-- 実装タスク一覧: [`docs/implementation-tasks.md`](docs/implementation-tasks.md)
-- 実装ロードマップ: [`docs/implementation-roadmap.md`](docs/implementation-roadmap.md)
 - 【SSOT】アラート判定・状態遷移ステートマシン仕様: [`docs/specs/alert-state-machine.md`](docs/specs/alert-state-machine.md)
 - 【SSOT】LINE Webhook 応答 & 対話型 UI 契約仕様: [`docs/specs/line-webhook-contracts.md`](docs/specs/line-webhook-contracts.md)
 - 【SSOT】データライフサイクル & 集計・アーカイブ仕様: [`docs/specs/data-lifecycle-and-aggregation.md`](docs/specs/data-lifecycle-and-aggregation.md)
