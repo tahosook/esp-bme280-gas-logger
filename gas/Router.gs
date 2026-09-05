@@ -29,8 +29,6 @@ function doPost(e) {
   return handleSensorPost_(e);
 }
 
-// LINE Webhookの判定（ヘッダー大文字小文字/パラメータ/ペイロード構造の複数パターン検証）であり、分割すると可読性が損なわれるため
-/* eslint-disable complexity */
 function isLineWebhookRequest_(e, payload) {
   const headers = (e && e.headers) || {};
   const params = (e && e.parameter) || {};
@@ -43,7 +41,6 @@ function isLineWebhookRequest_(e, payload) {
   const isLinePayload = Boolean(payload && (Array.isArray(payload.events) || typeof payload.destination === 'string'));
   return hasLineHeader || isLinePayload;
 }
-/* eslint-enable complexity */
 
 function doGet() {
   try {

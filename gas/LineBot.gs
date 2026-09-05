@@ -328,8 +328,7 @@ function formatStatusDiscomfortIndex_(tempVal, humVal, lastValidDi) {
   return { diText: `${diVal.toFixed(1)}（${diLabel}）`, diColor };
 }
 
-// 直近計測値（温度・湿度・気圧・快適度・日時）の表示用文字列生成を一括で行う処理であり、マイクロヘルパーへの再細分化を防ぐため
-/* eslint-disable complexity */
+/* eslint-disable complexity -- Format measurements (temp, hum, press, DI) cohesively to avoid micro-helper fragmentation. */
 function formatStatusMeasurements_(lastValid, states, pastPress) {
   const isTempAlert = Boolean(states && states.temp && states.temp.alert);
   const isHumAlert = Boolean(states && states.hum && states.hum.alert);
@@ -376,8 +375,7 @@ function formatStatusMeasurements_(lastValid, states, pastPress) {
 }
 /* eslint-enable complexity */
 
-// 監視状態Flex Messageの構築（ヘッダー・ボディ・フッターおよびスヌーズ状態表示）を一括で行うUIビルダーであり、細分化によるコールチェーン肥大化を防ぐため
-/* eslint-disable complexity */
+/* eslint-disable complexity -- Keep Flex Message construction cohesive to avoid unnecessary helper/call-chain fragmentation. */
 function buildStatusFlexMessage_() {
   const properties = PropertiesService.getScriptProperties();
   const skipUntil = typeof getSnoozeUntilProperty_ === 'function'
@@ -672,8 +670,6 @@ function replyMessageObjects_(replyToken, messagesArray) {
   return sendLineApiRequest_('reply', payload, channelAccessToken, 'reply');
 }
 
-// アラート通知の送信パイプライン（スヌーズ・宛先ID・アクセストークン検証および送信）を一連の直列フローとして表現するため
-/* eslint-disable complexity */
 function pushMonitorNotification_(text) {
   if (!text || typeof text !== 'string') {
     return false;
@@ -706,7 +702,6 @@ function pushMonitorNotification_(text) {
   const messages = typeof buildAlertFlexMessage_ === 'function' ? buildAlertFlexMessage_(text) : [{ type: 'text', text: text }];
   return pushMessageObjects_(userId, messages, channelAccessToken);
 }
-/* eslint-enable complexity */
 
 function pushMessage_(userId, text, channelAccessToken) {
   return pushMessageObjects_(userId, [{ type: 'text', text: text }], channelAccessToken);

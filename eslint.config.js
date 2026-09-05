@@ -1,1 +1,1 @@
-module.exports = [{rules: {complexity: ["warn", 10]}}];
+module.exports = [{rules: {complexity: ["warn", 12]}}];

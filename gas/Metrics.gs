@@ -505,8 +505,7 @@ function getJstDateString_(ms) {
  * @param {object} [params.options] - Custom options
  * @returns {object} { shouldAlert: boolean, reason: string, todayJst: string }
  */
-// アラート通知の5段階ガード条件（異常値ガード・スヌーズ・閾値・クールダウン・日次上限）を上から順に直列評価する単一責務のドメインロジックであり、分割すると処理フローの可読性が低下するため
-/* eslint-disable complexity */
+/* eslint-disable complexity -- Keep 5-step alert evaluation guards cohesive to preserve business logic readability without helper fragmentation. */
 function evaluateAlertDecision_(params) {
   if (!params) {
     return { shouldAlert: false, reason: 'invalid_params', todayJst: '' };
@@ -555,8 +554,6 @@ function evaluateAlertDecision_(params) {
 }
 /* eslint-enable complexity */
 
-// センサー値（温度・湿度）の異常値判定（数値妥当性および上下限ガード）を一括で行う純粋ロジックであり、分割すると可読性が低下するため
-/* eslint-disable complexity */
 function isSensorAnomaly_(temp, hum, opts) {
   if (typeof temp !== 'number' || typeof hum !== 'number' || isNaN(temp) || isNaN(hum)) {
     return true;
@@ -567,7 +564,6 @@ function isSensorAnomaly_(temp, hum, opts) {
   const maxHum = typeof opts.maxHum === 'number' ? opts.maxHum : 100.0;
   return temp < minTemp || temp > maxTemp || hum < minHum || hum > maxHum;
 }
-/* eslint-enable complexity */
 
 if (typeof module !== 'undefined') {
   module.exports = {

@@ -68,8 +68,7 @@ function appendMonthlyDataRows_(monthlySheet, monthlyBuckets, existingMonthlyDat
   return { sortedYearMonths, appendedCount };
 }
 
-// 月次集計の一連の業務フロー（シート取得・差分計算・追記・アーカイブ実行・エラーログ）を直列に表現し、可読性とフローの見通しを維持するため
-/* eslint-disable complexity */
+/* eslint-disable complexity -- Keep monthly aggregation workflow sequential and cohesive without intermediate wrapper layers. */
 function runMonthlyAggregation_() {
   const properties = PropertiesService.getScriptProperties();
   const { dailySheet, monthlySheet } = getMonthlyAggregationSheets_(properties);

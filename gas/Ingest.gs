@@ -92,8 +92,6 @@ function isDuplicateMeasurement_(sheet, payload, dupWindowSec, now) {
       lastHum === payload.hum;
 }
 
-// モニター状態の更新・異常フラグ記録・LINE通知を安全に一括実行する処理であり、マイクロヘルパーへの再分割を防ぐため
-/* eslint-disable complexity */
 function applyMonitorStateSafely_(sheet, lastAppendedRow, payload) {
   if (typeof updateMonitorState_ !== 'function') {
     return;
@@ -120,7 +118,6 @@ function applyMonitorStateSafely_(sheet, lastAppendedRow, payload) {
     }
   }
 }
-/* eslint-enable complexity */
 
 function getIngestSheet_(properties) {
   const spreadsheetId = properties.getProperty(CONFIG_KEYS.spreadsheetId);
