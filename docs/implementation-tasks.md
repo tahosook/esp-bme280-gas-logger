@@ -8,7 +8,7 @@
 ## 決定タスク（Phase 7 / 10 / 14 / 15 は決定済み）
 
 ### 決定T1（Phase 7）：DATAシート列・シート名・重複判定窓の確定（✅ 決定済み）
-- 決定値: シート名 `DATA`／列追加は見送り（`flag` は監視実装時・`device_id` は複数台化時）／重複時間窓 **180秒**／日時は **Date値＋表示形式**
+- 決定値: シート名 `DATA`（※現行は `RawData` を正本とし、`DATA`/`2026` はフォールバック）／列追加は見送り（`flag` は監視実装時・`device_id` は複数台化時）／重複時間窓 **180秒**／日時は **Date値＋表示形式**
 - 対象: `docs/architecture.md`、`docs/api-contract.md`
 - 状態: 決定済み（2026-08-11）
 
@@ -122,7 +122,7 @@
 
 ### 実装UI1（Phase 27）：LINE Bot UI 近代化と Flex Message 対応（✅ 完了）
 - 対象: `gas/LineBot.gs`、`gas/Metrics.gs`、`gas/Config.gs`、`docs/line-bot-ui.md`
-- 内容: NOW/SNOOZE/CLEAR/TRENDS コマンド体系、DIバッジ・容積絶対湿度・スヌーズ停止期限の Flex Message カード化、5段階アラート優先度制御（クールダウン・1日上限・センサーガード）
+- 内容: NOW/SNOOZE/CLEAR/TRENDS コマンド体系、DIバッジ・スヌーズ停止期限の Flex Message カード化、5段階アラート優先度制御（クールダウン・1日上限・センサーガード）
 - 状態: 完了（PR #26, #27）
 
 ### 実装UI2（Phase 28）：QuickChart による直近24h温湿度推移グラフ画像生成（✅ 完了）
@@ -166,19 +166,29 @@
 
 ---
 
-## 仕様駆動開発（SDD）正本配備・AIガードレール・コードクリーンアップタスク（Phase 35〜37）
+## 正本仕様書配備・エージェントガバナンス・ドキュメント整合性統一（Phase 35〜39）
 
-### 実装・文書T11（Phase 35）：AI駆動開発向けエージェント開発規約とPRテンプレート整備（✅ 完了）
-- 対象: `AGENTS.md`、`.github/pull_request_template.md`、`.github/workflows/ci.yml`
-- 内容: エージェント開発規約（AGENTS.md）の配備、PR テンプレートの品質ガードレール統合、CI への ESLint チェック追加
-- 状態: 完了（PR #39, #40, #41）
+### 仕様策定S1（Phase 35）：アラート判定・状態遷移ステートマシン正本仕様策定（✅ 完了）
+- 対象: `docs/specs/alert-state-machine.md`
+- 内容: 6段階多層防御、状態遷移（Mermaid）、優先判定パイプライン（短絡評価）、状態永続化スキーマ、ヒステリシス・平滑化ロジックの正本仕様書策定
+- 状態: 完了（PR #41）
 
-### 文書T12（Phase 36）：仕様駆動開発（SDD）正本仕様書群の配備（✅ 完了）
-- 対象: `docs/specs/alert-state-machine.md`、`docs/specs/line-webhook-contracts.md`、`docs/specs/data-lifecycle-and-aggregation.md`
-- 内容: アラート判定・状態遷移ステートマシン、LINE Webhook 応答 & Flex Message UI 契約、データライフサイクル & 集計・アーカイブの SSOT 仕様書配備
-- 状態: 完了（PR #42, #43, #44）
+### ガバナンスG1（Phase 36）：AI エージェント開発規約・ガバナンス策定（✅ 完了）
+- 対象: `AGENTS.md`
+- 内容: GAS/Node二重環境制約、エクスポートガード、タイムゾーン厳密性、複雑度抑制と過剰分割防止、4ステップ標準ワークフロー、DoD、Documentation Map の策定
+- 状態: 完了（PR #42）
 
-### 実装・検証T13（Phase 37）：SDD コードクリーンアップおよび安定版リリース（✅ 完了）
-- 対象: `gas/LineBot.gs`、`docs/implementation-roadmap.md`、`docs/implementation-tasks.md`
-- 内容: `LineBot.gs` に重複していた `calculateNextMorning8Am_` の削除と `Metrics.gs` への一元化、全テスト通過・カバレッジ向上（Funcs 100%、Lines 97.8%）、安定版 `v1.3.0-stable` のタグ付け・リリース
+### 仕様策定S2（Phase 37）：LINE Webhook 応答および UI 契約正本仕様策定（✅ 完了）
+- 対象: `docs/specs/line-webhook-contracts.md`
+- 内容: HMAC-SHA256署名検証、コマンド正規化対応表、Postback（datetimepicker）処理、Flex Message JSON 構造、QuickChart URL 圧縮アルゴリズムの正本仕様書策定
+- 状態: 完了（PR #43）
+
+### 仕様策定S3（Phase 38）：データライフサイクルおよび集計・アーカイブ正本仕様策定（✅ 完了）
+- 対象: `docs/specs/data-lifecycle-and-aggregation.md`
+- 内容: 4層ストレージ階層、日次集計パイプライン（Daily）、月次集計パイプライン（Monthly）、データアーカイブ・パージ（DataArchive）、異常値除外・欠損耐性の正本仕様書策定
+- 状態: 完了（PR #44）
+
+### ドキュメント統一D1（Phase 39）：docs/ 配下の棚卸しおよび SSOT 整合性統一（✅ 完了）
+- 対象: `docs/line-bot-ui.md`、`docs/architecture.md`、`docs/deployment.md`、`docs/test-plan.md`、`docs/implementation-tasks.md`、`docs/implementation-roadmap.md`、`docs/README.md`、`docs/api-contract.md`、`AGENTS.md`
+- 内容: 容積絶対湿度の完全削除、旧シート名表記の RawData（フォールバック `DATA`/`2026`）への統一、トリガー時刻（00:00〜01:00 JST）の統一、line-bot-ui.md の軽量ポインタ化、docs/specs/ への SSOT 委譲
 - 状態: 完了
