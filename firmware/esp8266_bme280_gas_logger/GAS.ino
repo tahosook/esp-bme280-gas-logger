@@ -28,6 +28,8 @@ void initGAS()
 
 bool initWifi()
 {
+    // 不要なSoftAP（親機）電波送出を防止し、ステーション（子機）専用モードに明示設定
+    WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     Serial.print("[wifi] connecting");
     unsigned long start = millis();

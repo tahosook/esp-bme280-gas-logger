@@ -1,6 +1,6 @@
 #include <Wire.h>
 
-#define BME280_ADDRESS 0x76
+#define BME280_ADDRESS ((uint8_t)0x76)
 unsigned long int hum_raw, temp_raw, pres_raw;
 signed long int t_fine;
 
@@ -77,6 +77,9 @@ bool initBME280_I2C()
     return true;
 }
 
+// 注意: Bosch公式補正計算の仕様上、calibration_T で計算される t_fine を
+// calibration_P および calibration_H が前提値として使用します。
+// そのため、getTemperature() は必ず getPressure() / getHumidity() より先に呼び出す必要があります。
 float getTemperature()
 {
     signed long int temp_cal = calibration_T(temp_raw);
