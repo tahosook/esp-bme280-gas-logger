@@ -40,8 +40,16 @@ From the repository root, compile with:
 
 - **Wi-Fi timeout**: 30 seconds. If the connection fails, the GAS send is
   skipped and the device enters deep sleep.
-- **HTTPS timeout**: 30 seconds per POST attempt.
-- **Retries**: Up to 3 attempts with a 5-second delay between failures.
+- **HTTPS timeout**: 15 seconds per POST attempt (reduced to prevent heating during server hangs).
+- **Smart retries**: Up to 3 attempts with a 5-second delay for retryable errors
+  (timeouts, connection drops). Fatal errors (4xx, rejected token/payload, large HTML error pages)
+  abort retries immediately to avoid heating and battery drain.
+- **Memory protection**: Validates `Content-Type: application/json` and enforces a 1024-byte
+  response size limit to prevent out-of-memory (OOM) crash loops caused by large Google error HTML pages.
+- **Power optimization**: Reads the BME280 sensor before turning on Wi-Fi; if the sensor
+  is missing or read fails, enters deep sleep immediately without activating the Wi-Fi radio.
+- **Reliable deep sleep**: Adds a `delay(100)` guard after every `ESP.deepSleep()` to prevent
+  duplicate execution of `loop()` during the hardware shutdown transition.
 - **No infinite loops**: The device always reaches deep sleep, even on
   persistent failures. Data loss is acceptable per project policy.
 - **Log format**: All serial output uses `[tag] message` for easy parsing.

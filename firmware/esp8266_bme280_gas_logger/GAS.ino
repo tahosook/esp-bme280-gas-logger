@@ -48,7 +48,63 @@ bool initWifi()
     return true;
 }
 
-bool sendToGAS(float temp, float press, float hum)
+// レスポンス受信バッファを最大1024バイトに制限するPrint実装
+// Content-Lengthが不明(-1)またはchunked転送の場合でも、
+// ヒープを圧迫することなく安全に上限バイト数で打ち切る。
+class BoundedResponseStream : public Print
+{
+public:
+    static const size_t MAX_LIMIT = 1024;
+    String content;
+    bool overflow;
+
+    BoundedResponseStream() : overflow(false)
+    {
+        content.reserve(128);
+    }
+
+    virtual int availableForWrite() override
+    {
+        return content.length() < MAX_LIMIT ? (int)(MAX_LIMIT - content.length()) : 0;
+    }
+
+    virtual bool outputCanTimeout() override
+    {
+        return false;
+    }
+
+    size_t write(uint8_t c) override
+    {
+        if (content.length() < MAX_LIMIT)
+        {
+            content += (char)c;
+            return 1;
+        }
+        overflow = true;
+        return 0;
+    }
+
+    size_t write(const uint8_t *buffer, size_t size) override
+    {
+        size_t written = 0;
+        for (size_t i = 0; i < size; i++)
+        {
+            if (content.length() < MAX_LIMIT)
+            {
+                content += (char)buffer[i];
+                written++;
+            }
+            else
+            {
+                overflow = true;
+                break;
+            }
+        }
+        return written;
+    }
+};
+
+GasSendResult sendToGAS(float temp, float press, float hum)
 {
     JsonDocument doc;
     doc["api_version"] = 1;
@@ -70,29 +126,110 @@ bool sendToGAS(float temp, float press, float hum)
     // Phase 6: リダイレクト上限を明示的に設定（GASは1回の302リダイレクト）
     http.setRedirectLimit(3);
     http.addHeader("Content-Type", "application/json");
-    // Phase 5: HTTPS通信タイムアウトを30秒に設定
     http.setTimeout(HTTP_TIMEOUT_MS);
 
+    // GoogleのエラーHTML等によるヒープ枯渇を防ぐためContent-Typeヘッダーを収集
+    const char *headerKeys[] = {"Content-Type"};
+    http.collectHeaders(headerKeys, 1);
+
     int httpCode = http.POST(payload);
-    String response = http.getString();
 
     Serial.print("[gas] HTTP status: ");
     Serial.println(httpCode);
-    Serial.print("[gas] response: ");
-    Serial.println(response);
 
-    // 成否はHTTPステータスではなく、レスポンスJSONのokで判定する。
-    bool ok = false;
-    if (httpCode == HTTP_CODE_OK)
+    if (httpCode <= 0)
     {
-        JsonDocument respDoc;
-        DeserializationError err = deserializeJson(respDoc, response);
-        if (!err && respDoc["ok"].is<bool>())
+        Serial.print("[gas] connection error: ");
+        Serial.println(http.errorToString(httpCode).c_str());
+        http.end();
+        client.stop();
+        return GAS_SEND_RETRYABLE;
+    }
+
+    if (httpCode != HTTP_CODE_OK)
+    {
+        http.end();
+        client.stop();
+        // 4xxエラー（401, 403, 404等）は再試行しても成功しないためリトライ不要
+        if (httpCode >= 400 && httpCode < 500)
         {
-            ok = respDoc["ok"].as<bool>();
+            Serial.println("[gas] client error; aborting retries");
+            return GAS_SEND_FATAL;
+        }
+        // 5xx やその他の一時的サーバーエラーはリトライ可能
+        return GAS_SEND_RETRYABLE;
+    }
+
+    // HTTP 200 OK の場合:
+    // Content-TypeがJSONでない場合（例: text/html）はエラー画面とみなして本文受信をスキップ
+    // 大文字小文字の違い（Application/JSON等）を許容するため小文字化して検証
+    String contentType = http.header("Content-Type");
+    if (contentType.length() > 0)
+    {
+        String lowerContentType = contentType;
+        lowerContentType.toLowerCase();
+        if (lowerContentType.indexOf("application/json") == -1)
+        {
+            Serial.print("[gas] unexpected Content-Type (not JSON): ");
+            Serial.println(contentType);
+            http.end();
+            client.stop();
+            return GAS_SEND_FATAL;
         }
     }
 
+    // サイズ事前検証: Content-Length が 1024 を超える場合は巨大HTMLとみなして即座に破棄
+    int size = http.getSize();
+    if (size > 1024)
+    {
+        Serial.print("[gas] response too large (size=");
+        Serial.print(size);
+        Serial.println("); aborting");
+        http.end();
+        client.stop();
+        return GAS_SEND_FATAL;
+    }
+
+    // レスポンス本文の読み込み:
+    // Content-Length が unknown (-1) や chunked 転送の場合でも、
+    // BoundedResponseStream を介して最大 1024 バイトに制限して読み込む（getString() によるヒープ枯渇を防止）
+    BoundedResponseStream stream;
+    http.writeToPrint(&stream);
+
+    if (stream.overflow)
+    {
+        Serial.println("[gas] response exceeded 1024 bytes; aborting");
+        http.end();
+        client.stop();
+        return GAS_SEND_FATAL;
+    }
+
+    String response = stream.content;
+    Serial.print("[gas] response: ");
+    Serial.println(response);
+
+    GasSendResult result = GAS_SEND_FATAL;
+    JsonDocument respDoc;
+    DeserializationError err = deserializeJson(respDoc, response);
+    if (!err && respDoc["ok"].is<bool>())
+    {
+        if (respDoc["ok"].as<bool>())
+        {
+            result = GAS_SEND_OK;
+        }
+        else
+        {
+            Serial.println("[gas] rejected by server (ok=false); aborting retries");
+            result = GAS_SEND_FATAL;
+        }
+    }
+    else
+    {
+        Serial.println("[gas] invalid JSON response; aborting retries");
+        result = GAS_SEND_FATAL;
+    }
+
     http.end();
-    return ok;
+    client.stop();
+    return result;
 }

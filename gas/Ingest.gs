@@ -26,7 +26,11 @@ function handleSensorPost_(e) {
     checkAndAppendMeasurement_(payload, properties);
     return successResponse_();
   } catch (error) {
-    console.error('internal_error');
+    if (typeof logError_ === 'function') {
+      logError_('ingest', 'sensor_post', 'internal_error', error);
+    } else {
+      console.error('internal_error');
+    }
     return errorResponse_('internal_error');
   }
 }
@@ -152,7 +156,13 @@ function checkAndAppendMeasurement_(payload, properties) {
 
     sheet.appendRow([now, payload.temp, payload.press, payload.hum, '']);
     const lastAppendedRow = sheet.getLastRow();
-    sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+    try {
+      sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+    } catch (formatError) {
+      if (typeof logError_ === 'function') {
+        logError_('ingest', 'sheet_format', 'typed_column_format_skipped', formatError);
+      }
+    }
 
     if (typeof resetWatchdogState_ === 'function') {
       try {
