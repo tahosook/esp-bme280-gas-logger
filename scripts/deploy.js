@@ -79,7 +79,7 @@ function parseVersionNumber(output) {
 }
 
 /**
- * Web アプリの GET スモークテストを実行（HTTP リダイレクト対応・再帰深度制限付き）
+ * Web アプリの GET スモークテストを実行（HTTP リダイレクト対応・再帰深度制限・相対URL解決付き）
  */
 function runSmokeTest(url, timeoutMs = 15000, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
@@ -89,11 +89,16 @@ function runSmokeTest(url, timeoutMs = 15000, maxRedirects = 5) {
     }
 
     const req = https.get(url, (res) => {
-      // 301, 302 リダイレクトを追跡
+      // 301, 302 リダイレクトを追跡（相対URLも正しく解決）
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        runSmokeTest(res.headers.location, timeoutMs, maxRedirects - 1)
-          .then(resolve)
-          .catch(reject);
+        try {
+          const nextUrl = new URL(res.headers.location, url).toString();
+          runSmokeTest(nextUrl, timeoutMs, maxRedirects - 1)
+            .then(resolve)
+            .catch(reject);
+        } catch (urlErr) {
+          reject(new Error(`Failed to parse redirect URL (${res.headers.location}): ${urlErr.message}`));
+        }
         return;
       }
 
@@ -124,101 +129,126 @@ function runSmokeTest(url, timeoutMs = 15000, maxRedirects = 5) {
 }
 
 /**
- * デプロイパイプラインのメイン処理
+ * デプロイパイプラインの実行処理（DI 可能）
  */
-async function main() {
-  const options = parseArgs();
-  console.log('🚀 GAS 本番デプロイ自動化スクリプトを開始します');
-  console.log(`📌 対象デプロイ ID: ${options.deploymentId}`);
+async function runDeployPipeline(options, deps = {}) {
+  const {
+    execFn = execSync,
+    execFileFn = execFileSync,
+    smokeTestFn = runSmokeTest,
+    logFn = console.log,
+    errFn = console.error
+  } = deps;
+
+  logFn('🚀 GAS 本番デプロイ自動化スクリプトを開始します');
+  logFn(`📌 対象デプロイ ID: ${options.deploymentId}`);
   if (options.dryRun) {
-    console.log('⚠️ [DRY-RUN モード] 実際の push / version / redeploy は実行されません\n');
+    logFn('⚠️ [DRY-RUN モード] 実際の push / version / redeploy は実行されません\n');
   }
 
-  // Step 1: 事前検証 (Tests & Lint)
+  // Step 1: 事前検証 (Tests)
   if (!options.skipTests) {
-    console.log('\n[Step 1/5] 🧪 テストを実行中 (npm test)...');
-    if (!options.dryRun) {
-      execSync('npm test', { cwd: ROOT_DIR, stdio: 'inherit' });
-    }
-    console.log('✅ テストに合格しました');
+    logFn('\n[Step 1/5] 🧪 テストを実行中 (npm test)...');
+    execFn('npm test', { cwd: ROOT_DIR, stdio: 'inherit' });
+    logFn('✅ テストに合格しました');
   } else {
-    console.log('\n[Step 1/5] 🧪 テスト実行をスキップしました (--skip-tests)');
+    logFn('\n[Step 1/5] 🧪 テスト実行をスキップしました (--skip-tests)');
   }
 
+  // Step 2: 事前検証 (Lint)
   if (!options.skipLint) {
-    console.log('\n[Step 2/5] 🔍 コード解析を実行中 (npm run lint)...');
-    if (!options.dryRun) {
-      execSync('npm run lint', { cwd: ROOT_DIR, stdio: 'inherit' });
-    }
-    console.log('✅ Lint チェックに合格しました');
+    logFn('\n[Step 2/5] 🔍 コード解析を実行中 (npm run lint)...');
+    execFn('npm run lint', { cwd: ROOT_DIR, stdio: 'inherit' });
+    logFn('✅ Lint チェックに合格しました');
   } else {
-    console.log('\n[Step 2/5] 🔍 Lint チェックをスキップしました (--skip-lint)');
+    logFn('\n[Step 2/5] 🔍 Lint チェックをスキップしました (--skip-lint)');
   }
 
   // Step 3: clasp push
-  console.log('\n[Step 3/5] 📤 リモートへコードをプッシュ中 (clasp push --force)...');
+  logFn('\n[Step 3/5] 📤 リモートへコードをプッシュ中 (clasp push --force)...');
   if (!options.dryRun) {
-    execFileSync('clasp', ['push', '--force'], { cwd: GAS_DIR, stdio: 'inherit' });
+    execFileFn('clasp', ['push', '--force'], { cwd: GAS_DIR, stdio: 'inherit' });
+    logFn('✅ コードプッシュ完了');
+  } else {
+    logFn('   [DRY-RUN] clasp push --force');
+    logFn('✅ [DRY-RUN] コードプッシュをシミュレート');
   }
-  console.log('✅ コードプッシュ完了');
 
   // Step 4: バージョン作成
-  console.log('\n[Step 4/5] 🏷️ 新しいスクリプトバージョンを作成中 (clasp version)...');
-  const description = buildVersionDescription();
-  console.log(`   バージョン説明: "${description}"`);
+  logFn('\n[Step 4/5] 🏷️ 新しいスクリプトバージョンを作成中 (clasp version)...');
+  const description = buildVersionDescription(execFn);
+  logFn(`   バージョン説明: "${description}"`);
 
-  let newVersionNumber = 999;
+  let newVersionNumber = null;
   if (!options.dryRun) {
-    const versionOutput = execFileSync('clasp', ['version', description], {
+    const versionOutput = execFileFn('clasp', ['version', description], {
       cwd: GAS_DIR,
       encoding: 'utf8'
     });
-    console.log(`   ${versionOutput.trim()}`);
+    logFn(`   ${String(versionOutput).trim()}`);
     newVersionNumber = parseVersionNumber(versionOutput);
     if (!newVersionNumber) {
       throw new Error(`スクリプトバージョン番号の取得に失敗しました: ${versionOutput}`);
     }
   } else {
-    console.log('   [DRY-RUN] バージョン作成をシミュレート');
+    logFn(`   [DRY-RUN] clasp version "${description}"`);
   }
 
   // Step 5: 既存デプロイの更新 (Redeploy)
-  console.log(`\n[Step 5/5] 🔄 本番 Web アプリデプロイを更新中 (@${newVersionNumber})...`);
-  const deployDesc = `production update @${newVersionNumber} - ${description}`;
+  const versionDisplay = options.dryRun ? '<生成予定>' : `@${newVersionNumber}`;
+  logFn(`\n[Step 5/5] 🔄 本番 Web アプリデプロイを更新中 (${versionDisplay})...`);
+  const deployDesc = `production update ${versionDisplay} - ${description}`;
+
   if (!options.dryRun) {
     const redeployArgs = ['redeploy', options.deploymentId, '-V', String(newVersionNumber), '-d', deployDesc];
-    const redeployOutput = execFileSync('clasp', redeployArgs, {
+    const redeployOutput = execFileFn('clasp', redeployArgs, {
       cwd: GAS_DIR,
       encoding: 'utf8'
     });
-    console.log(`   ${redeployOutput.trim()}`);
+    logFn(`   ${String(redeployOutput).trim()}`);
+    logFn(`✅ 本番 Web アプリデプロイ (${options.deploymentId}) を Version ${newVersionNumber} に更新しました`);
   } else {
-    console.log(`   [DRY-RUN] clasp redeploy ${options.deploymentId} -V ${newVersionNumber} -d "${deployDesc}"`);
+    logFn(`   [DRY-RUN] clasp redeploy "${options.deploymentId}" -V <生成予定> -d "${deployDesc}"`);
+    logFn(`✅ [DRY-RUN] 本番 Web アプリデプロイの更新をシミュレートしました`);
   }
-  console.log(`✅ 本番 Web アプリデプロイ (${options.deploymentId}) を Version ${newVersionNumber} に更新しました`);
 
   // Step 6: スモークテスト
   const webAppUrl = `https://script.google.com/macros/s/${options.deploymentId}/exec`;
   if (!options.skipSmokeTest && !options.dryRun) {
-    console.log(`\n🔎 [Smoke Test] Web アプリ導通確認を実行中...`);
-    console.log(`   URL: ${webAppUrl}`);
+    logFn(`\n🔎 [Smoke Test] Web アプリ導通確認を実行中...`);
+    logFn(`   URL: ${webAppUrl}`);
     try {
-      const result = await runSmokeTest(webAppUrl);
-      console.log(`✅ Ready 確認成功: HTTP ${result.statusCode}, response:`, JSON.stringify(result.body));
+      const result = await smokeTestFn(webAppUrl);
+      logFn(`✅ Ready 確認成功: HTTP ${result.statusCode}, response: ${JSON.stringify(result.body)}`);
     } catch (err) {
-      console.error(`❌ スモークテスト失敗:`, err.message);
-      console.warn('⚠️ デプロイは完了していますが、Web アプリの疎通に異常がある可能性があります。');
-      process.exitCode = 1;
-      return;
+      errFn(`❌ スモークテスト失敗: ${err.message}`);
+      throw new Error(`デプロイ後のスモークテストに失敗しました: ${err.message}`);
     }
   } else if (options.skipSmokeTest) {
-    console.log('\n🔎 [Smoke Test] スモークテストをスキップしました (--skip-smoke-test)');
+    logFn('\n🔎 [Smoke Test] スモークテストをスキップしました (--skip-smoke-test)');
+  } else {
+    logFn(`\n🔎 [Smoke Test] [DRY-RUN] Web アプリ導通確認をシミュレート (${webAppUrl})`);
   }
 
-  console.log('\n🎉 デプロイが正常に完了しました！');
-  console.log(`   デプロイ ID: ${options.deploymentId}`);
-  console.log(`   反映バージョン: @${newVersionNumber}`);
-  console.log(`   Web アプリ URL: ${webAppUrl}`);
+  logFn('\n🎉 デプロイが正常に完了しました！');
+  logFn(`   デプロイ ID: ${options.deploymentId}`);
+  logFn(`   反映バージョン: ${versionDisplay}`);
+  logFn(`   Web アプリ URL: ${webAppUrl}`);
+
+  return {
+    success: true,
+    deploymentId: options.deploymentId,
+    versionNumber: newVersionNumber,
+    dryRun: options.dryRun
+  };
+}
+
+/**
+ * CLI エントリーポイント
+ */
+async function main() {
+  const options = parseArgs();
+  await runDeployPipeline(options);
 }
 
 if (require.main === module) {
@@ -234,5 +264,6 @@ module.exports = {
   buildVersionDescription,
   parseVersionNumber,
   runSmokeTest,
+  runDeployPipeline,
   main
 };
