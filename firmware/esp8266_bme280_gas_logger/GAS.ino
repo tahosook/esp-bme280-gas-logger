@@ -63,6 +63,16 @@ public:
         content.reserve(128);
     }
 
+    virtual int availableForWrite() override
+    {
+        return content.length() < MAX_LIMIT ? (int)(MAX_LIMIT - content.length()) : 0;
+    }
+
+    virtual bool outputCanTimeout() override
+    {
+        return false;
+    }
+
     size_t write(uint8_t c) override
     {
         if (content.length() < MAX_LIMIT)
