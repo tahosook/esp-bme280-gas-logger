@@ -108,18 +108,31 @@ Script Properties はスクリプト単位で共有される設定値で、コ�
 5. **デプロイ** を押し、初回の権限確認が表示されたら、内容を確認して承認する。
 6. 発行された本番URLの `/exec` URL をコピーして `secrets.h` に設定する。
 
-#### clasp からデプロイ
+#### 自動デプロイスクリプト（推奨）
+事前テスト・Lint、コードプッシュ、バージョン作成、既存本番デプロイ更新、GET導通スモークテストを一括実行できます。
+
+```sh
+# 現在の GAS デプロイ状態を確認
+npm run deploy:status
+
+# 本番デプロイを実行（テスト・プッシュ・バージョン作成・更新・スモークテストを一括実行）
+npm run deploy
+
+# ドライラン（実際の更新を行わずに計画を確認）
+node scripts/deploy.js --dry-run
+```
+
+#### 手動デプロイ（clasp）
 ```sh
 cd gas
 clasp push --force
-clasp create-deployment --description "production"
-clasp deployments
-clasp open-web-app DEPLOYMENT_ID --json
+clasp version "production update - description"
+clasp redeploy <DEPLOYMENT_ID> -V <VERSION_NUMBER> -d "description"
 ```
 
 > [!CAUTION]
 > **GAS デプロイ URL 固定ルール**:
-> ESP8266 ファームウェアの `GAS_URL` はビルド時に固定されます。コード変更時は **既存デプロイのバージョン更新（デプロイを管理）** を行い、`/exec` URL を絶対に変更しないでください。
+> ESP8266 ファームウェアの `GAS_URL` はビルド時に固定されます。コード変更時は **既存デプロイのバージョン更新（`npm run deploy` または `clasp redeploy`）** を行い、`/exec` URL を絶対に変更しないでください。
 
 ---
 

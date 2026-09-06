@@ -192,6 +192,8 @@ Pull Request の完了およびタスク完了を認めるための定量的基�
 npm test              # Run Jest unit test suite
 npm run test:coverage # Enforce coverage thresholds (branches: 80%, others: 85%)
 npm run lint          # Check ESLint rules (complexity threshold: 12)
+npm run deploy:status # Check current GAS deployment status and version
+npm run deploy        # Automated full deployment (test + lint + push + version + redeploy + smoke test)
 git diff --check      # Check for whitespace and line break issues
 ```
 
