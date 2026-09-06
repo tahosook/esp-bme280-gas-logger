@@ -160,6 +160,9 @@ function createGasMockEnvironment(options = {}) {
         releaseLock() {
           lockReleased = true;
           return true;
+        },
+        hasLock() {
+          return lockAcquired && !lockReleased;
         }
       };
     }

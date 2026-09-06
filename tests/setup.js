@@ -25,6 +25,7 @@ const Router = require('../gas/Router.gs');
 const DailyAggregation = require('../gas/DailyAggregation.gs');
 const MonthlyAggregation = require('../gas/MonthlyAggregation.gs');
 const LineBot = require('../gas/LineBot.gs');
+const DataArchive = require('../gas/DataArchive.gs');
 const SetupTriggers = require('../gas/SetupTriggers.gs');
 const DebugTest = require('../gas/DebugTest.gs');
 
@@ -38,5 +39,6 @@ Object.assign(global, Router);
 Object.assign(global, DailyAggregation);
 Object.assign(global, MonthlyAggregation);
 Object.assign(global, LineBot);
+Object.assign(global, DataArchive);
 Object.assign(global, SetupTriggers);
 Object.assign(global, DebugTest);

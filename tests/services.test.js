@@ -644,8 +644,9 @@ describe('LineBot & Ingest Edge Cases', () => {
         }
       });
       expect(pushCalled).toBe(false);
+      expect(env.dataRows[1][4]).toBe('');
 
-      // 2回目 (K=2) -> push 送信
+      // 2回目 (K=2) -> push 送信 & flag に 'alert' が記録される
       global.Date = fixedDate('2026-08-10T01:05:00Z');
       doPost({
         postData: {
@@ -653,6 +654,7 @@ describe('LineBot & Ingest Edge Cases', () => {
         }
       });
       expect(pushCalled).toBe(true);
+      expect(env.dataRows[2][4]).toBe('alert');
     } finally {
       global.pushMonitorNotification_ = origPush;
     }

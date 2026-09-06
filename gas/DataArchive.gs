@@ -62,43 +62,76 @@ function getArchiveSpreadsheets_(properties) {
   return { sourceSheet, archiveSpreadsheet };
 }
 
+function updateDailyLastRowAfterPurge_(properties, totalArchived) {
+  if (!properties || typeof totalArchived !== 'number' || totalArchived <= 0) {
+    return;
+  }
+  const dailyLastRowKey = (typeof DAILY_AGGREGATION_PROPERTIES !== 'undefined' && DAILY_AGGREGATION_PROPERTIES.lastRow) || 'DAILY_LAST_ROW';
+  const currentDailyLastRowStr = properties.getProperty(dailyLastRowKey);
+  if (!currentDailyLastRowStr) {
+    return;
+  }
+  const currentDailyLastRow = parseInt(currentDailyLastRowStr, 10);
+  if (!isNaN(currentDailyLastRow)) {
+    const updatedRow = Math.max(1, currentDailyLastRow - totalArchived);
+    properties.setProperty(dailyLastRowKey, String(updatedRow));
+  }
+}
+
 function runDataArchive_() {
   const properties = PropertiesService.getScriptProperties();
   const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : { ARCHIVE_RETENTION_MONTHS: 2 };
-  const { sourceSheet, archiveSpreadsheet } = getArchiveSpreadsheets_(properties);
+  const timeoutMs = (typeof config.INGEST_LOCK_TIMEOUT_MS === 'number') ? config.INGEST_LOCK_TIMEOUT_MS : 15000;
 
-  const retentionMonths = typeof config.ARCHIVE_RETENTION_MONTHS === 'number' ? config.ARCHIVE_RETENTION_MONTHS : 2;
-  const now = new Date();
-  const thresholdDate = getArchiveThresholdDate_(now, retentionMonths);
-
-  const lastRow = sourceSheet.getLastRow();
-  if (lastRow < 2) {
-    return { status: 'skipped', reason: 'no_data' };
+  const lock = LockService.getScriptLock();
+  const hasLockAlready = typeof lock.hasLock === 'function' ? lock.hasLock() : false;
+  if (!hasLockAlready) {
+    lock.waitLock(timeoutMs);
   }
 
-  const maxRowsToRead = lastRow - 1;
-  const values = sourceSheet.getRange(2, 1, maxRowsToRead, sourceSheet.getLastColumn()).getValues();
+  try {
+    const { sourceSheet, archiveSpreadsheet } = getArchiveSpreadsheets_(properties);
 
-  const groupedData = groupDataForArchive_(values, thresholdDate);
+    const retentionMonths = typeof config.ARCHIVE_RETENTION_MONTHS === 'number' ? config.ARCHIVE_RETENTION_MONTHS : 2;
+    const now = new Date();
+    const thresholdDate = getArchiveThresholdDate_(now, retentionMonths);
 
-  if (groupedData.size === 0) {
-    return { status: 'skipped', reason: 'no_target_data', thresholdDate: thresholdDate.toISOString() };
+    const lastRow = sourceSheet.getLastRow();
+    if (lastRow < 2) {
+      return { status: 'skipped', reason: 'no_data' };
+    }
+
+    const maxRowsToRead = lastRow - 1;
+    const values = sourceSheet.getRange(2, 1, maxRowsToRead, sourceSheet.getLastColumn()).getValues();
+
+    const groupedData = groupDataForArchive_(values, thresholdDate);
+
+    if (groupedData.size === 0) {
+      return { status: 'skipped', reason: 'no_target_data', thresholdDate: thresholdDate.toISOString() };
+    }
+
+    const sortedYearMonths = Array.from(groupedData.keys()).sort();
+    const totalArchived = writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths);
+
+    // Purge: groupDataForArchive_ により RawData の先頭（Row 2）から連続する
+    // 古いデータ行（prefix）のみがアーカイブ対象として抽出されていることが保証されているため、
+    // deleteRows(2, totalArchived) により新しいデータを誤って巻き込むことなく安全にパージ可能。
+    if (totalArchived > 0) {
+      sourceSheet.deleteRows(2, totalArchived);
+      updateDailyLastRowAfterPurge_(properties, totalArchived);
+    }
+
+    return {
+      status: 'success',
+      archivedRows: totalArchived,
+      monthsArchived: sortedYearMonths,
+      thresholdDate: thresholdDate.toISOString()
+    };
+  } finally {
+    if (!hasLockAlready) {
+      lock.releaseLock();
+    }
   }
-
-  const sortedYearMonths = Array.from(groupedData.keys()).sort();
-  const totalArchived = writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths);
-
-  // Purge
-  if (totalArchived > 0) {
-    sourceSheet.deleteRows(2, totalArchived);
-  }
-
-  return {
-    status: 'success',
-    archivedRows: totalArchived,
-    monthsArchived: sortedYearMonths,
-    thresholdDate: thresholdDate.toISOString()
-  };
 }
 
 function getArchiveThresholdDate_(dateInput, retentionMonths) {
@@ -117,14 +150,32 @@ function getArchiveThresholdDate_(dateInput, retentionMonths) {
   return new Date(Date.UTC(year, month, 1, -9, 0, 0, 0));
 }
 
+/**
+ * RawData シートの先頭（Row 2）から走査し、
+ * 閾値日時（thresholdDate）より前の「連続した古いデータ区間（prefix）」のみを月別にグループ化します。
+ *
+ * 【設計上の不変条件と deleteRows(2, totalArchived) が安全な理由】
+ * 1. RawData は Ingest.gs において GAS サーバー時刻（now = new Date()）を LockService 排他制御下で
+ *    appendRow するため、設計上「時系列昇順かつ追記専用（chronological append-only）」です。
+ * 2. 本関数は先頭（Row 2 = values[0]）から 1 行ずつ走査し、以下のいずれかで即時 break（走査中断）します:
+ *    - タイムスタンプの欠損または無効値（先頭からの連続性が保証できないため安全終了）
+ *    - 時系列の逆転（万一データ順序が崩れていた場合、新しいデータ以降を巻き込まないよう安全終了）
+ *    - 閾値日時に到達（最新データ側に到達したため終了）
+ * 3. したがって、抽出される全行数（totalArchived）は「Row 2 から連続して存在する厳密に totalArchived 行」
+ *    と完全に一致し、後続の deleteRows(2, totalArchived) で新しいデータが削除されるリスクは構造上排除されます。
+ */
 function groupDataForArchive_(values, thresholdDate) {
   const grouped = new Map();
+  let previousTimestampMs = -Infinity;
 
   for (let i = 0; i < values.length; i++) {
     const row = values[i];
     const timestamp = row[0];
 
-    if (!timestamp) continue;
+    // 1. タイムスタンプ欠損ガード: 連続性が保証できないため走査を終了
+    if (!timestamp) {
+      break;
+    }
 
     let dateObj;
     if (Object.prototype.toString.call(timestamp) === '[object Date]') {
@@ -133,17 +184,29 @@ function groupDataForArchive_(values, thresholdDate) {
       dateObj = new Date(timestamp);
     }
 
-    if (isNaN(dateObj.getTime())) continue;
+    const timeMs = dateObj.getTime();
 
-    if (dateObj.getTime() >= thresholdDate.getTime()) {
-      break; // Since data is appended sequentially, we can stop early
+    // 2. 不正日付ガード: タイムスタンプが無効な場合は走査を終了
+    if (isNaN(timeMs)) {
+      break;
+    }
+
+    // 3. 時系列逆転ガード: 万一データ順序が崩れている場合、新しいデータを巻き込まないよう安全終了
+    if (timeMs < previousTimestampMs) {
+      break;
+    }
+    previousTimestampMs = timeMs;
+
+    // 4. 閾値到達ガード: 保持期間内のデータに達した時点で走査を終了
+    if (timeMs >= thresholdDate.getTime()) {
+      break;
     }
 
     let yearMonth = '';
     if (typeof formatYearMonthTokyo_ === 'function') {
       yearMonth = formatYearMonthTokyo_(dateObj);
     } else {
-      const tokyoTime = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
+      const tokyoTime = new Date(timeMs + 9 * 60 * 60 * 1000);
       const year = tokyoTime.getUTCFullYear();
       const monthStr = String(tokyoTime.getUTCMonth() + 1).padStart(2, '0');
       yearMonth = `${year}-${monthStr}`;
@@ -160,6 +223,7 @@ function groupDataForArchive_(values, thresholdDate) {
 
 if (typeof module !== 'undefined') {
   module.exports = {
+    updateDailyLastRowAfterPurge_,
     writeToArchiveSheets_,
     getArchiveSpreadsheets_,
     runDataArchive_,
