@@ -1,10 +1,24 @@
 #include <ESP8266WiFi.h>
 
-// Phase 5: タイムアウトと再試行回数の定義
-// Arduinoビルドではメインスケッチを先頭に全.inoを連結するため、
-// ここに定義してすべてのサブファイルから参照できる。
+// 送信結果の分類（リトライ制御用）
+enum GasSendResult {
+    GAS_SEND_OK = 0,
+    GAS_SEND_FATAL = 1,       // リトライ不要な恒久エラー（認証失敗、バリデーションエラー、巨大HTML等）
+    GAS_SEND_RETRYABLE = 2    // 一時的な通信エラー（タイムアウト、接続切断等）
+};
+
+// サブファイル関数のプロトタイプ宣言
+bool initBME280_I2C();
+bool readBME280_I2C();
+float getTemperature();
+float getPressure();
+float getHumidity();
+void initGAS();
+GasSendResult sendToGAS(float temp, float press, float hum);
+
+// タイムアウトと再試行回数の定義
 #define WIFI_TIMEOUT_MS   30000
-#define HTTP_TIMEOUT_MS   30000
+#define HTTP_TIMEOUT_MS   15000  // 発熱・待機時間抑制のため15秒に短縮
 #define MAX_SEND_RETRIES  3
 
 void setup()
@@ -15,22 +29,27 @@ void setup()
     {
         Serial.println("[sleep] sensor init failed; entering deep sleep (300s)");
         ESP.deepSleep(5 * 60 * 1000 * 1000, WAKE_RF_DEFAULT);
+        delay(100);
         return;
     }
-    initGAS();
-}
 
-void loop()
-{
+    // 省電力化: Wi-Fi接続前にセンサー読み取りを行い、故障時はWi-Fi電力を消費しない
     Serial.println("[sensor] reading");
     if (!readBME280_I2C())
     {
         Serial.println("[bme280] read failed");
         Serial.println("[sleep] sensor read failed; entering deep sleep (300s)");
         ESP.deepSleep(5 * 60 * 1000 * 1000, WAKE_RF_DEFAULT);
+        delay(100);
         return;
     }
 
+    // センサー読み取りが成功した場合のみWi-Fiを初期化
+    initGAS();
+}
+
+void loop()
+{
     float temp = getTemperature();
     float press = getPressure();
     float hum = getHumidity();
@@ -41,8 +60,6 @@ void loop()
     Serial.print(" hum=");
     Serial.println(hum, 2);
 
-    // Phase 5: Wi-Fiが接続されていれば最大3回まで再送信する。
-    // 失敗しても無限ループせず、ディープスリープへ進む。
     bool sent = false;
     if (WiFi.status() == WL_CONNECTED)
     {
@@ -53,12 +70,20 @@ void loop()
             Serial.print("/");
             Serial.println(MAX_SEND_RETRIES);
 
-            if (sendToGAS(temp, press, hum))
+            GasSendResult result = sendToGAS(temp, press, hum);
+            if (result == GAS_SEND_OK)
             {
                 sent = true;
                 break;
             }
 
+            if (result == GAS_SEND_FATAL)
+            {
+                Serial.println("[gas] fatal error; aborting retries");
+                break;
+            }
+
+            // GAS_SEND_RETRYABLE の場合のみ再試行
             if (attempt < MAX_SEND_RETRIES)
             {
                 delay(5000);
@@ -72,9 +97,10 @@ void loop()
 
     if (!sent)
     {
-        Serial.println("[gas] FAILED: all retries exhausted");
+        Serial.println("[gas] FAILED: send aborted or exhausted");
     }
 
     Serial.println("[sleep] entering deep sleep (300s)");
     ESP.deepSleep(5 * 60 * 1000 * 1000, WAKE_RF_DEFAULT);
+    delay(100);
 }

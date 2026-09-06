@@ -48,7 +48,7 @@ bool initWifi()
     return true;
 }
 
-bool sendToGAS(float temp, float press, float hum)
+GasSendResult sendToGAS(float temp, float press, float hum)
 {
     JsonDocument doc;
     doc["api_version"] = 1;
@@ -70,29 +70,89 @@ bool sendToGAS(float temp, float press, float hum)
     // Phase 6: リダイレクト上限を明示的に設定（GASは1回の302リダイレクト）
     http.setRedirectLimit(3);
     http.addHeader("Content-Type", "application/json");
-    // Phase 5: HTTPS通信タイムアウトを30秒に設定
     http.setTimeout(HTTP_TIMEOUT_MS);
 
+    // GoogleのエラーHTML等によるヒープ枯渇を防ぐためContent-Typeヘッダーを収集
+    const char *headerKeys[] = {"Content-Type"};
+    http.collectHeaders(headerKeys, 1);
+
     int httpCode = http.POST(payload);
-    String response = http.getString();
 
     Serial.print("[gas] HTTP status: ");
     Serial.println(httpCode);
+
+    if (httpCode <= 0)
+    {
+        Serial.print("[gas] connection error: ");
+        Serial.println(http.errorToString(httpCode).c_str());
+        http.end();
+        client.stop();
+        return GAS_SEND_RETRYABLE;
+    }
+
+    if (httpCode != HTTP_CODE_OK)
+    {
+        http.end();
+        client.stop();
+        // 4xxエラー（401, 403, 404等）は再試行しても成功しないためリトライ不要
+        if (httpCode >= 400 && httpCode < 500)
+        {
+            Serial.println("[gas] client error; aborting retries");
+            return GAS_SEND_FATAL;
+        }
+        return GAS_SEND_RETRYABLE;
+    }
+
+    // HTTP 200 OK の場合:
+    // Content-TypeがJSONでない場合（例: text/html）はエラー画面とみなして本文受信をスキップ
+    String contentType = http.header("Content-Type");
+    if (contentType.length() > 0 && contentType.indexOf("application/json") == -1)
+    {
+        Serial.print("[gas] unexpected Content-Type (not JSON): ");
+        Serial.println(contentType);
+        http.end();
+        client.stop();
+        return GAS_SEND_FATAL;
+    }
+
+    // サイズ検証: GASの正常応答は通常100バイト未満。1024バイト超は巨大HTMLとみなして破棄
+    int size = http.getSize();
+    if (size > 1024)
+    {
+        Serial.print("[gas] response too large (size=");
+        Serial.print(size);
+        Serial.println("); aborting");
+        http.end();
+        client.stop();
+        return GAS_SEND_FATAL;
+    }
+
+    String response = http.getString();
     Serial.print("[gas] response: ");
     Serial.println(response);
 
-    // 成否はHTTPステータスではなく、レスポンスJSONのokで判定する。
-    bool ok = false;
-    if (httpCode == HTTP_CODE_OK)
+    GasSendResult result = GAS_SEND_FATAL;
+    JsonDocument respDoc;
+    DeserializationError err = deserializeJson(respDoc, response);
+    if (!err && respDoc["ok"].is<bool>())
     {
-        JsonDocument respDoc;
-        DeserializationError err = deserializeJson(respDoc, response);
-        if (!err && respDoc["ok"].is<bool>())
+        if (respDoc["ok"].as<bool>())
         {
-            ok = respDoc["ok"].as<bool>();
+            result = GAS_SEND_OK;
         }
+        else
+        {
+            Serial.println("[gas] rejected by server (ok=false); aborting retries");
+            result = GAS_SEND_FATAL;
+        }
+    }
+    else
+    {
+        Serial.println("[gas] invalid JSON response; aborting retries");
+        result = GAS_SEND_FATAL;
     }
 
     http.end();
-    return ok;
+    client.stop();
+    return result;
 }
