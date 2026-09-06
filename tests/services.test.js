@@ -925,15 +925,26 @@ describe('SetupTriggers & DebugTest Handlers', () => {
 
     // 5. simulateSensorPost (正常書き込み)
     env.propertiesStore.set('API_TOKEN', 'valid-test-token');
+    const logCountBefore = env.logEntries.length;
     expect(() => debugTest_simulateSensorPost()).not.toThrow();
+
+    // ログに実際のAPI_TOKENが含まれず、[REDACTED]に置き換わっていることを検証
+    const newLogs = env.logEntries.slice(logCountBefore);
+    const hasRawToken = newLogs.some(log => typeof log === 'string' && log.includes('valid-test-token'));
+    const hasRedactedToken = newLogs.some(log => typeof log === 'string' && log.includes('[REDACTED]'));
+    expect(hasRawToken).toBe(false);
+    expect(hasRedactedToken).toBe(true);
 
     // 6. simulateSensorPost (重複スキップ)
     expect(() => debugTest_simulateSensorPost()).not.toThrow();
 
-    // 7. simulateSensorPost (スプレッドシート例外時)
+    // 7. simulateSensorPost (スプレッドシート例外時: エラーログでもトークン漏洩がないことを検証)
     const origOpen = SpreadsheetApp.openById;
-    SpreadsheetApp.openById = () => { throw new Error('spreadsheet open failed'); };
+    SpreadsheetApp.openById = () => { throw new Error('spreadsheet open failed with token valid-test-token'); };
+    const errLogCountBefore = env.logEntries.length;
     expect(() => debugTest_simulateSensorPost()).not.toThrow();
+    const errLogs = env.logEntries.slice(errLogCountBefore);
+    expect(errLogs.some(log => typeof log === 'string' && log.includes('valid-test-token'))).toBe(false);
     SpreadsheetApp.openById = origOpen;
   });
 

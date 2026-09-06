@@ -48,6 +48,52 @@ bool initWifi()
     return true;
 }
 
+// レスポンス受信バッファを最大1024バイトに制限するPrint実装
+// Content-Lengthが不明(-1)またはchunked転送の場合でも、
+// ヒープを圧迫することなく安全に上限バイト数で打ち切る。
+class BoundedResponseStream : public Print
+{
+public:
+    static const size_t MAX_LIMIT = 1024;
+    String content;
+    bool overflow;
+
+    BoundedResponseStream() : overflow(false)
+    {
+        content.reserve(128);
+    }
+
+    size_t write(uint8_t c) override
+    {
+        if (content.length() < MAX_LIMIT)
+        {
+            content += (char)c;
+            return 1;
+        }
+        overflow = true;
+        return 0;
+    }
+
+    size_t write(const uint8_t *buffer, size_t size) override
+    {
+        size_t written = 0;
+        for (size_t i = 0; i < size; i++)
+        {
+            if (content.length() < MAX_LIMIT)
+            {
+                content += (char)buffer[i];
+                written++;
+            }
+            else
+            {
+                overflow = true;
+                break;
+            }
+        }
+        return written;
+    }
+};
+
 GasSendResult sendToGAS(float temp, float press, float hum)
 {
     JsonDocument doc;
@@ -100,22 +146,29 @@ GasSendResult sendToGAS(float temp, float press, float hum)
             Serial.println("[gas] client error; aborting retries");
             return GAS_SEND_FATAL;
         }
+        // 5xx やその他の一時的サーバーエラーはリトライ可能
         return GAS_SEND_RETRYABLE;
     }
 
     // HTTP 200 OK の場合:
     // Content-TypeがJSONでない場合（例: text/html）はエラー画面とみなして本文受信をスキップ
+    // 大文字小文字の違い（Application/JSON等）を許容するため小文字化して検証
     String contentType = http.header("Content-Type");
-    if (contentType.length() > 0 && contentType.indexOf("application/json") == -1)
+    if (contentType.length() > 0)
     {
-        Serial.print("[gas] unexpected Content-Type (not JSON): ");
-        Serial.println(contentType);
-        http.end();
-        client.stop();
-        return GAS_SEND_FATAL;
+        String lowerContentType = contentType;
+        lowerContentType.toLowerCase();
+        if (lowerContentType.indexOf("application/json") == -1)
+        {
+            Serial.print("[gas] unexpected Content-Type (not JSON): ");
+            Serial.println(contentType);
+            http.end();
+            client.stop();
+            return GAS_SEND_FATAL;
+        }
     }
 
-    // サイズ検証: GASの正常応答は通常100バイト未満。1024バイト超は巨大HTMLとみなして破棄
+    // サイズ事前検証: Content-Length が 1024 を超える場合は巨大HTMLとみなして即座に破棄
     int size = http.getSize();
     if (size > 1024)
     {
@@ -127,7 +180,21 @@ GasSendResult sendToGAS(float temp, float press, float hum)
         return GAS_SEND_FATAL;
     }
 
-    String response = http.getString();
+    // レスポンス本文の読み込み:
+    // Content-Length が unknown (-1) や chunked 転送の場合でも、
+    // BoundedResponseStream を介して最大 1024 バイトに制限して読み込む（getString() によるヒープ枯渇を防止）
+    BoundedResponseStream stream;
+    http.writeToPrint(&stream);
+
+    if (stream.overflow)
+    {
+        Serial.println("[gas] response exceeded 1024 bytes; aborting");
+        http.end();
+        client.stop();
+        return GAS_SEND_FATAL;
+    }
+
+    String response = stream.content;
     Serial.print("[gas] response: ");
     Serial.println(response);
 

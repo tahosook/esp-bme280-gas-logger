@@ -143,9 +143,11 @@ function getTestTargetSheet_(spreadsheet, properties, sheetNameKey) {
 function logDebugTestError_(funcName, err) {
   const message = err && err.message ? err.message : String(err);
   const stack = err && err.stack ? err.stack : 'スタック情報なし';
-  Logger.log('❌ エラー発生: ' + message);
-  Logger.log('エラー詳細: ' + stack);
-  console.error(funcName + ' failed:', err);
+  const safeMessage = typeof maskSecret_ === 'function' ? maskSecret_(message) : message;
+  const safeStack = typeof maskSecret_ === 'function' ? maskSecret_(stack) : stack;
+  Logger.log('❌ エラー発生: ' + safeMessage);
+  Logger.log('エラー詳細: ' + safeStack);
+  console.error(funcName + ' failed:', safeMessage);
 }
 
 function getDebugChartTargetSheet_(properties) {
@@ -381,7 +383,12 @@ function debugTest_simulateSensorPost() {
       hum: 55.8
     };
 
-    Logger.log('テスト用ペイロード: ' + JSON.stringify(testPayload));
+    const logPayload = {
+      ...testPayload,
+      token: '[REDACTED]'
+    };
+
+    Logger.log('テスト用ペイロード: ' + JSON.stringify(logPayload));
 
     const startTime = Date.now();
     const appended = checkAndAppendMeasurement_(testPayload, properties);
