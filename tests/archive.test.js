@@ -1,4 +1,4 @@
-const { runDataArchive_, getArchiveThresholdDate_, groupDataForArchive_ } = require('../gas/DataArchive.gs');
+const { runDataArchive_, getArchiveThresholdDate_, groupDataForArchive_, updateDailyLastRowAfterPurge_ } = require('../gas/DataArchive.gs');
 
 describe('Data Archive Logic', () => {
   describe('getArchiveThresholdDate_', () => {
@@ -131,6 +131,26 @@ describe('Data Archive Logic', () => {
       expect(mockSpreadsheet.insertSheet).toHaveBeenCalled();
     });
 
+    it('should archive, purge, and decrement DAILY_LAST_ROW correctly', () => {
+      const propMap = new Map([
+        ['SPREADSHEET_ID', 'mock_id'],
+        ['SHEET_NAME', 'RawData'],
+        ['DAILY_LAST_ROW', '10']
+      ]);
+      global.PropertiesService.getScriptProperties = jest.fn().mockReturnValue({
+        getProperty: jest.fn().mockImplementation((k) => propMap.get(k) || null),
+        setProperty: jest.fn().mockImplementation((k, v) => propMap.set(k, String(v))),
+        getProperties: jest.fn().mockReturnValue(Object.fromEntries(propMap))
+      });
+
+      const result = runDataArchive_();
+      expect(result.status).toBe('success');
+      expect(result.archivedRows).toBe(3);
+      expect(mockSourceSheet.deleteRows).toHaveBeenCalledWith(2, 3);
+      // 10 - 3 = 7
+      expect(propMap.get('DAILY_LAST_ROW')).toBe('7');
+    });
+
     it('should throw if spreadsheet ID is missing', () => {
       global.PropertiesService.getScriptProperties = jest.fn().mockReturnValue({
         getProperty: jest.fn().mockReturnValue(null),
@@ -229,5 +249,79 @@ describe('DataArchive Logic - Additional Branches', () => {
     const result = runDataArchive_();
     expect(result.status).toBe('skipped');
     expect(result.reason).toBe('no_target_data');
+  });
+
+  it('should acquire and release lock if not already holding lock', () => {
+    let waitLockCalled = false;
+    let releaseLockCalled = false;
+    global.LockService = {
+      getScriptLock: jest.fn().mockReturnValue({
+        hasLock: jest.fn().mockReturnValue(false),
+        waitLock: jest.fn().mockImplementation(() => { waitLockCalled = true; }),
+        releaseLock: jest.fn().mockImplementation(() => { releaseLockCalled = true; })
+      })
+    };
+
+    const mockSheet = { getLastRow: jest.fn().mockReturnValue(1) };
+    global.getRawDataSheet_ = jest.fn().mockReturnValue(mockSheet);
+    global.SpreadsheetApp = {
+      openById: jest.fn().mockReturnValue({
+        getSheetByName: jest.fn().mockImplementation((name) => {
+          if (name === 'Config') return { getDataRange: () => ({ getValues: () => [] }) };
+          return mockSheet;
+        })
+      })
+    };
+    global.PropertiesService = {
+      getScriptProperties: jest.fn().mockReturnValue({
+        getProperty: jest.fn().mockReturnValue('mock_id'),
+        getProperties: jest.fn().mockReturnValue({ SPREADSHEET_ID: 'mock_id' })
+      })
+    };
+
+    const res = runDataArchive_();
+    expect(res.status).toBe('skipped');
+    expect(waitLockCalled).toBe(true);
+    expect(releaseLockCalled).toBe(true);
+  });
+});
+
+describe('updateDailyLastRowAfterPurge_', () => {
+  it('should decrement DAILY_LAST_ROW by totalArchived', () => {
+    const store = new Map([['DAILY_LAST_ROW', '100']]);
+    const mockProps = {
+      getProperty: (k) => store.get(k) || null,
+      setProperty: (k, v) => store.set(k, String(v))
+    };
+    updateDailyLastRowAfterPurge_(mockProps, 30);
+    expect(store.get('DAILY_LAST_ROW')).toBe('70');
+  });
+
+  it('should floor at 1 if totalArchived exceeds currentDailyLastRow', () => {
+    const store = new Map([['DAILY_LAST_ROW', '20']]);
+    const mockProps = {
+      getProperty: (k) => store.get(k) || null,
+      setProperty: (k, v) => store.set(k, String(v))
+    };
+    updateDailyLastRowAfterPurge_(mockProps, 50);
+    expect(store.get('DAILY_LAST_ROW')).toBe('1');
+  });
+
+  it('should do nothing if DAILY_LAST_ROW is not set or invalid', () => {
+    const store = new Map();
+    const mockProps = {
+      getProperty: (k) => store.get(k) || null,
+      setProperty: (k, v) => store.set(k, String(v))
+    };
+    updateDailyLastRowAfterPurge_(mockProps, 50);
+    expect(store.has('DAILY_LAST_ROW')).toBe(false);
+
+    store.set('DAILY_LAST_ROW', 'invalid_num');
+    updateDailyLastRowAfterPurge_(mockProps, 50);
+    expect(store.get('DAILY_LAST_ROW')).toBe('invalid_num');
+
+    updateDailyLastRowAfterPurge_(null, 50);
+    updateDailyLastRowAfterPurge_(mockProps, 0);
+    expect(store.get('DAILY_LAST_ROW')).toBe('invalid_num');
   });
 });

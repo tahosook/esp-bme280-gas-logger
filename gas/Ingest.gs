@@ -103,10 +103,17 @@ function applyMonitorStateSafely_(sheet, lastAppendedRow, payload) {
   }
   try {
     const monitorResult = updateMonitorState_(payload);
-    if (monitorResult && monitorResult.anomaly) {
-      sheet.getRange(lastAppendedRow, 5).setValue('anomaly');
+    if (!monitorResult) {
+      return;
     }
-    if (monitorResult && monitorResult.notification && typeof pushMonitorNotification_ === 'function') {
+
+    if (monitorResult.anomaly) {
+      sheet.getRange(lastAppendedRow, 5).setValue('anomaly');
+    } else if (monitorResult.notification) {
+      sheet.getRange(lastAppendedRow, 5).setValue('alert');
+    }
+
+    if (monitorResult.notification && typeof pushMonitorNotification_ === 'function') {
       try {
         pushMonitorNotification_(monitorResult.notification.text);
       } catch (err) {

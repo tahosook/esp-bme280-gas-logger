@@ -62,43 +62,74 @@ function getArchiveSpreadsheets_(properties) {
   return { sourceSheet, archiveSpreadsheet };
 }
 
+function updateDailyLastRowAfterPurge_(properties, totalArchived) {
+  if (!properties || typeof totalArchived !== 'number' || totalArchived <= 0) {
+    return;
+  }
+  const dailyLastRowKey = (typeof DAILY_AGGREGATION_PROPERTIES !== 'undefined' && DAILY_AGGREGATION_PROPERTIES.lastRow) || 'DAILY_LAST_ROW';
+  const currentDailyLastRowStr = properties.getProperty(dailyLastRowKey);
+  if (!currentDailyLastRowStr) {
+    return;
+  }
+  const currentDailyLastRow = parseInt(currentDailyLastRowStr, 10);
+  if (!isNaN(currentDailyLastRow)) {
+    const updatedRow = Math.max(1, currentDailyLastRow - totalArchived);
+    properties.setProperty(dailyLastRowKey, String(updatedRow));
+  }
+}
+
 function runDataArchive_() {
   const properties = PropertiesService.getScriptProperties();
   const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : { ARCHIVE_RETENTION_MONTHS: 2 };
-  const { sourceSheet, archiveSpreadsheet } = getArchiveSpreadsheets_(properties);
+  const timeoutMs = (typeof config.INGEST_LOCK_TIMEOUT_MS === 'number') ? config.INGEST_LOCK_TIMEOUT_MS : 15000;
 
-  const retentionMonths = typeof config.ARCHIVE_RETENTION_MONTHS === 'number' ? config.ARCHIVE_RETENTION_MONTHS : 2;
-  const now = new Date();
-  const thresholdDate = getArchiveThresholdDate_(now, retentionMonths);
-
-  const lastRow = sourceSheet.getLastRow();
-  if (lastRow < 2) {
-    return { status: 'skipped', reason: 'no_data' };
+  const lock = LockService.getScriptLock();
+  const hasLockAlready = typeof lock.hasLock === 'function' ? lock.hasLock() : false;
+  if (!hasLockAlready) {
+    lock.waitLock(timeoutMs);
   }
 
-  const maxRowsToRead = lastRow - 1;
-  const values = sourceSheet.getRange(2, 1, maxRowsToRead, sourceSheet.getLastColumn()).getValues();
+  try {
+    const { sourceSheet, archiveSpreadsheet } = getArchiveSpreadsheets_(properties);
 
-  const groupedData = groupDataForArchive_(values, thresholdDate);
+    const retentionMonths = typeof config.ARCHIVE_RETENTION_MONTHS === 'number' ? config.ARCHIVE_RETENTION_MONTHS : 2;
+    const now = new Date();
+    const thresholdDate = getArchiveThresholdDate_(now, retentionMonths);
 
-  if (groupedData.size === 0) {
-    return { status: 'skipped', reason: 'no_target_data', thresholdDate: thresholdDate.toISOString() };
+    const lastRow = sourceSheet.getLastRow();
+    if (lastRow < 2) {
+      return { status: 'skipped', reason: 'no_data' };
+    }
+
+    const maxRowsToRead = lastRow - 1;
+    const values = sourceSheet.getRange(2, 1, maxRowsToRead, sourceSheet.getLastColumn()).getValues();
+
+    const groupedData = groupDataForArchive_(values, thresholdDate);
+
+    if (groupedData.size === 0) {
+      return { status: 'skipped', reason: 'no_target_data', thresholdDate: thresholdDate.toISOString() };
+    }
+
+    const sortedYearMonths = Array.from(groupedData.keys()).sort();
+    const totalArchived = writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths);
+
+    // Purge
+    if (totalArchived > 0) {
+      sourceSheet.deleteRows(2, totalArchived);
+      updateDailyLastRowAfterPurge_(properties, totalArchived);
+    }
+
+    return {
+      status: 'success',
+      archivedRows: totalArchived,
+      monthsArchived: sortedYearMonths,
+      thresholdDate: thresholdDate.toISOString()
+    };
+  } finally {
+    if (!hasLockAlready) {
+      lock.releaseLock();
+    }
   }
-
-  const sortedYearMonths = Array.from(groupedData.keys()).sort();
-  const totalArchived = writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths);
-
-  // Purge
-  if (totalArchived > 0) {
-    sourceSheet.deleteRows(2, totalArchived);
-  }
-
-  return {
-    status: 'success',
-    archivedRows: totalArchived,
-    monthsArchived: sortedYearMonths,
-    thresholdDate: thresholdDate.toISOString()
-  };
 }
 
 function getArchiveThresholdDate_(dateInput, retentionMonths) {
@@ -160,6 +191,7 @@ function groupDataForArchive_(values, thresholdDate) {
 
 if (typeof module !== 'undefined') {
   module.exports = {
+    updateDailyLastRowAfterPurge_,
     writeToArchiveSheets_,
     getArchiveSpreadsheets_,
     runDataArchive_,
