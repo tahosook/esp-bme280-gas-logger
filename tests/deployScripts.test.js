@@ -2,6 +2,7 @@ const {
   parseArgs,
   buildVersionDescription,
   parseVersionNumber,
+  runSmokeTest,
   DEFAULT_DEPLOYMENT_ID
 } = require('../scripts/deploy');
 
@@ -10,7 +11,8 @@ const {
   getDeployments,
   getVersions,
   getLocalRecentCommits,
-  getClaspStatus
+  getClaspStatus,
+  isHashMatch
 } = require('../scripts/deploy-status');
 
 describe('scripts/deploy.js', () => {
@@ -85,9 +87,35 @@ describe('scripts/deploy.js', () => {
       expect(parseVersionNumber(123)).toBeNull();
     });
   });
+
+  describe('runSmokeTest', () => {
+    test('maxRedirects が 0 以下の場合は Too many redirects エラーを返す', async () => {
+      await expect(runSmokeTest('https://example.com', 1000, 0))
+        .rejects.toThrow('Smoke test failed: Too many redirects');
+    });
+  });
 });
 
 describe('scripts/deploy-status.js', () => {
+  describe('isHashMatch', () => {
+    test('ワードバウンダリで完全一致するハッシュを検出できる', () => {
+      expect(isHashMatch('35f727e', 'production update from main 35f727e - fix')).toBe(true);
+      expect(isHashMatch('35f727e', '[35f727e] merge pull request')).toBe(true);
+    });
+
+    test('部分一致（別ハッシュの一部）の場合は一致と判定しない', () => {
+      // 135f727e や 35f727ea の一部にはマッチしない
+      expect(isHashMatch('35f727e', 'commit 135f727e999')).toBe(false);
+    });
+
+    test('unknown や空値の場合は false を返す', () => {
+      expect(isHashMatch('unknown', 'production update')).toBe(false);
+      expect(isHashMatch('', 'production update')).toBe(false);
+      expect(isHashMatch('35f727e', '')).toBe(false);
+      expect(isHashMatch(null, 'text')).toBe(false);
+    });
+  });
+
   describe('getDeployments', () => {
     test('clasp deployments の JSON 出力をパースする', () => {
       const mockOutput = JSON.stringify([

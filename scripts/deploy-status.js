@@ -93,6 +93,15 @@ function getClaspStatus(execFn = execSync) {
   }
 }
 
+/**
+ * ワードバウンダリを考慮してハッシュ文字列が含まれているかを照合する
+ */
+function isHashMatch(hash, text) {
+  if (!hash || hash === 'unknown' || !text) return false;
+  const safeHash = hash.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${safeHash}\\b`, 'i').test(text);
+}
+
 function checkStatus(targetId = DEFAULT_DEPLOYMENT_ID, execFn = execSync) {
   const deployments = getDeployments(execFn);
   const target = deployments.find((d) => d.deploymentId === targetId);
@@ -108,8 +117,8 @@ function checkStatus(targetId = DEFAULT_DEPLOYMENT_ID, execFn = execSync) {
   // デプロイ説明文またはバージョン説明文からコミットハッシュの有無を確認
   const combinedDesc = `${target && target.description ? target.description : ''} ${versionDetail && versionDetail.description ? versionDetail.description : ''}`;
 
-  const isHeadMatch = !!(recentCommits.head.hash !== 'unknown' && combinedDesc.includes(recentCommits.head.hash));
-  const isGasMatch = !!(recentCommits.gas.hash !== 'unknown' && combinedDesc.includes(recentCommits.gas.hash));
+  const isHeadMatch = isHashMatch(recentCommits.head.hash, combinedDesc);
+  const isGasMatch = isHashMatch(recentCommits.gas.hash, combinedDesc);
   const isDeployedMatch = isHeadMatch || isGasMatch;
 
   return {
@@ -174,6 +183,7 @@ module.exports = {
   getVersions,
   getLocalRecentCommits,
   getClaspStatus,
+  isHashMatch,
   checkStatus,
   main
 };

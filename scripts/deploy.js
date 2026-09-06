@@ -11,7 +11,7 @@
  * 5. Web アプリ GET スモークテスト (https://script.google.com/macros/s/<deploymentId>/exec)
  */
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const path = require('path');
 const https = require('https');
 
@@ -79,14 +79,21 @@ function parseVersionNumber(output) {
 }
 
 /**
- * Web アプリの GET スモークテストを実行（HTTP リダイレクト対応）
+ * Web アプリの GET スモークテストを実行（HTTP リダイレクト対応・再帰深度制限付き）
  */
-function runSmokeTest(url, timeoutMs = 15000) {
+function runSmokeTest(url, timeoutMs = 15000, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
+    if (maxRedirects <= 0) {
+      reject(new Error('Smoke test failed: Too many redirects'));
+      return;
+    }
+
     const req = https.get(url, (res) => {
       // 301, 302 リダイレクトを追跡
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        runSmokeTest(res.headers.location, timeoutMs).then(resolve).catch(reject);
+        runSmokeTest(res.headers.location, timeoutMs, maxRedirects - 1)
+          .then(resolve)
+          .catch(reject);
         return;
       }
 
@@ -151,7 +158,7 @@ async function main() {
   // Step 3: clasp push
   console.log('\n[Step 3/5] 📤 リモートへコードをプッシュ中 (clasp push --force)...');
   if (!options.dryRun) {
-    execSync('clasp push --force', { cwd: GAS_DIR, stdio: 'inherit' });
+    execFileSync('clasp', ['push', '--force'], { cwd: GAS_DIR, stdio: 'inherit' });
   }
   console.log('✅ コードプッシュ完了');
 
@@ -162,7 +169,7 @@ async function main() {
 
   let newVersionNumber = 999;
   if (!options.dryRun) {
-    const versionOutput = execSync(`clasp version "${description.replace(/"/g, '\\"')}"`, {
+    const versionOutput = execFileSync('clasp', ['version', description], {
       cwd: GAS_DIR,
       encoding: 'utf8'
     });
@@ -179,14 +186,14 @@ async function main() {
   console.log(`\n[Step 5/5] 🔄 本番 Web アプリデプロイを更新中 (@${newVersionNumber})...`);
   const deployDesc = `production update @${newVersionNumber} - ${description}`;
   if (!options.dryRun) {
-    const redeployCmd = `clasp redeploy "${options.deploymentId}" -V ${newVersionNumber} -d "${deployDesc}"`;
-    const redeployOutput = execSync(redeployCmd, {
+    const redeployArgs = ['redeploy', options.deploymentId, '-V', String(newVersionNumber), '-d', deployDesc];
+    const redeployOutput = execFileSync('clasp', redeployArgs, {
       cwd: GAS_DIR,
       encoding: 'utf8'
     });
     console.log(`   ${redeployOutput.trim()}`);
   } else {
-    console.log(`   [DRY-RUN] clasp redeploy ${options.deploymentId} -V ${newVersionNumber}`);
+    console.log(`   [DRY-RUN] clasp redeploy ${options.deploymentId} -V ${newVersionNumber} -d "${deployDesc}"`);
   }
   console.log(`✅ 本番 Web アプリデプロイ (${options.deploymentId}) を Version ${newVersionNumber} に更新しました`);
 
