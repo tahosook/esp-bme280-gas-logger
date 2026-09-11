@@ -5,9 +5,9 @@ const MONITOR_PROPERTIES = {
 };
 
 const DEFAULT_THRESHOLDS = {
-  temp: { over: 30.0, hysteresis: 0.5 },
-  hum: { over: 70.0, hysteresis: 5.0 },
-  discomfortIndex: { over: 80.0, hysteresis: 0.5 }
+  temp: { over: 29.0, hysteresis: 1.0 },
+  hum: { over: 100.0, hysteresis: 5.0 },
+  discomfortIndex: { over: 79.0, hysteresis: 1.0 }
 };
 
 const DEFAULT_SMOOTHING = {
