@@ -124,9 +124,9 @@ flowchart TD
 - **ヒステリシス閾値テーブル**:
   | 対象指標 | 発火閾値 (`over`) | 復帰閾値 (`over - hysteresis`) | 判定式 |
   | :--- | :--- | :--- | :--- |
-  | **気温 (temp)** | `> 30.0 ℃` | `<= 29.5 ℃` (ヒステリシス 0.5℃) | 29.5℃超〜30.0℃以下は前状態を維持 |
-  | **湿度 (hum)** | `> 70.0 %` | `<= 65.0 %` (ヒステリシス 5.0%) | 65.0%超〜70.0%以下は前状態を維持 |
-  | **不快指数 (DI)** | `> 80.0` | `<= 79.5` (ヒステリシス 0.5) | 79.5超〜80.0以下は前状態を維持 |
+  | **気温 (temp)** | `> 29.0 ℃` | `<= 28.0 ℃` (ヒステリシス 1.0℃) | 28.0℃超〜29.0℃以下は前状態を維持 |
+  | **湿度 (hum)** | `> 100.0 %` | `<= 95.0 %` (ヒステリシス 5.0%) | 湿度単体での通知を防ぐため、実質無効化（上限100.0%設定）。気温・DIが正常なら湿度が高くても通知されない。 |
+  | **不快指数 (DI)** | `> 79.0` | `<= 78.0` (ヒステリシス 1.0) | 78.0超〜79.0以下は前状態を維持 |
 - **不快指数計算式**:
   $$DI = 0.81 \times temp + 0.01 \times hum \times (0.99 \times temp - 14.3) + 46.3$$
 - **出力**: `!isOverThreshold` の場合 `{ shouldAlert: false, reason: 'normal' }`
@@ -158,16 +158,18 @@ flowchart TD
 | 1 | **異常** (51.0℃) | 任意 | 任意 | 任意 | 任意 | **false** | `sensor_anomaly` | SensorAnomaly |
 | 2 | **異常** (-15.0℃) | 任意 | 任意 | 任意 | 任意 | **false** | `sensor_anomaly` | SensorAnomaly |
 | 3 | **異常** (105%) | 任意 | 任意 | 任意 | 任意 | **false** | `sensor_anomaly` | SensorAnomaly |
-| 4 | 正常 (31.0℃) | **有効中** | true | 任意 | 任意 | **false** | `snooze_active` | Snoozed |
+| 4 | 正常 (29.5℃) | **有効中** | true | 任意 | 任意 | **false** | `snooze_active` | Snoozed |
 | 5 | 正常 (25.0℃) | 無効/過去 | **false** (正常域) | 任意 | 任意 | **false** | `normal` | Normal |
-| 6 | 正常 (31.0℃/1回目) | 無効/過去 | **false** (K=1未達) | 任意 | 任意 | **false** | `normal` | AlertPending |
-| 7 | 正常 (29.8℃/発火後) | 無効/過去 | **true** (復帰未達) | < 60分 (30分前) | 1 | **false** | `cooldown_active` | Cooldown |
-| 8 | 正常 (31.0℃/2回目) | 無効/過去 | **true** (発火) | < 60分 (45分前) | 2 | **false** | `cooldown_active` | Cooldown |
-| 9 | 正常 (31.0℃/2回目) | 無効/過去 | **true** (発火) | >= 60分 (70分前) | **5 (上限到達)** | **false** | `daily_limit_reached` | DailyLimitReached |
-| 10 | 正常 (31.0℃/2回目) | 無効/過去 | **true** (発火) | 未送信 (null) | 0 | **true** | `alert_triggered` | Alerting -> Cooldown |
-| 11 | 正常 (31.0℃/2回目) | 無効/過去 | **true** (発火) | >= 60分 (65分前) | 1 (<5) | **true** | `alert_triggered` | Alerting -> Cooldown |
-| 12 | 正常 (31.0℃/2回目) | 無効/過去 | **true** (発火) | >= 60分 (70分前) | 昨日 5回 / **本日 0回** | **true** | `alert_triggered` | Alerting -> Cooldown |
-| 13 | 不正パラメータ (null) | 任意 | 任意 | 任意 | 任意 | **false** | `invalid_params` | - |
+| 6 | 正常 (29.5℃/1回目) | 無効/過去 | **false** (K=1未達) | 任意 | 任意 | **false** | `normal` | AlertPending |
+| 7 | 正常 (28.5℃/発火後) | 無効/過去 | **true** (復帰未達) | < 60分 (30分前) | 1 | **false** | `cooldown_active` | Cooldown |
+| 8 | 正常 (29.5℃/2回目) | 無効/過去 | **true** (発火) | < 60分 (45分前) | 2 | **false** | `cooldown_active` | Cooldown |
+| 9 | 正常 (29.5℃/2回目) | 無効/過去 | **true** (発火) | >= 60分 (70分前) | **5 (上限到達)** | **false** | `daily_limit_reached` | DailyLimitReached |
+| 10 | 正常 (29.5℃/2回目) | 無効/過去 | **true** (発火) | 未送信 (null) | 0 | **true** | `alert_triggered` | Alerting -> Cooldown |
+| 11 | 正常 (29.5℃/2回目) | 無効/過去 | **true** (発火) | >= 60分 (65分前) | 1 (<5) | **true** | `alert_triggered` | Alerting -> Cooldown |
+| 12 | 正常 (29.5℃/2回目) | 無効/過去 | **true** (発火) | >= 60分 (70分前) | 昨日 5回 / **本日 0回** | **true** | `alert_triggered` | Alerting -> Cooldown |
+| 13 | 正常 (25.1℃/78%) | 無効/過去 | **false** (DI 74.9/湿度無効) | 任意 | 任意 | **false** | `normal` | Normal |
+| 14 | 正常 (28.5℃/75%) | 無効/過去 | **true** (DI 79.8/発火) | 未送信 (null) | 0 | **true** | `alert_triggered` | Alerting -> Cooldown |
+| 15 | 不正パラメータ (null) | 任意 | 任意 | 任意 | 任意 | **false** | `invalid_params` | - |
 
 ---
 
@@ -206,7 +208,7 @@ flowchart TD
 | 3. 優先順位 4 | 当日送信上限 5 回到達時の抑止 | `優先順位4: 1日最大送信上限` > `当日送信回数が上限（5回）に達した場合はスキップする` |
 | 3. 優先順位 4 | 翌日日付変更時のカウントリセット | `優先順位4: 1日最大送信上限` > `日付が変更された場合は前日のカウントが5回でもリセットされ送信可能となる` |
 | 2. 状態遷移 | 平滑化（K=2）によるチャタリング抑止 | `Monitor State Transitions & Hysteresis` > `平滑化（K=2）: 1回目の閾値超過ではアラートにならず、2回連続で超過するとアラート発火する` |
-| 2. 状態遷移 | ヒステリシス復帰（29.5℃以下） | `Monitor State Transitions & Hysteresis` > `ヒステリシス判定: 30.0℃発火後、29.5℃以下になるまで通常状態に復帰しない` |
+| 2. 状態遷移 | ヒステリシス復帰（28.0℃以下） | `Monitor State Transitions & Hysteresis` > `ヒステリシス判定: 29.0℃発火後、28.0℃以下になるまで通常状態に復帰しない` |
 | 3. 閾値テーブル | 湿度・不快指数の発火と復帰 | `Monitor State Transitions & Hysteresis` > `湿度（HUM）および不快指数（DI）のアラート発報とヒステリシス復帰` |
 | 1. 多層防御 | 急変検出（ΔTemp, ΔHum, ΔPress） | `Monitor State Transitions & Hysteresis` > `異常値検出（detectAnomaly_）: 気温・湿度・気圧の急変判定` |
 | 2. 状態遷移 | 死活監視（3日間タイムアウト・抑止） | `Watchdog (死活監視)` > `3日以内のデータ受信時はタイムアウトせず通知しない` / `3日間未受信で初回の通知を発行` / `未受信継続中は再通知を抑制` |
@@ -223,12 +225,12 @@ flowchart TD
 const DEFAULT_CONFIG = {
   WATCHDOG_TIMEOUT_MIN: 4320,        // 3日間未受信で死活監視通知
   MONITOR_CONSECUTIVE_K: 2,          // 2回連続超過でアラート昇格
-  MONITOR_TEMP_OVER: 30.0,           // 気温発火閾値 (℃)
-  MONITOR_TEMP_HYSTERESIS: 0.5,      // 気温復帰ヒステリシス (復帰: 29.5℃)
-  MONITOR_HUM_OVER: 70.0,            // 湿度発火閾値 (%)
-  MONITOR_HUM_HYSTERESIS: 5.0,       // 湿度復帰ヒステリシス (復帰: 65.0%)
-  MONITOR_DI_OVER: 80.0,             // 不快指数発火閾値
-  MONITOR_DI_HYSTERESIS: 0.5,        // 不快指数復帰ヒステリシス (復帰: 79.5)
+  MONITOR_TEMP_OVER: 29.0,           // 気温発火閾値 (℃)
+  MONITOR_TEMP_HYSTERESIS: 1.0,      // 気温復帰ヒステリシス (復帰: 28.0℃)
+  MONITOR_HUM_OVER: 100.0,           // 湿度発火閾値 (%) - 湿度単体通知無効化
+  MONITOR_HUM_HYSTERESIS: 5.0,       // 湿度復帰ヒステリシス (復帰: 95.0%)
+  MONITOR_DI_OVER: 79.0,             // 不快指数発火閾値
+  MONITOR_DI_HYSTERESIS: 1.0,        // 不快指数復帰ヒステリシス (復帰: 78.0)
   ALERT_COOLDOWN_MIN: 60,            // 1時間クールダウン (分)
   ALERT_MAX_DAILY_COUNT: 5,          // 1日最大送信数 (回)
   SENSOR_GUARD_MIN_TEMP: -10.0,      // 気温ガード下限 (℃)
