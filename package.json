@@ -9,7 +9,9 @@
   "scripts": {
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "lint": "eslint gas/ --ext .js,.gs"
+    "lint": "eslint gas/ --ext .js,.gs",
+    "deploy": "node scripts/deploy.js",
+    "deploy:status": "node scripts/deploy-status.js"
   },
   "repository": {
     "type": "git",
