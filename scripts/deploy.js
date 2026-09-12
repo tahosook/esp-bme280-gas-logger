@@ -38,10 +38,8 @@ function parseArgs(args = process.argv.slice(2)) {
       options.skipVerify = true;
     } else if (arg === '--skip-tests' || arg === '--skip-test') {
       options.skipTests = true;
-      options.skipVerify = true;
     } else if (arg === '--skip-lint') {
       options.skipLint = true;
-      options.skipVerify = true;
     } else if (arg === '--skip-smoke-test' || arg === '--skip-smoke') {
       options.skipSmokeTest = true;
     } else if (arg === '--dry-run') {
@@ -170,13 +168,30 @@ async function runDeployPipeline(options, deps = {}) {
     logFn('⚠️ [DRY-RUN モード] 実際の push / version / redeploy は実行されません\n');
   }
 
-  // Step 1: 事前検証 (Verify: Lint + git diff + test:coverage)
-  if (!options.skipVerify) {
+  // Step 1: 事前検証
+  if (options.skipVerify) {
+    logFn('\n[Step 1/5] 🧪 事前検証をスキップしました (--skip-verify)');
+  } else if (options.skipTests || options.skipLint) {
+    const skipped = [];
+    if (options.skipLint) skipped.push('Lint');
+    if (options.skipTests) skipped.push('テスト');
+    logFn(`\n[Step 1/5] 🧪 部分事前検証を実行中 (${skipped.join('・')}をスキップ)...`);
+
+    if (!options.skipLint) {
+      logFn('   🔍 コード解析を実行中 (npm run lint)...');
+      execFn('npm run lint', { cwd: ROOT_DIR, stdio: 'inherit' });
+    }
+    logFn('   📝 差分フォーマット検査を実行中 (git diff --check)...');
+    execFn('git diff --check', { cwd: ROOT_DIR, stdio: 'inherit' });
+    if (!options.skipTests) {
+      logFn('   🧪 テスト・カバレッジを実行中 (npm run test:coverage)...');
+      execFn('npm run test:coverage', { cwd: ROOT_DIR, stdio: 'inherit' });
+    }
+    logFn('✅ 部分事前検証に合格しました');
+  } else {
     logFn('\n[Step 1/5] 🧪 事前検証を実行中 (npm run verify)...');
     execFn('npm run verify', { cwd: ROOT_DIR, stdio: 'inherit' });
     logFn('✅ 事前検証に合格しました');
-  } else {
-    logFn('\n[Step 1/5] 🧪 事前検証をスキップしました (--skip-verify)');
   }
 
   // Step 2: clasp push

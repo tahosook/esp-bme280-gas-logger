@@ -45,16 +45,23 @@ describe('scripts/deploy.js', () => {
       expect(opts.deploymentId).toBe('custom-id');
     });
 
-    test('後方互換フラグ (--skip-tests, --skip-lint, --skip-test, --skip-smoke) が正しく反映される', () => {
+    test('後方互換フラグ (--skip-tests, --skip-lint, --skip-test, --skip-smoke) が正しく反映される（skipVerify に倒さない）', () => {
       const opts1 = parseArgs(['--skip-tests', '--skip-lint']);
-      expect(opts1.skipVerify).toBe(true);
+      expect(opts1.skipVerify).toBe(false);
       expect(opts1.skipTests).toBe(true);
       expect(opts1.skipLint).toBe(true);
 
       const opts2 = parseArgs(['--skip-test', '--skip-smoke']);
-      expect(opts2.skipVerify).toBe(true);
+      expect(opts2.skipVerify).toBe(false);
       expect(opts2.skipTests).toBe(true);
       expect(opts2.skipSmokeTest).toBe(true);
+    });
+
+    test('--skip-verify 指定時は skipVerify のみが true になる', () => {
+      const opts = parseArgs(['--skip-verify']);
+      expect(opts.skipVerify).toBe(true);
+      expect(opts.skipTests).toBe(false);
+      expect(opts.skipLint).toBe(false);
     });
   });
 
@@ -401,7 +408,103 @@ describe('scripts/deploy.js', () => {
       });
 
       expect(mockExecFn).not.toHaveBeenCalledWith('npm run verify', expect.any(Object));
+      expect(mockExecFn).not.toHaveBeenCalledWith('npm run lint', expect.any(Object));
+      expect(mockExecFn).not.toHaveBeenCalledWith('git diff --check', expect.any(Object));
+      expect(mockExecFn).not.toHaveBeenCalledWith('npm run test:coverage', expect.any(Object));
       expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('事前検証をスキップしました'));
+    });
+
+    test('--skip-tests 指定時: Lint と git diff は実行され、テスト・カバレッジはスキップされる', async () => {
+      mockExecFileFn.mockImplementation((cmd, args) => {
+        if (cmd === 'clasp' && args[0] === 'version') return 'Created version 30';
+        return '';
+      });
+
+      const options = {
+        skipTests: true,
+        skipLint: false,
+        skipVerify: false,
+        skipSmokeTest: true,
+        dryRun: false,
+        deploymentId: 'dep-1'
+      };
+
+      await runDeployPipeline(options, {
+        execFn: mockExecFn,
+        execFileFn: mockExecFileFn,
+        smokeTestFn: mockSmokeTestFn,
+        logFn: mockLogFn,
+        errFn: mockErrFn
+      });
+
+      expect(mockExecFn).toHaveBeenCalledWith('npm run lint', expect.any(Object));
+      expect(mockExecFn).toHaveBeenCalledWith('git diff --check', expect.any(Object));
+      expect(mockExecFn).not.toHaveBeenCalledWith('npm run test:coverage', expect.any(Object));
+      expect(mockExecFn).not.toHaveBeenCalledWith('npm run verify', expect.any(Object));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('部分事前検証を実行中 (テストをスキップ)'));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('部分事前検証に合格しました'));
+    });
+
+    test('--skip-lint 指定時: git diff とテスト・カバレッジは実行され、Lint はスキップされる', async () => {
+      mockExecFileFn.mockImplementation((cmd, args) => {
+        if (cmd === 'clasp' && args[0] === 'version') return 'Created version 30';
+        return '';
+      });
+
+      const options = {
+        skipTests: false,
+        skipLint: true,
+        skipVerify: false,
+        skipSmokeTest: true,
+        dryRun: false,
+        deploymentId: 'dep-1'
+      };
+
+      await runDeployPipeline(options, {
+        execFn: mockExecFn,
+        execFileFn: mockExecFileFn,
+        smokeTestFn: mockSmokeTestFn,
+        logFn: mockLogFn,
+        errFn: mockErrFn
+      });
+
+      expect(mockExecFn).not.toHaveBeenCalledWith('npm run lint', expect.any(Object));
+      expect(mockExecFn).toHaveBeenCalledWith('git diff --check', expect.any(Object));
+      expect(mockExecFn).toHaveBeenCalledWith('npm run test:coverage', expect.any(Object));
+      expect(mockExecFn).not.toHaveBeenCalledWith('npm run verify', expect.any(Object));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('部分事前検証を実行中 (Lintをスキップ)'));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('部分事前検証に合格しました'));
+    });
+
+    test('--skip-tests と --skip-lint 両方指定時: git diff のみ実行され、Lint もテストもスキップされる', async () => {
+      mockExecFileFn.mockImplementation((cmd, args) => {
+        if (cmd === 'clasp' && args[0] === 'version') return 'Created version 30';
+        return '';
+      });
+
+      const options = {
+        skipTests: true,
+        skipLint: true,
+        skipVerify: false,
+        skipSmokeTest: true,
+        dryRun: false,
+        deploymentId: 'dep-1'
+      };
+
+      await runDeployPipeline(options, {
+        execFn: mockExecFn,
+        execFileFn: mockExecFileFn,
+        smokeTestFn: mockSmokeTestFn,
+        logFn: mockLogFn,
+        errFn: mockErrFn
+      });
+
+      expect(mockExecFn).not.toHaveBeenCalledWith('npm run lint', expect.any(Object));
+      expect(mockExecFn).toHaveBeenCalledWith('git diff --check', expect.any(Object));
+      expect(mockExecFn).not.toHaveBeenCalledWith('npm run test:coverage', expect.any(Object));
+      expect(mockExecFn).not.toHaveBeenCalledWith('npm run verify', expect.any(Object));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('部分事前検証を実行中 (Lint・テストをスキップ)'));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('部分事前検証に合格しました'));
     });
 
     test('clasp push 失敗時: 例外がスローされ、バージョン作成やデプロイ更新は実行されない', async () => {
