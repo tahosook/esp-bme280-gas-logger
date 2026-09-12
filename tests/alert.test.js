@@ -181,60 +181,113 @@ describe('Monitor State Transitions & Hysteresis (状態遷移とヒステリシ
   test('平滑化（K=2）: 1回目の閾値超過ではアラートにならず、2回連続で超過するとアラート発火する', () => {
     global.Date = fixedDate('2026-08-10T01:00:00Z');
 
-    // 1回目: 31.0℃ (> 30.0) -> consecutive: 1, alert: false
-    let result = updateMonitorState_({ temp: 31.0, hum: 50.0, press: 1013.0 });
+    // 1回目: 29.5℃ (> 29.0) -> consecutive: 1, alert: false
+    let result = updateMonitorState_({ temp: 29.5, hum: 50.0, press: 1013.0 });
     expect(result.states.temp.consecutive).toBe(1);
     expect(result.states.temp.alert).toBe(false);
     expect(result.notification).toBeNull();
 
-    // 2回目: 31.5℃ (> 30.0) -> consecutive: 2, alert: true
+    // 2回目: 29.8℃ (> 29.0) -> consecutive: 2, alert: true
     global.Date = fixedDate('2026-08-10T01:05:00Z');
-    result = updateMonitorState_({ temp: 31.5, hum: 50.0, press: 1013.0 });
+    result = updateMonitorState_({ temp: 29.8, hum: 50.0, press: 1013.0 });
     expect(result.states.temp.consecutive).toBe(2);
     expect(result.states.temp.alert).toBe(true);
     expect(result.notification).not.toBeNull();
-    expect(result.notification.text).toContain('31.5 ℃');
+    expect(result.notification.text).toContain('29.8 ℃');
   });
 
-  test('ヒステリシス判定: 30.0℃発火後、29.5℃以下になるまで通常状態に復帰しない', () => {
+  test('ヒステリシス判定: 29.0℃発火後、28.0℃以下になるまで通常状態に復帰しない', () => {
     global.Date = fixedDate('2026-08-10T01:00:00Z');
-    updateMonitorState_({ temp: 31.0, hum: 50.0, press: 1013.0 });
-    updateMonitorState_({ temp: 31.5, hum: 50.0, press: 1013.0 }); // alert active
+    updateMonitorState_({ temp: 29.5, hum: 50.0, press: 1013.0 });
+    updateMonitorState_({ temp: 29.8, hum: 50.0, press: 1013.0 }); // alert active
 
-    // 29.8℃ (30.0 未満だが 30.0 - 0.5 = 29.5 より高い) -> alert は維持
+    // 28.5℃ (29.0 未満だが 29.0 - 1.0 = 28.0 より高い) -> alert は維持
     global.Date = fixedDate('2026-08-10T02:10:00Z'); // クールダウン経過後
-    let result = updateMonitorState_({ temp: 29.8, hum: 50.0, press: 1013.0 });
+    let result = updateMonitorState_({ temp: 28.5, hum: 50.0, press: 1013.0 });
     expect(result.states.temp.alert).toBe(true);
     expect(result.states.temp.consecutive).toBe(0); // consecutive count はリセット
 
-    // 29.4℃ (29.5 以下) -> 通常状態に復帰
+    // 27.9℃ (28.0 以下) -> 通常状態に復帰
     global.Date = fixedDate('2026-08-10T02:15:00Z');
-    result = updateMonitorState_({ temp: 29.4, hum: 50.0, press: 1013.0 });
+    result = updateMonitorState_({ temp: 27.9, hum: 50.0, press: 1013.0 });
     expect(result.states.temp.alert).toBe(false);
     // 正常復帰時の通知は送信されないこと（廃止仕様）
     expect(result.notification).toBeNull();
   });
 
-  test('湿度（HUM）および不快指数（DI）のアラート発報とヒステリシス復帰', () => {
-    // 湿度 75% (> 70%) を2回連続
+  test('不快指数（DI）のアラート発報とヒステリシス復帰', () => {
+    // 湿度単独のアラートは100%設定により事実上無効化されたため、DIのヒステリシスのみを検証する。
     global.Date = fixedDate('2026-08-10T01:00:00Z');
-    updateMonitorState_({ temp: 25.0, hum: 75.0, press: 1013.0 });
-    let res = updateMonitorState_({ temp: 25.0, hum: 75.0, press: 1013.0 });
-    expect(res.states.hum.alert).toBe(true);
-    expect(res.notification).not.toBeNull();
 
-    // 湿度 68% (70%未満だが 70 - 5 = 65%より高い) -> アラート維持
-    res = updateMonitorState_({ temp: 25.0, hum: 68.0, press: 1013.0 });
-    expect(res.states.hum.alert).toBe(true);
-
-    // 湿度 64% (65%以下) -> 通常復帰
-    res = updateMonitorState_({ temp: 25.0, hum: 64.0, press: 1013.0 });
-    expect(res.states.hum.alert).toBe(false);
-
-    // 不快指数 82 (> 80) を2回連続
-    updateMonitorState_({ temp: 30.0, hum: 75.0, press: 1013.0 });
-    res = updateMonitorState_({ temp: 30.0, hum: 75.0, press: 1013.0 });
+    // 28.5℃ / 75% -> DI 79.82 (> 79.0) を2回連続で超過
+    updateMonitorState_({ temp: 28.5, hum: 75.0, press: 1013.0 });
+    let res = updateMonitorState_({ temp: 28.5, hum: 75.0, press: 1013.0 });
     expect(res.states.discomfortIndex.alert).toBe(true);
+
+    // 27.5℃ / 75% -> DI 78.27 (79.0以下だが 79.0 - 1.0 = 78.0より高い) -> アラート維持
+    // ※ 28.0℃ / 75% だと DI=79.04 となり、ヒステリシス幅(78.0〜79.0)ではなく単なる超過(>79.0)になってしまうため27.5℃を使用
+    res = updateMonitorState_({ temp: 27.5, hum: 75.0, press: 1013.0 });
+    expect(res.states.discomfortIndex.alert).toBe(true);
+
+    // 25.0℃ / 75% -> DI 74.34 (78.0以下) -> 通常復帰
+    res = updateMonitorState_({ temp: 25.0, hum: 75.0, press: 1013.0 });
+    expect(res.states.discomfortIndex.alert).toBe(false);
+  });
+
+  test('旧設定からの移行: 湿度単独アラート状態(hum.alert=true)が残存していても、新設定(100%)では安全にクリアされること', () => {
+    global.Date = fixedDate('2026-08-10T01:00:00Z');
+
+    // 以前の設定（閾値70%等）で湿度が超過し、alert=true の状態がPropertiesに保存されていると仮定する
+    env.propertiesStore.set('MONITOR_STATE_hum', JSON.stringify({ consecutive: 2, alert: true }));
+    // 気温とDIは正常
+    env.propertiesStore.set('MONITOR_STATE_temp', JSON.stringify({ consecutive: 0, alert: false }));
+    env.propertiesStore.set('MONITOR_STATE_discomfortIndex', JSON.stringify({ consecutive: 0, alert: false }));
+
+    // ケースA / B: 新しい閾値(100.0)のもとで、境界付近の95〜100%のデータを受信した場合
+    // 古い復帰条件(100 - 5 = 95%)に基づけば96%は「復帰未達」としてalert=trueが維持されそうになるが、
+    // 閾値100.0による無効化ロジックによって強制的にfalseへクリアされることを確認する。
+    const testHumidities = [95.0, 97.0, 99.0, 100.0];
+
+    testHumidities.forEach(humValue => {
+      // 一度手動でPropertiesを汚染状態に戻す
+      env.propertiesStore.set('MONITOR_STATE_hum', JSON.stringify({ consecutive: 2, alert: true }));
+      let res = updateMonitorState_({ temp: 25.0, hum: humValue, press: 1013.0 });
+      expect(res.states.hum.alert).toBe(false);
+      expect(res.states.hum.consecutive).toBe(0);
+      expect(res.notification).toBeNull();
+    });
+
+    // ケースC: 旧湿度アラートが残っている状態で、気温(またはDI)が新しく閾値を超えた場合
+    env.propertiesStore.set('MONITOR_STATE_hum', JSON.stringify({ consecutive: 2, alert: true }));
+    // 気温 29.5℃ (>29.0) を2回送信 -> 気温アラート発火
+    // 直前の測定値(100.0%)からの急変判定(deltaHum <= 30.0%)を避けるため、許容範囲内の湿度(75.0%)を使用
+    updateMonitorState_({ temp: 29.5, hum: 75.0, press: 1013.0 });
+    let res = updateMonitorState_({ temp: 29.5, hum: 75.0, press: 1013.0 });
+
+    // 湿度の古いアラートはクリアされつつ、気温のアラートは正常に処理・通知されること
+    expect(res.states.hum.alert).toBe(false);
+    expect(res.states.temp.alert).toBe(true);
+    expect(res.notification).not.toBeNull();
+  });
+
+  test('25.1℃ / 湿度 78% において、湿度単体トリガーが発火せず shouldAlert: false となること', () => {
+    // DI: 約74.9 なので正常範囲
+    global.Date = fixedDate('2026-08-10T01:00:00Z');
+    updateMonitorState_({ temp: 25.1, hum: 78.0, press: 1013.0 });
+    let res = updateMonitorState_({ temp: 25.1, hum: 78.0, press: 1013.0 });
+    // 気温・DI・湿度すべてアラートなし
+    expect(res.states.temp.alert).toBe(false);
+    expect(res.states.hum.alert).toBe(false);
+    expect(res.states.discomfortIndex.alert).toBe(false);
+    expect(res.notification).toBeNull();
+  });
+
+  test('28.5℃ / 湿度 75% で的確にアラートが発火すること (DI 79.8 > 79.0)', () => {
+    global.Date = fixedDate('2026-08-10T01:00:00Z');
+    updateMonitorState_({ temp: 28.5, hum: 75.0, press: 1013.0 });
+    let res = updateMonitorState_({ temp: 28.5, hum: 75.0, press: 1013.0 });
+    expect(res.states.discomfortIndex.alert).toBe(true);
+    expect(res.notification).not.toBeNull();
   });
 
   test('異常値検出（detectAnomaly_）: 気温・湿度・気圧の急変判定', () => {
