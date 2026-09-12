@@ -233,6 +233,41 @@ describe('Monitor State Transitions & Hysteresis (状態遷移とヒステリシ
     expect(res.states.discomfortIndex.alert).toBe(false);
   });
 
+  test('旧設定からの移行: 湿度単独アラート状態(hum.alert=true)が残存していても、新設定(100%)では安全にクリアされること', () => {
+    global.Date = fixedDate('2026-08-10T01:00:00Z');
+
+    // 以前の設定（閾値70%等）で湿度が超過し、alert=true の状態がPropertiesに保存されていると仮定する
+    env.propertiesStore.set('MONITOR_STATE_hum', JSON.stringify({ consecutive: 2, alert: true }));
+    // 気温とDIは正常
+    env.propertiesStore.set('MONITOR_STATE_temp', JSON.stringify({ consecutive: 0, alert: false }));
+    env.propertiesStore.set('MONITOR_STATE_discomfortIndex', JSON.stringify({ consecutive: 0, alert: false }));
+
+    // ケースA / B: 新しい閾値(100.0)のもとで、境界付近の95〜100%のデータを受信した場合
+    // 古い復帰条件(100 - 5 = 95%)に基づけば96%は「復帰未達」としてalert=trueが維持されそうになるが、
+    // 閾値100.0による無効化ロジックによって強制的にfalseへクリアされることを確認する。
+    const testHumidities = [95.0, 97.0, 99.0, 100.0];
+
+    testHumidities.forEach(humValue => {
+      // 一度手動でPropertiesを汚染状態に戻す
+      env.propertiesStore.set('MONITOR_STATE_hum', JSON.stringify({ consecutive: 2, alert: true }));
+      let res = updateMonitorState_({ temp: 25.0, hum: humValue, press: 1013.0 });
+      expect(res.states.hum.alert).toBe(false);
+      expect(res.states.hum.consecutive).toBe(0);
+      expect(res.notification).toBeNull();
+    });
+
+    // ケースC: 旧湿度アラートが残っている状態で、気温(またはDI)が新しく閾値を超えた場合
+    env.propertiesStore.set('MONITOR_STATE_hum', JSON.stringify({ consecutive: 2, alert: true }));
+    // 気温 29.5℃ (>29.0) を2回送信 -> 気温アラート発火
+    updateMonitorState_({ temp: 29.5, hum: 50.0, press: 1013.0 });
+    let res = updateMonitorState_({ temp: 29.5, hum: 50.0, press: 1013.0 });
+
+    // 湿度の古いアラートはクリアされつつ、気温のアラートは正常に処理・通知されること
+    expect(res.states.hum.alert).toBe(false);
+    expect(res.states.temp.alert).toBe(true);
+    expect(res.notification).not.toBeNull();
+  });
+
   test('25.1℃ / 湿度 78% において、湿度単体トリガーが発火せず shouldAlert: false となること', () => {
     // DI: 約74.9 なので正常範囲
     global.Date = fixedDate('2026-08-10T01:00:00Z');

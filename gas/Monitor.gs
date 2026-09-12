@@ -161,6 +161,13 @@ function updateMonitorState_(measurement) {
     discomfortIndex: evaluateConditionState_(currentStates.discomfortIndex, conditions.discomfortIndex, thresholds.discomfortIndex, smoothing)
   };
 
+  // 100.0% 以上の閾値設定は「湿度単体アラート無効」を意味するため、
+  // 既存の hum.alert=true 状態が残存していた場合はここで強制的にクリアする。
+  if (thresholds.hum.over >= 100.0) {
+    states.hum.alert = false;
+    states.hum.consecutive = 0;
+  }
+
   const isOverThreshold = states.temp.alert || states.hum.alert || states.discomfortIndex.alert;
   const dailyAlertInfo = loadDailyAlertInfo_(properties);
   const decision = resolveAlertDecision_(conditions, isOverThreshold, currentStates, properties, mergedConfig);
