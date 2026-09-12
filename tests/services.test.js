@@ -293,8 +293,10 @@ describe('ErrorLog & Config Management', () => {
     clearErrorLog_();
     expect(getErrorLogForTest_().length).toBe(0);
 
-    logError_('ingest', 'DATA', 'invalid_token', new Error('token mismatch with secret_value'));
-    logError_('linebot', 'reply', 'send_failed', new Error('Authorization: Bearer super-secret-token-123'));
+    suppressConsoleError(() => {
+      logError_('ingest', 'DATA', 'invalid_token', new Error('token mismatch with secret_value'));
+      logError_('linebot', 'reply', 'send_failed', new Error('Authorization: Bearer super-secret-token-123'));
+    });
 
     const logs = getErrorLogForTest_();
     expect(logs.length).toBe(2);
@@ -340,9 +342,11 @@ describe('ErrorLog & Config Management', () => {
 
   test('ErrorLog: 100件超過時のリングバッファ切り詰めおよびマスク処理', () => {
     clearErrorLog_();
-    for (let i = 0; i < 105; i++) {
-      logError_('test_op', 'target', `code_${i}`, `message ${i}`);
-    }
+    suppressConsoleError(() => {
+      for (let i = 0; i < 105; i++) {
+        logError_('test_op', 'target', `code_${i}`, `message ${i}`);
+      }
+    });
     const logs = getErrorLogForTest_();
     expect(logs.length).toBe(100);
     expect(logs[0].errorCode).toBe('code_5'); // 0〜4 は切り詰められた
@@ -355,23 +359,25 @@ describe('ErrorLog & Config Management', () => {
   });
 
   test('ErrorLog: 不正JSONプロパティおよび setProperty 例外時の安全なフォールバック', () => {
-    // 既存プロパティが壊れたJSON文字列の場合
-    env.propertiesStore.set('ERROR_LOG_ENTRIES', 'broken_json_string');
-    expect(() => logError_('test', 'target', 'code_1', 'msg')).not.toThrow();
-    expect(getErrorLogEntries_()).not.toBeNull();
+    suppressConsoleError(() => {
+      // 既存プロパティが壊れたJSON文字列の場合
+      env.propertiesStore.set('ERROR_LOG_ENTRIES', 'broken_json_string');
+      expect(() => logError_('test', 'target', 'code_1', 'msg')).not.toThrow();
+      expect(getErrorLogEntries_()).not.toBeNull();
 
-    // getErrorLogEntries_ のパース例外
-    env.propertiesStore.set('ERROR_LOG_ENTRIES', '{broken');
-    expect(getErrorLogEntries_()).toEqual([]);
+      // getErrorLogEntries_ のパース例外
+      env.propertiesStore.set('ERROR_LOG_ENTRIES', '{broken');
+      expect(getErrorLogEntries_()).toEqual([]);
 
-    // setProperty 自体が例外を投げる場合
-    const origSet = env.globals.PropertiesService.getScriptProperties().setProperty;
-    try {
-      env.globals.PropertiesService.getScriptProperties().setProperty = () => { throw new Error('Storage failed'); };
-      expect(() => logError_('test', 'target', 'code_fail', 'msg')).not.toThrow();
-    } finally {
-      env.globals.PropertiesService.getScriptProperties().setProperty = origSet;
-    }
+      // setProperty 自体が例外を投げる場合
+      const origSet = env.globals.PropertiesService.getScriptProperties().setProperty;
+      try {
+        env.globals.PropertiesService.getScriptProperties().setProperty = () => { throw new Error('Storage failed'); };
+        expect(() => logError_('test', 'target', 'code_fail', 'msg')).not.toThrow();
+      } finally {
+        env.globals.PropertiesService.getScriptProperties().setProperty = origSet;
+      }
+    });
   });
 });
 
@@ -407,11 +413,11 @@ describe('LineBot & Ingest Edge Cases', () => {
       customSheets: { DATA: null }
     });
     Object.assign(global, envBrokenIngest.globals);
-    const resInternal = handleSensorPost_({
+    const resInternal = suppressConsoleError(() => handleSensorPost_({
       postData: {
         contents: JSON.stringify({ api_version: 1, token: 'valid-token', temp: 25.0, press: 1010.0, hum: 50.0 })
       }
-    });
+    }));
     expect(JSON.parse(resInternal.getContent())).toEqual({ ok: false, error: 'internal_error' });
     const errorLogs = getErrorLogEntries_();
     expect(errorLogs.length).toBeGreaterThan(0);
@@ -422,11 +428,11 @@ describe('LineBot & Ingest Edge Cases', () => {
     const origLogError = global.logError_;
     try {
       delete global.logError_;
-      const resFallback = handleSensorPost_({
+      const resFallback = suppressConsoleError(() => handleSensorPost_({
         postData: {
           contents: JSON.stringify({ api_version: 1, token: 'valid-token', temp: 25.0, press: 1010.0, hum: 50.0 })
         }
-      });
+      }));
       expect(JSON.parse(resFallback.getContent())).toEqual({ ok: false, error: 'internal_error' });
     } finally {
       global.logError_ = origLogError;
@@ -434,12 +440,14 @@ describe('LineBot & Ingest Edge Cases', () => {
   });
 
   test('pushMessage_ および pushMessageObjects_ の引数バリデーション', () => {
-    expect(pushMessage_(null, 'test', 'tok')).toBe(false);
-    expect(pushMessageObjects_('', [], 'tok')).toBe(false);
-    expect(pushMessage_('user-1', 'test', '')).toBe(false);
+    suppressConsoleError(() => {
+      expect(pushMessage_(null, 'test', 'tok')).toBe(false);
+      expect(pushMessageObjects_('', [], 'tok')).toBe(false);
+      expect(pushMessage_('user-1', 'test', '')).toBe(false);
 
-    expect(replyMessage_('', 'test')).toBe(false);
-    expect(replyMessageObjects_(null, [])).toBe(false);
+      expect(replyMessage_('', 'test')).toBe(false);
+      expect(replyMessageObjects_(null, [])).toBe(false);
+    });
   });
 
   test('sendLineApiRequest_ の HTTP エラーハンドリング', () => {
@@ -455,37 +463,39 @@ describe('LineBot & Ingest Edge Cases', () => {
     Object.assign(global, env.globals);
     const validPayload = { api_version: 1, token: 'test-token', temp: 25.0, press: 1013.0, hum: 50.0 };
 
-    // 1. resetWatchdogState_ が例外を投げる場合
-    const origReset = global.resetWatchdogState_;
-    try {
-      global.resetWatchdogState_ = () => { throw new Error('reset_watchdog_simulated_error'); };
-      expect(() => checkAndAppendMeasurement_(validPayload, PropertiesService.getScriptProperties())).not.toThrow();
-    } finally {
-      global.resetWatchdogState_ = origReset;
-    }
+    suppressConsoleError(() => {
+      // 1. resetWatchdogState_ が例外を投げる場合
+      const origReset = global.resetWatchdogState_;
+      try {
+        global.resetWatchdogState_ = () => { throw new Error('reset_watchdog_simulated_error'); };
+        expect(() => checkAndAppendMeasurement_(validPayload, PropertiesService.getScriptProperties())).not.toThrow();
+      } finally {
+        global.resetWatchdogState_ = origReset;
+      }
 
-    // 2. updateMonitorState_ が例外を投げる場合
-    const origUpdate = global.updateMonitorState_;
-    try {
-      global.updateMonitorState_ = () => { throw new Error('update_monitor_simulated_error'); };
-      expect(() => checkAndAppendMeasurement_(validPayload, PropertiesService.getScriptProperties())).not.toThrow();
-    } finally {
-      global.updateMonitorState_ = origUpdate;
-    }
+      // 2. updateMonitorState_ が例外を投げる場合
+      const origUpdate = global.updateMonitorState_;
+      try {
+        global.updateMonitorState_ = () => { throw new Error('update_monitor_simulated_error'); };
+        expect(() => checkAndAppendMeasurement_(validPayload, PropertiesService.getScriptProperties())).not.toThrow();
+      } finally {
+        global.updateMonitorState_ = origUpdate;
+      }
 
-    // 3. pushMonitorNotification_ が例外を投げる場合 (updateMonitorState_ が notification を返す)
-    const origPush = global.pushMonitorNotification_;
-    try {
-      global.updateMonitorState_ = () => ({
-        anomaly: false,
-        notification: { text: 'Alert!' }
-      });
-      global.pushMonitorNotification_ = () => { throw new Error('push_simulated_error'); };
-      expect(() => checkAndAppendMeasurement_(validPayload, PropertiesService.getScriptProperties())).not.toThrow();
-    } finally {
-      global.updateMonitorState_ = origUpdate;
-      global.pushMonitorNotification_ = origPush;
-    }
+      // 3. pushMonitorNotification_ が例外を投げる場合 (updateMonitorState_ が notification を返す)
+      const origPush = global.pushMonitorNotification_;
+      try {
+        global.updateMonitorState_ = () => ({
+          anomaly: false,
+          notification: { text: 'Alert!' }
+        });
+        global.pushMonitorNotification_ = () => { throw new Error('push_simulated_error'); };
+        expect(() => checkAndAppendMeasurement_(validPayload, PropertiesService.getScriptProperties())).not.toThrow();
+      } finally {
+        global.updateMonitorState_ = origUpdate;
+        global.pushMonitorNotification_ = origPush;
+      }
+    });
   });
 
   test('Ingest: setNumberFormat が例外をスローしても（型付き列など）データ追記と更新が成功する', () => {
@@ -509,9 +519,9 @@ describe('LineBot & Ingest Edge Cases', () => {
       hum: 52.3
     };
 
-    const res = handleSensorPost_({
+    const res = suppressConsoleError(() => handleSensorPost_({
       postData: { contents: JSON.stringify(payload) }
-    });
+    }));
     expect(JSON.parse(res.getContent())).toEqual({ ok: true });
     expect(env.dataRows.length).toBe(initialRowCount + 1);
 
@@ -556,7 +566,7 @@ describe('LineBot & Ingest Edge Cases', () => {
     const origUrl = global.buildQuickChartUrl;
     try {
       global.buildQuickChartUrl = () => { throw new Error('QuickChart URL generation failed'); };
-      const msgErr = buildGraphMessage_();
+      const msgErr = suppressConsoleError(() => buildGraphMessage_());
       expect(msgErr[0].text).toContain('不足しています');
     } finally {
       global.buildQuickChartUrl = origUrl;
@@ -593,16 +603,18 @@ describe('LineBot & Ingest Edge Cases', () => {
   test('Ingest: checkAndAppendMeasurement_ の設定不足・シート未検出例外', () => {
     const validPayload = { api_version: 1, token: 'test-token', temp: 25.0, press: 1013.0, hum: 50.0 };
 
-    // SPREADSHEET_ID 欠損
-    const envNoSheetId = createGasMockEnvironment();
-    envNoSheetId.propertiesStore.delete('SPREADSHEET_ID');
-    Object.assign(global, envNoSheetId.globals);
-    expect(() => checkAndAppendMeasurement_(validPayload, PropertiesService.getScriptProperties())).toThrow('missing spreadsheet configuration');
+    suppressConsoleError(() => {
+      // SPREADSHEET_ID 欠損
+      const envNoSheetId = createGasMockEnvironment();
+      envNoSheetId.propertiesStore.delete('SPREADSHEET_ID');
+      Object.assign(global, envNoSheetId.globals);
+      expect(() => checkAndAppendMeasurement_(validPayload, PropertiesService.getScriptProperties())).toThrow('missing spreadsheet configuration');
 
-    // シート未検出
-    const envNoData = createGasMockEnvironment({ customSheets: { DATA: null } });
-    Object.assign(global, envNoData.globals);
-    expect(() => checkAndAppendMeasurement_(validPayload, PropertiesService.getScriptProperties())).toThrow('sheet not found');
+      // シート未検出
+      const envNoData = createGasMockEnvironment({ customSheets: { DATA: null } });
+      Object.assign(global, envNoData.globals);
+      expect(() => checkAndAppendMeasurement_(validPayload, PropertiesService.getScriptProperties())).toThrow('sheet not found');
+    });
   });
 
   test('Ingest: モニター通知および anomaly フラグが DATA シートに記録される', () => {
@@ -689,21 +701,23 @@ describe('LineBot & Ingest Edge Cases', () => {
     });
     Object.assign(global, testEnv.globals);
 
-    // 1. LINE_CHANNEL_ACCESS_TOKEN 欠損
-    testEnv.propertiesStore.delete('LINE_CHANNEL_ACCESS_TOKEN');
-    expect(pushMonitorNotification_('test')).toBe(false);
+    suppressConsoleError(() => {
+      // 1. LINE_CHANNEL_ACCESS_TOKEN 欠損
+      testEnv.propertiesStore.delete('LINE_CHANNEL_ACCESS_TOKEN');
+      expect(pushMonitorNotification_('test')).toBe(false);
 
-    // 2. HTTP 500 エラー
-    testEnv.propertiesStore.set('LINE_CHANNEL_ACCESS_TOKEN', 'test-token');
-    testEnv.globals.UrlFetchApp.fetch = () => ({
-      getResponseCode: () => 500,
-      getContentText: () => 'Server error'
+      // 2. HTTP 500 エラー
+      testEnv.propertiesStore.set('LINE_CHANNEL_ACCESS_TOKEN', 'test-token');
+      testEnv.globals.UrlFetchApp.fetch = () => ({
+        getResponseCode: () => 500,
+        getContentText: () => 'Server error'
+      });
+      expect(pushMonitorNotification_('test')).toBe(false);
+
+      // 3. fetch 例外
+      testEnv.globals.UrlFetchApp.fetch = () => { throw new Error('Network failure'); };
+      expect(pushMonitorNotification_('test')).toBe(false);
     });
-    expect(pushMonitorNotification_('test')).toBe(false);
-
-    // 3. fetch 例外
-    testEnv.globals.UrlFetchApp.fetch = () => { throw new Error('Network failure'); };
-    expect(pushMonitorNotification_('test')).toBe(false);
   });
 
   test('LineBot: buildGraphMessage_ のシートフォールバック（2026 / activeSheet / 例外）', () => {
@@ -717,7 +731,7 @@ describe('LineBot & Ingest Edge Cases', () => {
 
     // 1. SpreadsheetApp.openById が例外を投げる場合
     testEnv.globals.SpreadsheetApp.openById = () => { throw new Error('Open failed'); };
-    let msg = buildGraphMessage_();
+    let msg = suppressConsoleError(() => buildGraphMessage_());
     expect(msg[0].text).toContain('不足しています');
 
     // 2. DATA シートがなく 2026 シートがある場合
@@ -802,7 +816,7 @@ describe('LineBot & Ingest Edge Cases', () => {
     envBroken.globals.SpreadsheetApp.openById = () => { throw new Error('Simulated crash'); };
     Object.assign(global, envBroken.globals);
 
-    const res = doGet();
+    const res = suppressConsoleError(() => doGet());
     expect(JSON.parse(res.getContent())).toEqual({ ok: false, ready: false, error: 'not_ready' });
   });
 
@@ -847,10 +861,12 @@ describe('LineBot & Ingest Edge Cases', () => {
     };
     Object.assign(global, testEnv.globals);
 
-    handleTextMessageEvent_({
-      replyToken: 'tok-err',
-      message: { type: 'text', text: 'SNOOZE' }
-    }, 'test-token');
+    suppressConsoleError(() => {
+      handleTextMessageEvent_({
+        replyToken: 'tok-err',
+        message: { type: 'text', text: 'SNOOZE' }
+      }, 'test-token');
+    });
 
     expect(testEnv.fetchedRequests.length).toBe(1);
     const reqPayload = JSON.parse(testEnv.fetchedRequests[0].options.payload);
@@ -914,7 +930,9 @@ describe('SetupTriggers & DebugTest Handlers', () => {
     expect(() => debugTest_showErrorLogs()).not.toThrow();
 
     // 2. エラーを1件記録して表示
-    logError_('test_op', 'test_target', 'test_code', new Error('test error'));
+    suppressConsoleError(() => {
+      logError_('test_op', 'test_target', 'test_code', new Error('test error'));
+    });
     expect(() => debugTest_showErrorLogs()).not.toThrow();
 
     // 3. clearErrorLogs
@@ -944,7 +962,9 @@ describe('SetupTriggers & DebugTest Handlers', () => {
     const origOpen = SpreadsheetApp.openById;
     SpreadsheetApp.openById = () => { throw new Error('spreadsheet open failed with token valid-test-token'); };
     const errLogCountBefore = env.logEntries.length;
-    expect(() => debugTest_simulateSensorPost()).not.toThrow();
+    suppressConsoleError(() => {
+      expect(() => debugTest_simulateSensorPost()).not.toThrow();
+    });
     const errLogs = env.logEntries.slice(errLogCountBefore);
     expect(errLogs.some(log => typeof log === 'string' && log.includes('valid-test-token'))).toBe(false);
     SpreadsheetApp.openById = origOpen;

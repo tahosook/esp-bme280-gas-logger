@@ -72,8 +72,10 @@ curl -L -sS -X POST "$GAS_URL" \
 GASコードのローカル検証は Node.js 20+ と Jest による単体テストスイート、および ESLint を使用して実行します。
 
 ```sh
+npm run verify        # 作業完了時の一括検証（Lint + git diff + カバレッジ）
 npm test              # 単体テスト実行（Jest）
-npm run test:coverage # カバレッジ測定（カバレッジ閾値の自動判定）
+npm test -- <pattern> # 特定テストの高速実行（例: npm test -- alert）
+npm run test:watch    # 開発中の変更監視テスト
 npm run lint          # ESLint検査（complexity 12 基準）
 ```
 

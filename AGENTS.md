@@ -154,7 +154,7 @@ flowchart LR
    - 変更を最小限のスコープに留める。
    - ロジックを純粋関数化し、対応する Jest ユニットテストを `tests/` に追加・更新する。
 4. **Verify (検証)**:
-   - 変更後に静的解析（ESLint）および全テストスイートを実行し、エラーやカバレッジ低下がないことを検証する。
+   - 変更後に `npm run verify` を実行し、静的解析・差分フォーマット・テスト全件成功・カバレッジ維持を 1 発で一括検証する。
 
 ### エージェントの役割分担
 - **対話型エージェント (Interactive Agents: Antigravity, Claude Code 等)**:
@@ -170,31 +170,29 @@ flowchart LR
 
 Pull Request の完了およびタスク完了を認めるための定量的基準:
 
-1. **静的解析**:
-   - `npm run lint` が exit code 0 でパスすること（ESLint 警告・エラーなし）。
-2. **テスト通過**:
-   - `npm test` が exit code 0 でパスすること（全テストスイート 100% 成功）。
-3. **テストカバレッジ**:
-   - `npm run test:coverage` が exit code 0 でパスすること。
-   - `jest.config.js` に定められた全体閾値をすべて満たすこと:
-     - **Branches**: 80% 以上
-     - **Functions**: 85% 以上
-     - **Lines**: 85% 以上
-     - **Statements**: 85% 以上
-   - 既存のカバレッジ閾値を引き下げないこと。
-4. **差分と安全性の確認**:
-   - `git diff --check` で不要な空白・改行不整合がないこと。
-   - シークレットの混入がないこと。
+1. **品質検証ゲート (`npm run verify`)**:
+   - `npm run verify` が exit code 0 でパスすること。
+     - **静的解析**: `npm run lint` が警告・エラーなし（ESLint, complexity 閾値: 12）。
+     - **空白・改行**: `git diff --check` で不要な末尾空白や改行不整合がないこと。
+     - **テスト全件成功**: `tests/*.test.js` 全件 100% 成功。
+     - **カバレッジ閾値**: `jest.config.js` の全体閾値をすべて満たすこと（引き下げ禁止）:
+       - **Branches**: 80% 以上
+       - **Functions**: 85% 以上
+       - **Lines**: 85% 以上
+       - **Statements**: 85% 以上
+2. **安全性と差分の確認**:
+   - シークレット（Wi-Fi パスワード、API トークン、LINE シークレット等）の混入がないこと。
    - スコープ外のファイルへの意図しない変更がないこと。
 
 ### Essential Commands Summary
 ```bash
-npm test              # Run Jest unit test suite
-npm run test:coverage # Enforce coverage thresholds (branches: 80%, others: 85%)
+npm run verify        # Complete verification gate (lint + git diff --check + test:coverage)
+npm test              # Run Jest unit test suite (normal test execution)
+npm test -- <pattern> # Run specific test file (e.g. npm test -- alert)
+npm run test:watch    # Watch mode for fast feedback during development
 npm run lint          # Check ESLint rules (complexity threshold: 12)
 npm run deploy:status # Check current GAS deployment status and version
-npm run deploy        # Automated full deployment (test + lint + push + version + redeploy + smoke test)
-git diff --check      # Check for whitespace and line break issues
+npm run deploy        # Automated full deployment (verify + push + version + redeploy + smoke test)
 ```
 
 ---

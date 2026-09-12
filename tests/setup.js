@@ -11,9 +11,11 @@ if (require.extensions) {
 
 // GAS グローバルモックのデフォルト定義
 const { createGasMockEnvironment } = require('./helpers/mockGasEnvironment');
+const { suppressConsoleError } = require('./helpers/testUtils');
 const defaultEnv = createGasMockEnvironment();
 
 Object.assign(global, defaultEnv.globals);
+global.suppressConsoleError = suppressConsoleError;
 
 // GAS モジュール群のロード
 const Config = require('../gas/Config.gs');
