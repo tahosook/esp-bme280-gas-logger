@@ -4,11 +4,12 @@
  * scripts/deploy.js
  *
  * GAS 本番デプロイ自動化スクリプト
- * 1. 事前検証 (npm test & npm run lint)
- * 2. コードプッシュ (clasp push --force)
- * 3. バージョン作成 (clasp version)
- * 4. 既存本番デプロイの更新 (clasp redeploy <deploymentId>)
- * 5. Web アプリ GET スモークテスト (https://script.google.com/macros/s/<deploymentId>/exec)
+ * 1. 事前検証: ユニットテスト (npm test)
+ * 2. 事前検証: 静的解析 (npm run lint)
+ * 3. コードプッシュ (clasp push --force)
+ * 4. バージョン作成 (clasp version)
+ * 5. 既存本番デプロイの更新 (clasp redeploy <deploymentId>)
+ * 6. Web アプリ GET スモークテスト (https://script.google.com/macros/s/<deploymentId>/exec)
  */
 
 const { execSync, execFileSync } = require('child_process');
@@ -55,13 +56,28 @@ function parseArgs(args = process.argv.slice(2)) {
  */
 function buildVersionDescription(execFn = execSync) {
   try {
+    let branch = 'main';
+    try {
+      const branchOut = execFn('git rev-parse --abbrev-ref HEAD', {
+        cwd: ROOT_DIR,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'ignore']
+      }).trim();
+      // 改行や空白を含まない正当なブランチ名の場合に採用
+      if (branchOut && !branchOut.includes('\n') && !branchOut.includes(' ')) {
+        branch = branchOut;
+      }
+    } catch (_e) {
+      branch = 'main';
+    }
+
     const raw = execFn('git log -1 --format="%h - %s"', {
       cwd: ROOT_DIR,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'ignore']
     }).trim();
     const clean = raw.replace(/[\r\n]+/g, ' ');
-    const desc = `production update from main ${clean}`;
+    const desc = `production update from ${branch} ${clean}`;
     return desc.length > 100 ? desc.slice(0, 97) + '...' : desc;
   } catch (_e) {
     const nowStr = new Date().toISOString();
@@ -107,6 +123,10 @@ function runSmokeTest(url, timeoutMs = 15000, maxRedirects = 5) {
         data += chunk;
       });
       res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`Smoke test request failed with HTTP status ${res.statusCode}: ${data.slice(0, 100)}`));
+          return;
+        }
         try {
           const json = JSON.parse(data);
           if (json.ok === true && json.ready === true) {
@@ -148,24 +168,24 @@ async function runDeployPipeline(options, deps = {}) {
 
   // Step 1: 事前検証 (Tests)
   if (!options.skipTests) {
-    logFn('\n[Step 1/5] 🧪 テストを実行中 (npm test)...');
+    logFn('\n[Step 1/6] 🧪 テストを実行中 (npm test)...');
     execFn('npm test', { cwd: ROOT_DIR, stdio: 'inherit' });
     logFn('✅ テストに合格しました');
   } else {
-    logFn('\n[Step 1/5] 🧪 テスト実行をスキップしました (--skip-tests)');
+    logFn('\n[Step 1/6] 🧪 テスト実行をスキップしました (--skip-tests)');
   }
 
   // Step 2: 事前検証 (Lint)
   if (!options.skipLint) {
-    logFn('\n[Step 2/5] 🔍 コード解析を実行中 (npm run lint)...');
+    logFn('\n[Step 2/6] 🔍 コード解析を実行中 (npm run lint)...');
     execFn('npm run lint', { cwd: ROOT_DIR, stdio: 'inherit' });
     logFn('✅ Lint チェックに合格しました');
   } else {
-    logFn('\n[Step 2/5] 🔍 Lint チェックをスキップしました (--skip-lint)');
+    logFn('\n[Step 2/6] 🔍 Lint チェックをスキップしました (--skip-lint)');
   }
 
   // Step 3: clasp push
-  logFn('\n[Step 3/5] 📤 リモートへコードをプッシュ中 (clasp push --force)...');
+  logFn('\n[Step 3/6] 📤 リモートへコードをプッシュ中 (clasp push --force)...');
   if (!options.dryRun) {
     execFileFn('clasp', ['push', '--force'], { cwd: GAS_DIR, stdio: 'inherit' });
     logFn('✅ コードプッシュ完了');
@@ -175,7 +195,7 @@ async function runDeployPipeline(options, deps = {}) {
   }
 
   // Step 4: バージョン作成
-  logFn('\n[Step 4/5] 🏷️ 新しいスクリプトバージョンを作成中 (clasp version)...');
+  logFn('\n[Step 4/6] 🏷️ 新しいスクリプトバージョンを作成中 (clasp version)...');
   const description = buildVersionDescription(execFn);
   logFn(`   バージョン説明: "${description}"`);
 
@@ -196,7 +216,7 @@ async function runDeployPipeline(options, deps = {}) {
 
   // Step 5: 既存デプロイの更新 (Redeploy)
   const versionDisplay = options.dryRun ? '<生成予定>' : `@${newVersionNumber}`;
-  logFn(`\n[Step 5/5] 🔄 本番 Web アプリデプロイを更新中 (${versionDisplay})...`);
+  logFn(`\n[Step 5/6] 🔄 本番 Web アプリデプロイを更新中 (${versionDisplay})...`);
   const deployDesc = `production update ${versionDisplay} - ${description}`;
 
   if (!options.dryRun) {
@@ -215,7 +235,7 @@ async function runDeployPipeline(options, deps = {}) {
   // Step 6: スモークテスト
   const webAppUrl = `https://script.google.com/macros/s/${options.deploymentId}/exec`;
   if (!options.skipSmokeTest && !options.dryRun) {
-    logFn(`\n🔎 [Smoke Test] Web アプリ導通確認を実行中...`);
+    logFn(`\n[Step 6/6] 🔎 Web アプリ導通確認を実行中 (Smoke Test)...`);
     logFn(`   URL: ${webAppUrl}`);
     try {
       const result = await smokeTestFn(webAppUrl);
@@ -225,9 +245,9 @@ async function runDeployPipeline(options, deps = {}) {
       throw new Error(`デプロイ後のスモークテストに失敗しました: ${err.message}`);
     }
   } else if (options.skipSmokeTest) {
-    logFn('\n🔎 [Smoke Test] スモークテストをスキップしました (--skip-smoke-test)');
+    logFn('\n[Step 6/6] 🔎 スモークテストをスキップしました (--skip-smoke-test)');
   } else {
-    logFn(`\n🔎 [Smoke Test] [DRY-RUN] Web アプリ導通確認をシミュレート (${webAppUrl})`);
+    logFn(`\n[Step 6/6] 🔎 [DRY-RUN] Web アプリ導通確認をシミュレート (${webAppUrl})`);
   }
 
   logFn('\n🎉 デプロイが正常に完了しました！');

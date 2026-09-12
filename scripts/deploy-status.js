@@ -40,7 +40,7 @@ function getVersions(execFn = execSync) {
     });
     return JSON.parse(stdout);
   } catch (_err) {
-    return [];
+    return null;
   }
 }
 
@@ -54,14 +54,14 @@ function getUncommittedGasChanges(execFn = execSync) {
     if (!stdout) return [];
     return stdout.split('\n').map((line) => line.trim()).filter(Boolean);
   } catch (_e) {
-    return [];
+    return null;
   }
 }
 
 function extractCommitHashFromDescription(text) {
   if (typeof text !== 'string') return null;
   // "production update from main 35f727e" または単独の 7〜40文字の16進ハッシュを抽出
-  const match = text.match(/(?:from main\s+|@\d+\s+-\s+|\[)([0-9a-f]{7,40})/i) ||
+  const match = text.match(/(?:from \S+\s+|@\d+\s+-\s+|\[)([0-9a-f]{7,40})/i) ||
                 text.match(/\b([0-9a-f]{7,40})\b/i);
   return match ? match[1] : null;
 }
@@ -89,20 +89,43 @@ function getGasDiffSinceCommit(commitHash, execFn = execSync) {
 }
 
 function checkStatus(targetId = DEFAULT_DEPLOYMENT_ID, execFn = execSync) {
-  const deployments = getDeployments(execFn);
-  const target = deployments.find((d) => d.deploymentId === targetId) || null;
+  let deployments = null;
+  try {
+    deployments = getDeployments(execFn);
+  } catch (_e) {
+    deployments = null;
+  }
   const versions = getVersions(execFn);
   const uncommittedFiles = getUncommittedGasChanges(execFn);
+
+  // 外部コマンドの実行に失敗した場合は UP_TO_DATE や DEPLOYMENT_NOT_FOUND と誤認させず COMMAND_FAILED とする
+  if (deployments === null || versions === null || uncommittedFiles === null) {
+    return {
+      targetId,
+      deployment: null,
+      versionDetail: null,
+      deployedHash: null,
+      uncommittedFiles: uncommittedFiles || [],
+      diffFiles: null,
+      statusReason: 'COMMAND_FAILED',
+      isDeployedMatch: false
+    };
+  }
+
+  const target = deployments.find((d) => d.deploymentId === targetId) || null;
 
   let versionDetail = null;
   if (target && target.versionNumber) {
     versionDetail = versions.find((v) => v.versionNumber === target.versionNumber) || null;
   }
 
-  // デプロイ説明文またはバージョン説明文からデプロイされたコミットハッシュを抽出
-  const deployedHash = extractCommitHashFromDescription(
-    (versionDetail && versionDetail.description) || (target && target.description) || ''
-  );
+  // 1. version detail の description から hash を探す
+  // 2. 見つからなければ deployment description から hash を探す
+  // 3. 両方になければ null (-> NO_COMMIT_HASH_IN_DEPLOYMENT)
+  let deployedHash = versionDetail ? extractCommitHashFromDescription(versionDetail.description) : null;
+  if (!deployedHash && target) {
+    deployedHash = extractCommitHashFromDescription(target.description);
+  }
 
   const diffFiles = deployedHash ? getGasDiffSinceCommit(deployedHash, execFn) : null;
 
@@ -156,6 +179,8 @@ function main() {
       if (status.versionDetail && status.versionDetail.description) {
         console.log(`🔖 バージョン詳細:  ${status.versionDetail.description}`);
       }
+    } else if (status.statusReason === 'COMMAND_FAILED') {
+      console.log(`⚠️  外部コマンドの実行に失敗したため、デプロイ情報を取得できませんでした。`);
     } else {
       console.log(`⚠️  指定のデプロイ ID が見つかりませんでした。`);
     }
@@ -167,7 +192,7 @@ function main() {
       console.log(`📦 デプロイ時コミット: (説明文からハッシュを特定できませんでした)`);
     }
 
-    if (status.uncommittedFiles.length > 0) {
+    if (status.uncommittedFiles && status.uncommittedFiles.length > 0) {
       console.log(`⚠️  gas/ の未コミット変更 (${status.uncommittedFiles.length} 件):`);
       status.uncommittedFiles.forEach((f) => console.log(`   - ${f}`));
     }
@@ -200,6 +225,9 @@ function main() {
         break;
       case 'DEPLOYMENT_NOT_FOUND':
         console.log('❌ 【エラー】指定されたデプロイ ID が見つかりません。');
+        break;
+      case 'COMMAND_FAILED':
+        console.log('❌ 【エラー】外部コマンド（git / clasp）の実行に失敗したため、デプロイ状態を判定できませんでした。');
         break;
       default:
         console.log('⚠️ 【要確認】デプロイ状態の照合ができませんでした。');
