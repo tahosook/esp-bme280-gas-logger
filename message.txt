@@ -1,8 +1,0 @@
-chore: tune alert thresholds for ac usage
-
-Updated temperature, humidity, and discomfort index thresholds and hysteresis ranges to optimize for early air conditioning operation, avoiding unnecessary alerts during humid/rainy periods. Updated test suites and documentation to reflect and assert the new configuration logic perfectly.
-
-fix: prevent persistent humidity alerts on threshold change
-
-In addition to tuning alert thresholds for ac usage, this resolves a persistent state issue. By setting `MONITOR_HUM_OVER` to `100.0` to disable humidity alerts, an existing `hum.alert = true` state could get stuck because normal humidity (e.g., 95-100%) falls between the new trigger and recovery bounds.
-This adds a check in `updateMonitorState_` to forcibly clear the humidity state if the threshold is configured to be disabled (>= 100.0), alongside regression tests simulating the legacy properties.

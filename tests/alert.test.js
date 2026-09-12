@@ -219,16 +219,17 @@ describe('Monitor State Transitions & Hysteresis (状態遷移とヒステリシ
     // 湿度単独のアラートは100%設定により事実上無効化されたため、DIのヒステリシスのみを検証する。
     global.Date = fixedDate('2026-08-10T01:00:00Z');
 
-    // 不快指数 79.5 (> 79.0) を2回連続
+    // 28.5℃ / 75% -> DI 79.82 (> 79.0) を2回連続で超過
     updateMonitorState_({ temp: 28.5, hum: 75.0, press: 1013.0 });
     let res = updateMonitorState_({ temp: 28.5, hum: 75.0, press: 1013.0 });
     expect(res.states.discomfortIndex.alert).toBe(true);
 
-    // 不快指数 78.5 (79.0以下だが 79.0 - 1.0 = 78.0より高い) -> アラート維持
-    res = updateMonitorState_({ temp: 28.0, hum: 75.0, press: 1013.0 });
+    // 27.5℃ / 75% -> DI 78.27 (79.0以下だが 79.0 - 1.0 = 78.0より高い) -> アラート維持
+    // ※ 28.0℃ / 75% だと DI=79.04 となり、ヒステリシス幅(78.0〜79.0)ではなく単なる超過(>79.0)になってしまうため27.5℃を使用
+    res = updateMonitorState_({ temp: 27.5, hum: 75.0, press: 1013.0 });
     expect(res.states.discomfortIndex.alert).toBe(true);
 
-    // 不快指数 77.0 (78.0以下) -> 通常復帰
+    // 25.0℃ / 75% -> DI 74.34 (78.0以下) -> 通常復帰
     res = updateMonitorState_({ temp: 25.0, hum: 75.0, press: 1013.0 });
     expect(res.states.discomfortIndex.alert).toBe(false);
   });
