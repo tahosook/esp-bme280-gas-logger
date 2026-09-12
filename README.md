@@ -43,15 +43,17 @@ APIバージョンは`1`から開始し、スプレッドシートの日時はGA
 
 1. 作業ごとにタスクブランチ（`feat/*`, `fix/*`, `task/*` など）を作成する
 2. 1つの目的に絞って変更する
-3. ローカル検証（`npm test`, `npm run test:coverage`, `npm run lint`）と差分レビューを行う
+3. ローカル検証（`npm run verify`）と差分レビューを行う
 4. Pull Requestを作成する
 5. 確認後に`main`へマージする
 
 テスト実行環境として Node.js 20+ と Jest を使用しています。
 
 ```sh
-npm test              # 単体テスト実行
-npm run test:coverage # カバレッジ測定
+npm run verify        # 作業完了時の一括検証（Lint + git diff + カバレッジ）
+npm test              # 単体テスト実行（開発時）
+npm test -- <pattern> # 特定テストの高速実行（例: npm test -- alert）
+npm run test:watch    # 開発中の変更監視テスト
 npm run lint          # ESLint検査
 ```
 

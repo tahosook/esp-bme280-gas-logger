@@ -51,9 +51,10 @@ flowchart LR
 2. **Secret scan**:
    - `secrets.h` や `.clasp.json` 等の秘密情報ファイルが git 管理されていないこと。
    - `secrets.example.h` にプレースホルダー以外の実値が含まれていないこと。
-3. **GAS Jest unit tests & coverage**:
+3. **GAS Jest unit tests & coverage (`npm run verify`)**:
+   - `npm run verify` により、静的解析・作業ツリー差分チェック・全件テスト・カバレッジ閾値検査が一括で exit code 0 でパスすること。
    - **静的解析**: `npm run lint`（ESLint, complexity 閾値: 12）が警告・エラーなしでパスすること。
-   - **テスト全件成功**: `npm test` が 100% 成功すること。
+   - **テスト全件成功**: `tests/*.test.js` が 100% 成功すること。
    - **カバレッジ閾値**: `npm run test:coverage` が以下の `jest.config.js` 全体閾値を満たすこと:
      - **Branches**: 80% 以上
      - **Functions**: 85% 以上

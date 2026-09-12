@@ -23,6 +23,7 @@ describe('scripts/deploy.js', () => {
   describe('parseArgs', () => {
     test('デフォルトオプションが正しく設定される', () => {
       const opts = parseArgs([]);
+      expect(opts.skipVerify).toBe(false);
       expect(opts.skipTests).toBe(false);
       expect(opts.skipLint).toBe(false);
       expect(opts.skipSmokeTest).toBe(false);
@@ -32,24 +33,28 @@ describe('scripts/deploy.js', () => {
 
     test('CLI オプションフラグが正しく反映される', () => {
       const opts = parseArgs([
-        '--skip-tests',
-        '--skip-lint',
+        '--skip-verify',
         '--skip-smoke-test',
         '--dry-run',
         '--deployment-id',
         'custom-id'
       ]);
-      expect(opts.skipTests).toBe(true);
-      expect(opts.skipLint).toBe(true);
+      expect(opts.skipVerify).toBe(true);
       expect(opts.skipSmokeTest).toBe(true);
       expect(opts.dryRun).toBe(true);
       expect(opts.deploymentId).toBe('custom-id');
     });
 
-    test('エイリアスフラグ (--skip-test, --skip-smoke) が正しく反映される', () => {
-      const opts = parseArgs(['--skip-test', '--skip-smoke']);
-      expect(opts.skipTests).toBe(true);
-      expect(opts.skipSmokeTest).toBe(true);
+    test('後方互換フラグ (--skip-tests, --skip-lint, --skip-test, --skip-smoke) が正しく反映される', () => {
+      const opts1 = parseArgs(['--skip-tests', '--skip-lint']);
+      expect(opts1.skipVerify).toBe(true);
+      expect(opts1.skipTests).toBe(true);
+      expect(opts1.skipLint).toBe(true);
+
+      const opts2 = parseArgs(['--skip-test', '--skip-smoke']);
+      expect(opts2.skipVerify).toBe(true);
+      expect(opts2.skipTests).toBe(true);
+      expect(opts2.skipSmokeTest).toBe(true);
     });
   });
 
@@ -264,7 +269,7 @@ describe('scripts/deploy.js', () => {
       mockErrFn = jest.fn();
     });
 
-    test('正常系: テスト、Lint、Push、Version、Redeploy、SmokeTest が順序通り呼び出される', async () => {
+    test('正常系: Verify、Push、Version、Redeploy、SmokeTest が順序通り呼び出される', async () => {
       // version 作成の出力をモック
       mockExecFileFn.mockImplementation((cmd, args) => {
         if (cmd === 'clasp' && args[0] === 'version') {
@@ -279,8 +284,7 @@ describe('scripts/deploy.js', () => {
       mockExecFn.mockReturnValue('abcdef1 - fix something');
 
       const options = {
-        skipTests: false,
-        skipLint: false,
+        skipVerify: false,
         skipSmokeTest: false,
         dryRun: false,
         deploymentId: 'dep-1'
@@ -298,37 +302,33 @@ describe('scripts/deploy.js', () => {
       expect(result.versionNumber).toBe(30);
 
       // 呼び出し順序と引数の検証
-      // 1. npm test
-      expect(mockExecFn).toHaveBeenNthCalledWith(1, 'npm test', expect.objectContaining({ stdio: 'inherit' }));
-      // 2. npm run lint
-      expect(mockExecFn).toHaveBeenNthCalledWith(2, 'npm run lint', expect.objectContaining({ stdio: 'inherit' }));
-      // 3. clasp push --force
+      // 1. npm run verify
+      expect(mockExecFn).toHaveBeenNthCalledWith(1, 'npm run verify', expect.objectContaining({ stdio: 'inherit' }));
+      // 2. clasp push --force
       expect(mockExecFileFn).toHaveBeenNthCalledWith(1, 'clasp', ['push', '--force'], expect.any(Object));
-      // 4. clasp version
+      // 3. clasp version
       expect(mockExecFileFn).toHaveBeenNthCalledWith(2, 'clasp', ['version', expect.any(String)], expect.any(Object));
-      // 5. clasp redeploy
+      // 4. clasp redeploy
       expect(mockExecFileFn).toHaveBeenNthCalledWith(
         3,
         'clasp',
         ['redeploy', 'dep-1', '-V', '30', '-d', expect.stringContaining('@30')],
         expect.any(Object)
       );
-      // 6. smoke test
+      // 5. smoke test
       expect(mockSmokeTestFn).toHaveBeenCalledWith('https://script.google.com/macros/s/dep-1/exec');
 
-      // 全 6 ステップの進捗ログが出力されていること
-      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 1/6]'));
-      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 2/6]'));
-      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 3/6]'));
-      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 4/6]'));
-      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 5/6]'));
-      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 6/6]'));
+      // 全 5 ステップの進捗ログが出力されていること
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 1/5]'));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 2/5]'));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 3/5]'));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 4/5]'));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('[Step 5/5]'));
     });
 
-    test('--dry-run モード: テストと Lint は実行されるが、変更系コマンド (push/version/redeploy/smokeTest) は一切実行されない', async () => {
+    test('--dry-run モード: Verify は実行されるが、変更系コマンド (push/version/redeploy/smokeTest) は一切実行されない', async () => {
       const options = {
-        skipTests: false,
-        skipLint: false,
+        skipVerify: false,
         skipSmokeTest: false,
         dryRun: true,
         deploymentId: 'dep-1'
@@ -346,24 +346,22 @@ describe('scripts/deploy.js', () => {
       expect(result.dryRun).toBe(true);
       expect(result.versionNumber).toBeNull(); // 999 などの架空の番号が入っていないこと
 
-      // npm test と lint は呼ばれる
-      expect(mockExecFn).toHaveBeenCalledWith('npm test', expect.any(Object));
-      expect(mockExecFn).toHaveBeenCalledWith('npm run lint', expect.any(Object));
+      // npm run verify は呼ばれる
+      expect(mockExecFn).toHaveBeenCalledWith('npm run verify', expect.any(Object));
 
       // clasp コマンドと smokeTest は一切呼ばれない！
       expect(mockExecFileFn).not.toHaveBeenCalled();
       expect(mockSmokeTestFn).not.toHaveBeenCalled();
     });
 
-    test('npm test 失敗時: 即座に例外がスローされ、後続の Lint / Push / Version は実行されない', async () => {
+    test('npm run verify 失敗時: 即座に例外がスローされ、後続の Push / Version は実行されない', async () => {
       mockExecFn.mockImplementation((cmd) => {
-        if (cmd === 'npm test') throw new Error('Test suite failed');
+        if (cmd === 'npm run verify') throw new Error('Verification failed');
         return '';
       });
 
       const options = {
-        skipTests: false,
-        skipLint: false,
+        skipVerify: false,
         skipSmokeTest: false,
         dryRun: false,
         deploymentId: 'dep-1'
@@ -375,35 +373,35 @@ describe('scripts/deploy.js', () => {
         smokeTestFn: mockSmokeTestFn,
         logFn: mockLogFn,
         errFn: mockErrFn
-      })).rejects.toThrow('Test suite failed');
+      })).rejects.toThrow('Verification failed');
 
       expect(mockExecFileFn).not.toHaveBeenCalled();
       expect(mockSmokeTestFn).not.toHaveBeenCalled();
     });
 
-    test('npm run lint 失敗時: 例外がスローされ、後続の Push / Version は実行されない', async () => {
-      mockExecFn.mockImplementation((cmd) => {
-        if (cmd === 'npm run lint') throw new Error('Lint errors found');
+    test('--skip-verify 指定時: Verify は実行されずにスキップされる', async () => {
+      mockExecFileFn.mockImplementation((cmd, args) => {
+        if (cmd === 'clasp' && args[0] === 'version') return 'Created version 30';
         return '';
       });
 
       const options = {
-        skipTests: false,
-        skipLint: false,
-        skipSmokeTest: false,
+        skipVerify: true,
+        skipSmokeTest: true,
         dryRun: false,
         deploymentId: 'dep-1'
       };
 
-      await expect(runDeployPipeline(options, {
+      await runDeployPipeline(options, {
         execFn: mockExecFn,
         execFileFn: mockExecFileFn,
         smokeTestFn: mockSmokeTestFn,
         logFn: mockLogFn,
         errFn: mockErrFn
-      })).rejects.toThrow('Lint errors found');
+      });
 
-      expect(mockExecFileFn).not.toHaveBeenCalled();
+      expect(mockExecFn).not.toHaveBeenCalledWith('npm run verify', expect.any(Object));
+      expect(mockLogFn).toHaveBeenCalledWith(expect.stringContaining('事前検証をスキップしました'));
     });
 
     test('clasp push 失敗時: 例外がスローされ、バージョン作成やデプロイ更新は実行されない', async () => {

@@ -232,14 +232,18 @@ describe('Data Archive Logic', () => {
         getProperty: jest.fn().mockReturnValue(null),
         getProperties: jest.fn().mockReturnValue({})
       });
-      expect(() => runDataArchive_()).toThrow('missing spreadsheet configuration for archive');
+      suppressConsoleError(() => {
+        expect(() => runDataArchive_()).toThrow('missing spreadsheet configuration for archive');
+      });
     });
 
     it('should throw if source sheet is missing', () => {
       global.getRawDataSheet_ = jest.fn().mockReturnValue(null);
       mockSpreadsheet.getSheetByName = jest.fn().mockReturnValue(null);
       mockSpreadsheet.getActiveSheet = jest.fn().mockReturnValue(null);
-      expect(() => runDataArchive_()).toThrow('Source raw data sheet not found');
+      suppressConsoleError(() => {
+        expect(() => runDataArchive_()).toThrow('Source raw data sheet not found');
+      });
     });
 
     it('should skip if lastRow < 2', () => {
@@ -254,7 +258,9 @@ describe('Data Archive Logic', () => {
         getValues: jest.fn().mockReturnValue(Array(numRows - 1 || 1).fill([1])) // mismatch length
       }));
 
-      expect(() => runDataArchive_()).toThrow(/Verification failed/);
+      suppressConsoleError(() => {
+        expect(() => runDataArchive_()).toThrow(/Verification failed/);
+      });
     });
   });
 });

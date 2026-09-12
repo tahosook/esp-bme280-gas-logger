@@ -178,9 +178,11 @@ describe('DailyAggregation (日次集計)', () => {
     Object.assign(global, env.globals);
     global.Date = fixedDate('2026-08-11T01:00:00Z');
 
-    expect(() => {
-      aggregateDaily();
-    }).toThrow(/Simulated append failure on Daily/);
+    suppressConsoleError(() => {
+      expect(() => {
+        aggregateDaily();
+      }).toThrow(/Simulated append failure on Daily/);
+    });
 
     expect(env.propertiesStore.get('DAILY_LAST_ROW')).toBe('1');
     const lockStatus = env.getLockStatus();
@@ -359,9 +361,11 @@ describe('MonthlyAggregation (月次集計)', () => {
     Object.assign(global, env.globals);
     global.Date = fixedDate('2026-07-01T01:00:00Z');
 
-    expect(() => {
-      aggregateMonthly();
-    }).toThrow(/Simulated append failure on Monthly/);
+    suppressConsoleError(() => {
+      expect(() => {
+        aggregateMonthly();
+      }).toThrow(/Simulated append failure on Monthly/);
+    });
 
     expect(env.propertiesStore.get('MONTHLY_LAST_ROW')).toBe('1');
     const lockStatus = env.getLockStatus();
@@ -369,34 +373,36 @@ describe('MonthlyAggregation (月次集計)', () => {
   });
 
   test('設定不足・シート未検出時の例外スローとエラーログ記録', () => {
-    // 1. SPREADSHEET_ID 未設定
-    const envNoSpreadsheet = createGasMockEnvironment();
-    envNoSpreadsheet.propertiesStore.delete('SPREADSHEET_ID');
-    Object.assign(global, envNoSpreadsheet.globals);
-    expect(() => aggregateDaily()).toThrow('missing spreadsheet configuration');
-    expect(() => aggregateMonthly()).toThrow('missing spreadsheet configuration');
+    suppressConsoleError(() => {
+      // 1. SPREADSHEET_ID 未設定
+      const envNoSpreadsheet = createGasMockEnvironment();
+      envNoSpreadsheet.propertiesStore.delete('SPREADSHEET_ID');
+      Object.assign(global, envNoSpreadsheet.globals);
+      expect(() => aggregateDaily()).toThrow('missing spreadsheet configuration');
+      expect(() => aggregateMonthly()).toThrow('missing spreadsheet configuration');
 
-    // 2. DATA シート未検出
-    const envNoData = createGasMockEnvironment({
-      customSheets: { DATA: null }
-    });
-    Object.assign(global, envNoData.globals);
-    expect(() => aggregateDaily()).toThrow('Raw data sheet not found');
+      // 2. DATA シート未検出
+      const envNoData = createGasMockEnvironment({
+        customSheets: { DATA: null }
+      });
+      Object.assign(global, envNoData.globals);
+      expect(() => aggregateDaily()).toThrow('Raw data sheet not found');
 
-    // 3. Daily シート未検出
-    const envNoDaily = createGasMockEnvironment({
-      customSheets: { Daily: null }
-    });
-    Object.assign(global, envNoDaily.globals);
-    expect(() => aggregateDaily()).toThrow('Daily sheet not found');
-    expect(() => aggregateMonthly()).toThrow('Daily sheet not found');
+      // 3. Daily シート未検出
+      const envNoDaily = createGasMockEnvironment({
+        customSheets: { Daily: null }
+      });
+      Object.assign(global, envNoDaily.globals);
+      expect(() => aggregateDaily()).toThrow('Daily sheet not found');
+      expect(() => aggregateMonthly()).toThrow('Daily sheet not found');
 
-    // 4. Monthly シート未検出
-    const envNoMonthly = createGasMockEnvironment({
-      customSheets: { Monthly: null }
+      // 4. Monthly シート未検出
+      const envNoMonthly = createGasMockEnvironment({
+        customSheets: { Monthly: null }
+      });
+      Object.assign(global, envNoMonthly.globals);
+      expect(() => aggregateMonthly()).toThrow('Monthly sheet not found');
     });
-    Object.assign(global, envNoMonthly.globals);
-    expect(() => aggregateMonthly()).toThrow('Monthly sheet not found');
   });
 
   describe('集計補助関数 (formatDateTokyo_, formatYearMonthTokyo_, calcAvg_)', () => {

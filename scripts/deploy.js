@@ -4,12 +4,11 @@
  * scripts/deploy.js
  *
  * GAS 本番デプロイ自動化スクリプト
- * 1. 事前検証: ユニットテスト (npm test)
- * 2. 事前検証: 静的解析 (npm run lint)
- * 3. コードプッシュ (clasp push --force)
- * 4. バージョン作成 (clasp version)
- * 5. 既存本番デプロイの更新 (clasp redeploy <deploymentId>)
- * 6. Web アプリ GET スモークテスト (https://script.google.com/macros/s/<deploymentId>/exec)
+ * 1. 事前検証: コード検証・単体テスト・カバレッジ (npm run verify)
+ * 2. コードプッシュ (clasp push --force)
+ * 3. バージョン作成 (clasp version)
+ * 4. 既存本番デプロイの更新 (clasp redeploy <deploymentId>)
+ * 5. Web アプリ GET スモークテスト (https://script.google.com/macros/s/<deploymentId>/exec)
  */
 
 const { execSync, execFileSync } = require('child_process');
@@ -25,6 +24,7 @@ const DEFAULT_DEPLOYMENT_ID = 'AKfycbzIWL_qZeVWYRFnM3sPXS0QeB5kaHR7cjd6C3ly1ifTq
  */
 function parseArgs(args = process.argv.slice(2)) {
   const options = {
+    skipVerify: false,
     skipTests: false,
     skipLint: false,
     skipSmokeTest: false,
@@ -34,10 +34,14 @@ function parseArgs(args = process.argv.slice(2)) {
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
-    if (arg === '--skip-tests' || arg === '--skip-test') {
+    if (arg === '--skip-verify') {
+      options.skipVerify = true;
+    } else if (arg === '--skip-tests' || arg === '--skip-test') {
       options.skipTests = true;
+      options.skipVerify = true;
     } else if (arg === '--skip-lint') {
       options.skipLint = true;
+      options.skipVerify = true;
     } else if (arg === '--skip-smoke-test' || arg === '--skip-smoke') {
       options.skipSmokeTest = true;
     } else if (arg === '--dry-run') {
@@ -166,26 +170,17 @@ async function runDeployPipeline(options, deps = {}) {
     logFn('⚠️ [DRY-RUN モード] 実際の push / version / redeploy は実行されません\n');
   }
 
-  // Step 1: 事前検証 (Tests)
-  if (!options.skipTests) {
-    logFn('\n[Step 1/6] 🧪 テストを実行中 (npm test)...');
-    execFn('npm test', { cwd: ROOT_DIR, stdio: 'inherit' });
-    logFn('✅ テストに合格しました');
+  // Step 1: 事前検証 (Verify: Lint + git diff + test:coverage)
+  if (!options.skipVerify) {
+    logFn('\n[Step 1/5] 🧪 事前検証を実行中 (npm run verify)...');
+    execFn('npm run verify', { cwd: ROOT_DIR, stdio: 'inherit' });
+    logFn('✅ 事前検証に合格しました');
   } else {
-    logFn('\n[Step 1/6] 🧪 テスト実行をスキップしました (--skip-tests)');
+    logFn('\n[Step 1/5] 🧪 事前検証をスキップしました (--skip-verify)');
   }
 
-  // Step 2: 事前検証 (Lint)
-  if (!options.skipLint) {
-    logFn('\n[Step 2/6] 🔍 コード解析を実行中 (npm run lint)...');
-    execFn('npm run lint', { cwd: ROOT_DIR, stdio: 'inherit' });
-    logFn('✅ Lint チェックに合格しました');
-  } else {
-    logFn('\n[Step 2/6] 🔍 Lint チェックをスキップしました (--skip-lint)');
-  }
-
-  // Step 3: clasp push
-  logFn('\n[Step 3/6] 📤 リモートへコードをプッシュ中 (clasp push --force)...');
+  // Step 2: clasp push
+  logFn('\n[Step 2/5] 📤 リモートへコードをプッシュ中 (clasp push --force)...');
   if (!options.dryRun) {
     execFileFn('clasp', ['push', '--force'], { cwd: GAS_DIR, stdio: 'inherit' });
     logFn('✅ コードプッシュ完了');
@@ -194,8 +189,8 @@ async function runDeployPipeline(options, deps = {}) {
     logFn('✅ [DRY-RUN] コードプッシュをシミュレート');
   }
 
-  // Step 4: バージョン作成
-  logFn('\n[Step 4/6] 🏷️ 新しいスクリプトバージョンを作成中 (clasp version)...');
+  // Step 3: バージョン作成
+  logFn('\n[Step 3/5] 🏷️ 新しいスクリプトバージョンを作成中 (clasp version)...');
   const description = buildVersionDescription(execFn);
   logFn(`   バージョン説明: "${description}"`);
 
@@ -214,9 +209,9 @@ async function runDeployPipeline(options, deps = {}) {
     logFn(`   [DRY-RUN] clasp version "${description}"`);
   }
 
-  // Step 5: 既存デプロイの更新 (Redeploy)
+  // Step 4: 既存デプロイの更新 (Redeploy)
   const versionDisplay = options.dryRun ? '<生成予定>' : `@${newVersionNumber}`;
-  logFn(`\n[Step 5/6] 🔄 本番 Web アプリデプロイを更新中 (${versionDisplay})...`);
+  logFn(`\n[Step 4/5] 🔄 本番 Web アプリデプロイを更新中 (${versionDisplay})...`);
   const deployDesc = `production update ${versionDisplay} - ${description}`;
 
   if (!options.dryRun) {
@@ -232,10 +227,10 @@ async function runDeployPipeline(options, deps = {}) {
     logFn(`✅ [DRY-RUN] 本番 Web アプリデプロイの更新をシミュレートしました`);
   }
 
-  // Step 6: スモークテスト
+  // Step 5: スモークテスト
   const webAppUrl = `https://script.google.com/macros/s/${options.deploymentId}/exec`;
   if (!options.skipSmokeTest && !options.dryRun) {
-    logFn(`\n[Step 6/6] 🔎 Web アプリ導通確認を実行中 (Smoke Test)...`);
+    logFn(`\n[Step 5/5] 🔎 Web アプリ導通確認を実行中 (Smoke Test)...`);
     logFn(`   URL: ${webAppUrl}`);
     try {
       const result = await smokeTestFn(webAppUrl);
@@ -245,9 +240,9 @@ async function runDeployPipeline(options, deps = {}) {
       throw new Error(`デプロイ後のスモークテストに失敗しました: ${err.message}`);
     }
   } else if (options.skipSmokeTest) {
-    logFn('\n[Step 6/6] 🔎 スモークテストをスキップしました (--skip-smoke-test)');
+    logFn('\n[Step 5/5] 🔎 スモークテストをスキップしました (--skip-smoke-test)');
   } else {
-    logFn(`\n[Step 6/6] 🔎 [DRY-RUN] Web アプリ導通確認をシミュレート (${webAppUrl})`);
+    logFn(`\n[Step 5/5] 🔎 [DRY-RUN] Web アプリ導通確認をシミュレート (${webAppUrl})`);
   }
 
   logFn('\n🎉 デプロイが正常に完了しました！');

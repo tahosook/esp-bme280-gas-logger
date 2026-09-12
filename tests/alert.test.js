@@ -341,7 +341,7 @@ describe('Watchdog (死活監視)', () => {
 
   test('3日間（4320分）未受信で初回の通知を発行し、WATCHDOG_NOTIFIED を設定する', () => {
     global.Date = fixedDate('2026-08-13T01:00:00Z'); // 3日と1時間後
-    const res = checkWatchdog();
+    const res = suppressConsoleError(() => checkWatchdog());
     expect(res.timeout).toBe(true);
     expect(res.notified).toBe(true);
     expect(res.notification.text).toContain('センサー未受信');
@@ -384,45 +384,47 @@ describe('Watchdog (死活監視)', () => {
   });
 
   test('Watchdog: 設定欠損・シート欠損・ヘッダーのみ・不正日付時のハンドリング', () => {
-    // 1. SPREADSHEET_ID なし
-    const envNoId = createGasMockEnvironment();
-    envNoId.propertiesStore.delete('SPREADSHEET_ID');
-    Object.assign(global, envNoId.globals);
-    expect(() => checkWatchdog()).toThrow('missing spreadsheet configuration');
+    suppressConsoleError(() => {
+      // 1. SPREADSHEET_ID なし
+      const envNoId = createGasMockEnvironment();
+      envNoId.propertiesStore.delete('SPREADSHEET_ID');
+      Object.assign(global, envNoId.globals);
+      expect(() => checkWatchdog()).toThrow('missing spreadsheet configuration');
 
-    // 2. DATA シートなし
-    const envNoData = createGasMockEnvironment({ customSheets: { DATA: null } });
-    Object.assign(global, envNoData.globals);
-    expect(() => checkWatchdog()).toThrow('Raw data sheet not found');
+      // 2. DATA シートなし
+      const envNoData = createGasMockEnvironment({ customSheets: { DATA: null } });
+      Object.assign(global, envNoData.globals);
+      expect(() => checkWatchdog()).toThrow('Raw data sheet not found');
 
-    // 3. ヘッダーのみ (lastRow < 2)
-    const envHeaderOnly = createGasMockEnvironment({ dataRows: [['日時', 'temp', 'press', 'hum', 'flag']] });
-    Object.assign(global, envHeaderOnly.globals);
-    const resHeader = checkWatchdog();
-    expect(resHeader.timeout).toBe(false);
+      // 3. ヘッダーのみ (lastRow < 2)
+      const envHeaderOnly = createGasMockEnvironment({ dataRows: [['日時', 'temp', 'press', 'hum', 'flag']] });
+      Object.assign(global, envHeaderOnly.globals);
+      const resHeader = checkWatchdog();
+      expect(resHeader.timeout).toBe(false);
 
-    // 4. 不正な日付文字列
-    const envBadDate = createGasMockEnvironment({
-      dataRows: [
-        ['日時', 'temp', 'press', 'hum', 'flag'],
-        ['invalid-date-string', 25.0, 1010.0, 50.0, '']
-      ]
+      // 4. 不正な日付文字列
+      const envBadDate = createGasMockEnvironment({
+        dataRows: [
+          ['日時', 'temp', 'press', 'hum', 'flag'],
+          ['invalid-date-string', 25.0, 1010.0, 50.0, '']
+        ]
+      });
+      Object.assign(global, envBadDate.globals);
+      const resBad = checkWatchdog();
+      expect(resBad.timeout).toBe(false);
+
+      // 5. 有効な文字列日付
+      const envStrDate = createGasMockEnvironment({
+        dataRows: [
+          ['日時', 'temp', 'press', 'hum', 'flag'],
+          ['2026-08-10T00:00:00Z', 25.0, 1010.0, 50.0, '']
+        ]
+      });
+      Object.assign(global, envStrDate.globals);
+      global.Date = fixedDate('2026-08-10T01:00:00Z');
+      const resStr = checkWatchdog();
+      expect(resStr.timeout).toBe(false);
     });
-    Object.assign(global, envBadDate.globals);
-    const resBad = checkWatchdog();
-    expect(resBad.timeout).toBe(false);
-
-    // 5. 有効な文字列日付
-    const envStrDate = createGasMockEnvironment({
-      dataRows: [
-        ['日時', 'temp', 'press', 'hum', 'flag'],
-        ['2026-08-10T00:00:00Z', 25.0, 1010.0, 50.0, '']
-      ]
-    });
-    Object.assign(global, envStrDate.globals);
-    global.Date = fixedDate('2026-08-10T01:00:00Z');
-    const resStr = checkWatchdog();
-    expect(resStr.timeout).toBe(false);
   });
 
   test('Monitor: buildMonitorNotification_ および loadLastValidMeasurement_ の不正値ハンドリング', () => {
@@ -448,7 +450,7 @@ describe('Watchdog (死活監視)', () => {
     const origPush = global.pushMonitorNotification_;
     try {
       global.pushMonitorNotification_ = () => { throw new Error('Push network failed'); };
-      const res = checkWatchdog();
+      const res = suppressConsoleError(() => checkWatchdog());
       expect(res.notified).toBe(true);
     } finally {
       global.pushMonitorNotification_ = origPush;
