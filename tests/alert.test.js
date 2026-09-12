@@ -259,7 +259,9 @@ describe('Monitor State Transitions & Hysteresis (状態遷移とヒステリシ
 
     // ケースC: 旧湿度アラートが残っている状態で、気温(またはDI)が新しく閾値を超えた場合
     env.propertiesStore.set('MONITOR_STATE_hum', JSON.stringify({ consecutive: 2, alert: true }));
-    // 気温 29.5℃ (>29.0) を2回送信 -> 気温アラート発火
+    // 前の測定値として25.0℃/50.0%を保存（急変判定を避けるため）
+    env.propertiesStore.set('MONITOR_LAST_VALID_payload', JSON.stringify({ temp: 25.0, hum: 50.0, press: 1013.0 }));
+    // 気温 29.5℃ (>29.0) を2回送信 -> 気温アラート発火 (29.5 - 25.0 = 4.5 < 5.0) なので急変ではない
     updateMonitorState_({ temp: 29.5, hum: 50.0, press: 1013.0 });
     let res = updateMonitorState_({ temp: 29.5, hum: 50.0, press: 1013.0 });
 
