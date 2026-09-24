@@ -1003,4 +1003,67 @@ describe('SetupTriggers & DebugTest Handlers', () => {
     expect(() => testLineBotConnection()).not.toThrow();
     expect(() => authorizeUrlFetch()).not.toThrow();
   });
+
+  test('SetupTriggers: checkTriggerStatus が登録済みトリガー一覧を正しく返却・ログ出力する', () => {
+    // 1. トリガー未登録の場合
+    const emptyStatus = checkTriggerStatus();
+    expect(emptyStatus).toEqual([]);
+    expect(env.logEntries.some(log => typeof log === 'string' && log.includes('登録されているトリガーはありません'))).toBe(true);
+
+    // 2. トリガー登録後の場合
+    setupAllTriggers();
+    const status = checkTriggerStatus();
+    expect(status.length).toBe(3);
+    expect(status.map(s => s.handler)).toEqual(
+      expect.arrayContaining(['aggregateDaily', 'aggregateMonthly', 'checkWatchdog'])
+    );
+    expect(status[0]).toHaveProperty('eventType');
+    expect(status[0]).toHaveProperty('triggerSource');
+  });
+
+  test('DebugTest: debugTest_showDataLifecycleStatus が各シートの行数・期間・プロパティを正しく診断する', () => {
+    // 1. SPREADSHEET_ID が未設定の場合
+    env.propertiesStore.delete('SPREADSHEET_ID');
+    const failRes = debugTest_showDataLifecycleStatus();
+    expect(failRes).toBeNull();
+    expect(env.logEntries.some(log => typeof log === 'string' && log.includes('SPREADSHEET_ID が未設定'))).toBe(true);
+
+    // 2. SPREADSHEET_ID が設定済みで生データ行が存在する場合
+    env.propertiesStore.set('SPREADSHEET_ID', 'test-spreadsheet-id');
+    env.propertiesStore.set('DAILY_LAST_ROW', '10');
+    env.propertiesStore.set('MONTHLY_LAST_ROW', '2');
+    env.dataRows.push(['2026-06-01 10:00:00', 25.0, 1013.0, 50.0, '']);
+    env.dataRows.push(['2026-08-01 10:00:00', 28.0, 1010.0, 60.0, '']);
+
+    const res = debugTest_showDataLifecycleStatus();
+    expect(res).not.toBeNull();
+    expect(res.rawRows).toBe(3);
+    expect(res.dailyLastRow).toBe('10');
+    expect(res.monthlyLastRow).toBe('2');
+    expect(res.thresholdDate).toBeTruthy();
+  });
+
+  test('DebugTest: データライフサイクル診断用ヘルパー関数が正しく動作する', () => {
+    // getRawSheetTimestampRange_ (空・行数不足)
+    expect(getRawSheetTimestampRange_(null, 0)).toEqual({ oldest: 'なし', latest: 'なし' });
+    const dummySheet = {
+      getRange: (r) => ({
+        getValues: () => [[r === 2 ? '2026-01-01' : '2026-01-02']],
+        getValue: () => (r === 2 ? '2026-01-01' : '2026-01-02')
+      })
+    };
+    expect(getRawSheetTimestampRange_(dummySheet, 1)).toEqual({ oldest: 'なし', latest: 'なし' });
+    expect(getRawSheetTimestampRange_(dummySheet, 5)).toEqual({ oldest: '2026-01-01', latest: '2026-01-02' });
+
+    // getSheetRowCount_ (シートなし / あり)
+    const mockSpreadsheet = {
+      getSheetByName: (name) => (name === 'Exists' ? { getLastRow: () => 42 } : null)
+    };
+    expect(getSheetRowCount_(mockSpreadsheet, 'None')).toBe(0);
+    expect(getSheetRowCount_(mockSpreadsheet, 'Exists')).toBe(42);
+
+    // getLifecycleThresholdDate_
+    const threshold = getLifecycleThresholdDate_();
+    expect(threshold).toBeInstanceOf(Date);
+  });
 });

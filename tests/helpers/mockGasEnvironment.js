@@ -76,6 +76,9 @@ function createGasMockEnvironment(options = {}) {
           setNumberFormat(format) {
             // noop or record
           },
+          getValue() {
+            return (rowsArray[row - 1] && rowsArray[row - 1][col - 1] !== undefined) ? rowsArray[row - 1][col - 1] : null;
+          },
           setValue(val) {
             if (rowsArray[row - 1]) {
               rowsArray[row - 1][col - 1] = val;
@@ -248,7 +251,9 @@ function createGasMockEnvironment(options = {}) {
   const ScriptApp = {
     getProjectTriggers() {
       return triggers.map(t => ({
-        getHandlerFunction: () => t.handlerFunction
+        getHandlerFunction: () => t.handlerFunction,
+        getEventType: () => t.eventType || 'CLOCK',
+        getTriggerSource: () => t.triggerSource || 'TIME_DRIVEN'
       }));
     },
     newTrigger(fnName) {

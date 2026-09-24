@@ -293,7 +293,7 @@ function buildMonthlyRowData_(yearMonth, bucket) {
   ];
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     MONTHLY_AGGREGATION_PROPERTIES,
     MONTHLY_TARGET_SHEET_NAME,

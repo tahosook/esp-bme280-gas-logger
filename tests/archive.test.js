@@ -1,4 +1,11 @@
-const { runDataArchive_, getArchiveThresholdDate_, groupDataForArchive_, updateDailyLastRowAfterPurge_ } = require('../gas/DataArchive.gs');
+const {
+  archiveOldData,
+  runDataArchive_,
+  getArchiveThresholdDate_,
+  groupDataForArchive_,
+  updateDailyLastRowAfterPurge_,
+  writeToArchiveSheets_
+} = require('../gas/DataArchive.gs');
 
 describe('Data Archive Logic', () => {
   describe('getArchiveThresholdDate_', () => {
@@ -405,5 +412,65 @@ describe('updateDailyLastRowAfterPurge_', () => {
     updateDailyLastRowAfterPurge_(null, 50);
     updateDailyLastRowAfterPurge_(mockProps, 0);
     expect(store.get('DAILY_LAST_ROW')).toBe('invalid_num');
+  });
+});
+
+describe('archiveOldData', () => {
+  it('should be a public function that delegates to runDataArchive_', () => {
+    expect(typeof archiveOldData).toBe('function');
+    const result = archiveOldData();
+    expect(result).toHaveProperty('status');
+  });
+});
+
+describe('writeToArchiveSheets_ row expansion', () => {
+  it('should dynamically expand rows with insertRowsAfter if targetSheet.getMaxRows() is insufficient', () => {
+    const insertRowsAfter = jest.fn();
+    const mockTargetSheet = {
+      getLastRow: jest.fn().mockReturnValue(1),
+      getMaxRows: jest.fn().mockReturnValue(100),
+      insertRowsAfter,
+      getRange: jest.fn().mockImplementation((r, c, numRows) => ({
+        setValues: jest.fn(),
+        getValues: jest.fn().mockReturnValue(Array(numRows).fill([1]))
+      })),
+      appendRow: jest.fn()
+    };
+    const mockArchiveSpreadsheet = {
+      getSheetByName: jest.fn().mockReturnValue(mockTargetSheet),
+      insertSheet: jest.fn()
+    };
+    const groupedData = new Map([
+      ['2026-05', Array(150).fill(['2026-05-01', 20, 1010, 50, ''])]
+    ]);
+
+    const total = writeToArchiveSheets_(mockArchiveSpreadsheet, groupedData, ['2026-05']);
+    expect(total).toBe(150);
+    expect(insertRowsAfter).toHaveBeenCalledWith(100, 51);
+  });
+
+  it('should not call insertRowsAfter if targetSheet.getMaxRows() is already sufficient', () => {
+    const insertRowsAfter = jest.fn();
+    const mockTargetSheet = {
+      getLastRow: jest.fn().mockReturnValue(1),
+      getMaxRows: jest.fn().mockReturnValue(500),
+      insertRowsAfter,
+      getRange: jest.fn().mockImplementation((r, c, numRows) => ({
+        setValues: jest.fn(),
+        getValues: jest.fn().mockReturnValue(Array(numRows).fill([1]))
+      })),
+      appendRow: jest.fn()
+    };
+    const mockArchiveSpreadsheet = {
+      getSheetByName: jest.fn().mockReturnValue(mockTargetSheet),
+      insertSheet: jest.fn()
+    };
+    const groupedData = new Map([
+      ['2026-05', Array(50).fill(['2026-05-01', 20, 1010, 50, ''])]
+    ]);
+
+    const total = writeToArchiveSheets_(mockArchiveSpreadsheet, groupedData, ['2026-05']);
+    expect(total).toBe(50);
+    expect(insertRowsAfter).not.toHaveBeenCalled();
   });
 });

@@ -1,3 +1,12 @@
+/**
+ * 生データアーカイブ処理を手動または個別トリガーで実行する公開エントリポイント。
+ * GAS エディタの関数一覧から直接実行可能です。
+ * @return {Object} アーカイブ結果オブジェクト
+ */
+function archiveOldData() {
+  return runDataArchive_();
+}
+
 function writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths) {
   let totalArchived = 0;
 
@@ -14,6 +23,13 @@ function writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths
     }
 
     const startRow = targetSheet.getLastRow() + 1;
+    if (typeof targetSheet.getMaxRows === 'function' && typeof targetSheet.insertRowsAfter === 'function') {
+      const currentMax = targetSheet.getMaxRows();
+      const requiredRows = startRow + rows.length - 1;
+      if (currentMax < requiredRows) {
+        targetSheet.insertRowsAfter(currentMax, requiredRows - currentMax);
+      }
+    }
     targetSheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
 
     // Verify
@@ -221,8 +237,9 @@ function groupDataForArchive_(values, thresholdDate) {
   return grouped;
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    archiveOldData,
     updateDailyLastRowAfterPurge_,
     writeToArchiveSheets_,
     getArchiveSpreadsheets_,

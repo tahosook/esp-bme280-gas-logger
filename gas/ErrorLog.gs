@@ -85,7 +85,7 @@ function getErrorLogForTest_() {
   return getErrorLogEntries_();
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ERROR_LOG_PROPERTIES,
     SENSITIVE_KEYS,

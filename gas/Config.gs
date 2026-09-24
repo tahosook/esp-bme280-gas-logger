@@ -162,7 +162,7 @@ function getMergedConfigForTest_() {
   return getMergedConfig_();
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SCRIPT_PROPERTY_KEYS,
     DEFAULT_CONFIG,

@@ -80,7 +80,7 @@ function jsonResponse_(body) {
       .setMimeType(ContentService.MimeType.JSON);
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     isLineWebhookRequest_,
     LIMITS,

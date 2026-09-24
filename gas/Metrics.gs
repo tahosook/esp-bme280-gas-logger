@@ -565,7 +565,7 @@ function isSensorAnomaly_(temp, hum, opts) {
   return temp < minTemp || temp > maxTemp || hum < minHum || hum > maxHum;
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     extractRawValues_,
     filterValidChartRecords_,

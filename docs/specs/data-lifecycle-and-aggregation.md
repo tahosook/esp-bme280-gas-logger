@@ -169,13 +169,14 @@ flowchart TD
 
 ### 退避先シート命名規則と初期化
 - **シート名規則**: `'Raw_' + yearMonth.replace('-', '')`（例: `2026-06` → `Raw_202606`）。
-- **初期化**:
+- **初期化と公開エントリポイント**:
   - 退避先シートが存在しない場合、`archiveSpreadsheet.insertSheet(targetSheetName)` を呼び出して新規作成。
   - ヘッダー行 `['timestamp', 'temp', 'press', 'hum', 'flag']` を自動追記。
+  - 手動または個別スケジュール実行用の公開エントリポイントとして `archiveOldData()` を提供（内部で `runDataArchive_()` を呼び出し）。
 
 ### トランザクション安全ガード（最重要制約）
 
-生データの欠落やスプレッドシート API エラーによる処理停止を防ぐため、以下の 4 重の安全ガードを設けています:
+生データの欠落やスプレッドシート API エラーによる処理停止を防ぐため、以下の 5 重の安全ガードを設けています:
 
 ```mermaid
 flowchart TD
@@ -185,11 +186,13 @@ flowchart TD
 
     GROUP --> G2{"Guard 2: 退避対象件数チェック<br/>groupedData.size === 0 ?"}
     G2 -- Yes --> SKIP2["return {status: 'skipped', reason: 'no_target_data'}<br/>(安全終了: No-Op)"]
-    G2 -- No --> WRITE["writeToArchiveSheets_()<br/>月別シートへ setValues 実行"]
+    G2 -- No --> EXPAND["Guard 3: シート動的行拡張<br/>currentMax < requiredRows ?<br/>insertRowsAfter で拡張"]
 
-    WRITE --> G3{"Guard 3: 書込検証ベリファイ<br/>verifyRange.length === rows.length ?"}
-    G3 -- No --> ERR["throw Error('Verification failed')<br/>logError_('verify_failed')<br/>※ deleteRows は絶対に呼ばない"]
-    G3 -- Yes --> PURGE["Guard 4: 安全パージ<br/>sourceSheet.deleteRows(2, totalArchived)"]
+    EXPAND --> WRITE["writeToArchiveSheets_()<br/>月別シートへ setValues 実行"]
+
+    WRITE --> G4{"Guard 4: 書込検証ベリファイ<br/>verifyRange.length === rows.length ?"}
+    G4 -- No --> ERR["throw Error('Verification failed')<br/>logError_('verify_failed')<br/>※ deleteRows は絶対に呼ばない"]
+    G4 -- Yes --> PURGE["Guard 5: 安全パージ<br/>sourceSheet.deleteRows(2, totalArchived)<br/>DAILY_LAST_ROW 減算更新"]
     PURGE --> DONE["return {status: 'success', archivedRows: totalArchived}"]
 ```
 
@@ -198,12 +201,15 @@ flowchart TD
 2. **Guard 2: 対象 0 件ガード（`deleteRows(2, 0)` の絶対禁止）**:
    - 閾値日より古いデータが存在しない（`groupedData.size === 0`）場合、即時 `{ status: 'skipped', reason: 'no_target_data' }` を返す。
    - 引数 0 での `deleteRows(2, 0)` 呼び出しを完全に防止する（Google Sheets API 例外の抑止）。
-3. **Guard 3: 書込検証（ベリファイ）**:
+3. **Guard 3: シート動的行拡張（境界超過防止）**:
+   - Google Sheets で `insertSheet` により新規作成されたシートの初期行数は 1,000 行。
+   - 月次生データ（約 8,640 行）が初期行数を超過する場合、`targetSheet.getMaxRows() < startRow + rows.length - 1` を検知し、`insertRowsAfter` により必要な行数を自動拡張して `getRange` の境界エラーを未然に防止。
+4. **Guard 4: 書込検証（ベリファイ）**:
    - 退避先シートへ `setValues(rows)` を実行した直後、`targetSheet.getRange(startRow, 1, rows.length, 1).getValues()` により書き込み済み行数を再取得。
    - `verifyRange.length !== rows.length` の場合は例外を throw し、元シートの `deleteRows` を絶対に実行しない。
-4. **Guard 4: 複数月バックログの一括分割処理**:
+5. **Guard 5: 複数月バックログの一括分割処理 & ポインタ調整**:
    - システム停止やメンテナンス等で複数月（例: 5 月分と 6 月分）の生データが滞留している場合、`groupDataForArchive_` が `Map<yearMonth, rows>` として月別にグループ化。
-   - `Raw_202605`、`Raw_202606` それぞれのシートに順番に書き込み・検証を実施した上で、最後に退避した合計行数（`totalArchived`）分だけ元シート先頭から一括削除する。
+   - `Raw_202605`、`Raw_202606` それぞれのシートに順番に書き込み・検証を実施した上で、最後に退避した合計行数（`totalArchived`）分だけ元シート先頭から一括削除し、`DAILY_LAST_ROW` を同数分だけ減算調整する。
 
 ---
 
@@ -276,6 +282,8 @@ flowchart TD
 | 閾値境界判定 & 早期走査終了 | `groupDataForArchive_` | `should group correctly and stop when reaching threshold` |
 | 不正日付・文字列スキップ | `groupDataForArchive_` | `should handle string dates and skip invalid dates` |
 | 正常退避・ベリファイ・パージ | `runDataArchive_`, `writeToArchiveSheets_` | `should archive and purge correctly` |
+| 公開エントリポイント委譲 | `archiveOldData` | `should be a public function that delegates to runDataArchive_` |
+| シート動的行拡張（境界超過防止） | `writeToArchiveSheets_` | `should dynamically expand rows with insertRowsAfter if targetSheet.getMaxRows() is insufficient` |
 | 設定不足時の例外送出 | `getArchiveSpreadsheets_` | `should throw if spreadsheet ID is missing` |
 | ソースシート未検出時の例外送出 | `getArchiveSpreadsheets_` | `should throw if source sheet is missing` |
 | 0 件ガード（データ行なしスキップ） | `runDataArchive_` | `should skip if lastRow < 2` |
