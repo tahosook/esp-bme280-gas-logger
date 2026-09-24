@@ -276,6 +276,58 @@ function isValidPressureValue_(p) {
   return typeof p === 'number' && !isNaN(p) && isFinite(p) && p >= minPress && p <= maxPress;
 }
 
+function getReferenceTimestampMs_(rows, explicitRefMs) {
+  if (typeof explicitRefMs === 'number' && !isNaN(explicitRefMs)) {
+    return explicitRefMs;
+  }
+  if (!Array.isArray(rows)) {
+    return null;
+  }
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const ts = rows[i] && rows[i][0];
+    const t = ts instanceof Date ? ts.getTime() : new Date(ts).getTime();
+    if (!isNaN(t)) {
+      return t;
+    }
+  }
+  return null;
+}
+
+function findPastPressureFromRows_(rows, targetMinutes, minMinutes, maxMinutes, referenceTimeMs) {
+  const refMs = getReferenceTimestampMs_(rows, referenceTimeMs);
+  if (!refMs) {
+    return null;
+  }
+  const targetMin = typeof targetMinutes === 'number' ? targetMinutes : 180;
+  const minMin = typeof minMinutes === 'number' ? minMinutes : 90;
+  const maxMin = typeof maxMinutes === 'number' ? maxMinutes : 270;
+
+  let bestPress = null;
+  let smallestDiff = Infinity;
+
+  for (let i = 0; i < rows.length; i++) {
+    const ts = rows[i][0];
+    const t = ts instanceof Date ? ts.getTime() : new Date(ts).getTime();
+    const elapsedMin = (refMs - t) / 60000;
+    if (elapsedMin < minMin || elapsedMin > maxMin) {
+      continue;
+    }
+
+    const p = Number(rows[i][2]);
+    if (!isValidPressureValue_(p)) {
+      continue;
+    }
+
+    const diff = Math.abs(elapsedMin - targetMin);
+    if (diff < smallestDiff) {
+      smallestDiff = diff;
+      bestPress = p;
+    }
+  }
+
+  return bestPress;
+}
+
 function getPastPressureFromSheet_(properties) {
   if (!properties || typeof SpreadsheetApp === 'undefined') {
     return null;
@@ -294,13 +346,15 @@ function getPastPressureFromSheet_(properties) {
     const sheet = (typeof getRawDataSheet_ === 'function')
       ? getRawDataSheet_(spreadsheet, properties)
       : spreadsheet.getActiveSheet();
-    if (!sheet || sheet.getLastRow() < 8) {
+    if (!sheet || sheet.getLastRow() < 2) {
       return null;
     }
-    const targetRow = Math.max(2, sheet.getLastRow() - 36);
-    const rowValues = sheet.getRange(targetRow, 1, 1, 4).getValues()[0];
-    const p = Number(rowValues[2]);
-    return isValidPressureValue_(p) ? p : null;
+    const lastRow = sheet.getLastRow();
+    const maxReadRows = 400;
+    const startRow = Math.max(2, lastRow - maxReadRows + 1);
+    const numRows = lastRow - startRow + 1;
+    const rows = sheet.getRange(startRow, 1, numRows, 4).getValues();
+    return findPastPressureFromRows_(rows);
   } catch (e) {
     return null;
   }
@@ -791,6 +845,8 @@ if (typeof module !== 'undefined') {
     fetchGraphChartUrl_,
     buildGraphMessage_,
     isValidPressureValue_,
+    getReferenceTimestampMs_,
+    findPastPressureFromRows_,
     getPastPressureFromSheet_,
     formatStatusTimeString_,
     formatStatusDiscomfortIndex_,
