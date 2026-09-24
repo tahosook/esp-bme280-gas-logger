@@ -111,6 +111,31 @@ describe('Router & Ingest Service (doGet / doPost / Sensor Ingestion)', () => {
     }
     expect(env.dataRows.length).toBe(currentRows); // 不正リクエストでは行は追加されない
   });
+
+  test('parseSensorRequest_ および authenticateSensorToken_ の単体テスト', () => {
+    // parseSensorRequest_: 異常系
+    expect(parseSensorRequest_(null)).toEqual({ success: false, error: 'invalid_json' });
+    expect(parseSensorRequest_({})).toEqual({ success: false, error: 'invalid_json' });
+    expect(parseSensorRequest_({ postData: {} })).toEqual({ success: false, error: 'invalid_json' });
+    expect(parseSensorRequest_({ postData: { contents: '{bad_json' } })).toEqual({ success: false, error: 'invalid_json' });
+
+    // parseSensorRequest_: 正常系
+    const validContents = JSON.stringify({ api_version: 1, token: 'test-token', temp: 24.0, press: 1012.0, hum: 50.0 });
+    const parsed = parseSensorRequest_({ postData: { contents: validContents } });
+    expect(parsed.success).toBe(true);
+    expect(parsed.payload.temp).toBe(24.0);
+
+    // authenticateSensorToken_: 異常系
+    const props = env.globals.PropertiesService.getScriptProperties();
+    expect(authenticateSensorToken_(null, props)).toBe(false);
+    expect(authenticateSensorToken_({}, props)).toBe(false);
+    expect(authenticateSensorToken_({ token: 'wrong-token' }, props)).toBe(false);
+    expect(authenticateSensorToken_({ token: 'test-token' }, null)).toBe(false);
+
+    // authenticateSensorToken_: 正常系（Properties インスタンスおよびプレーンオブジェクト）
+    expect(authenticateSensorToken_({ token: 'test-token' }, props)).toBe(true);
+    expect(authenticateSensorToken_({ token: 'test-token' }, { API_TOKEN: 'test-token' })).toBe(true);
+  });
 });
 
 describe('LineBot Webhook & Commands (LINE Bot サービス)', () => {

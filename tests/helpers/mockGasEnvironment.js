@@ -133,6 +133,20 @@ function createGasMockEnvironment(options = {}) {
         setProperty(key, value) {
           propertiesStore.set(key, String(value));
         },
+        setProperties(props, deleteAllOthers = false) {
+          if (deleteAllOthers) {
+            propertiesStore.clear();
+          }
+          if (props && typeof props === 'object') {
+            for (const [key, value] of Object.entries(props)) {
+              if (value !== null && value !== undefined) {
+                propertiesStore.set(key, String(value));
+              } else {
+                propertiesStore.delete(key);
+              }
+            }
+          }
+        },
         deleteProperty(key) {
           propertiesStore.delete(key);
         }

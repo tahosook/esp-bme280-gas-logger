@@ -295,4 +295,91 @@ describe('Metrics & Indicators Calculation (各種指標の計算)', () => {
     expect(parseJstDatetimepicker_('invalid', mockNow)).toBeNull();
     expect(parseJstDatetimepicker_(null, mockNow)).toBeNull();
   });
+
+  describe('getPastPressureFromSheet_ & isValidPressureValue_', () => {
+    test('isValidPressureValue_: 境界値と異常値の判定', () => {
+      expect(isValidPressureValue_(1013.2)).toBe(true);
+      expect(isValidPressureValue_(300.0)).toBe(true);
+      expect(isValidPressureValue_(1100.0)).toBe(true);
+
+      expect(isValidPressureValue_(299.9)).toBe(false);
+      expect(isValidPressureValue_(1100.1)).toBe(false);
+      expect(isValidPressureValue_(0)).toBe(false);
+      expect(isValidPressureValue_(-100)).toBe(false);
+      expect(isValidPressureValue_(NaN)).toBe(false);
+      expect(isValidPressureValue_(Infinity)).toBe(false);
+      expect(isValidPressureValue_(null)).toBe(false);
+      expect(isValidPressureValue_('1013.2')).toBe(false);
+    });
+
+    test('getPastPressureFromSheet_: properties が null または SPREADSHEET_ID がない場合は null', () => {
+      expect(getPastPressureFromSheet_(null)).toBeNull();
+      expect(getPastPressureFromSheet_({})).toBeNull();
+      const mockPropsEmpty = { getProperty: () => null };
+      expect(getPastPressureFromSheet_(mockPropsEmpty)).toBeNull();
+    });
+
+    test('getPastPressureFromSheet_: 行数が不足している場合（< 8行）は null を返す', () => {
+      const rows = [
+        ['日時', 'temp', 'press', 'hum', 'flag'],
+        [new Date(), 25.0, 1013.0, 50.0, ''],
+        [new Date(), 25.1, 1013.1, 50.1, '']
+      ];
+      const env = createGasMockEnvironment({ dataRows: rows });
+      Object.assign(global, env.globals);
+      const props = env.globals.PropertiesService.getScriptProperties();
+      const pastP = getPastPressureFromSheet_(props);
+      expect(pastP).toBeNull();
+    });
+
+    test('getPastPressureFromSheet_: 正常に過去気圧（36行前）を取得できる', () => {
+      const rows = [['日時', 'temp', 'press', 'hum', 'flag']];
+      // 50行生成（行1はヘッダー、行2〜51がデータ）
+      for (let i = 1; i <= 50; i += 1) {
+        rows.push([new Date(Date.now() - (51 - i) * 5 * 60 * 1000), 25.0, 1000.0 + i, 50.0, '']);
+      }
+      const env = createGasMockEnvironment({ dataRows: rows });
+      Object.assign(global, env.globals);
+      const props = env.globals.PropertiesService.getScriptProperties();
+
+      // lastRow = 51, targetRow = Math.max(2, 51 - 36) = 15行目
+      // rows[14] (15行目) の気圧は 1000.0 + 14 = 1014.0
+      const pastP = getPastPressureFromSheet_(props);
+      expect(pastP).toBe(1014.0);
+    });
+
+    test('getPastPressureFromSheet_: セル値が非数値または範囲外の場合は null を返す', () => {
+      const rows = [['日時', 'temp', 'press', 'hum', 'flag']];
+      for (let i = 1; i <= 50; i += 1) {
+        rows.push([new Date(), 25.0, 1013.0, 50.0, '']);
+      }
+      // 15行目の気圧を異常値に設定
+      rows[14][2] = 'CORRUPTED';
+      let env = createGasMockEnvironment({ dataRows: rows });
+      Object.assign(global, env.globals);
+      let props = env.globals.PropertiesService.getScriptProperties();
+      expect(getPastPressureFromSheet_(props)).toBeNull();
+
+      rows[14][2] = 200.0; // LIMITS.press.min (300) 未満
+      env = createGasMockEnvironment({ dataRows: rows });
+      Object.assign(global, env.globals);
+      props = env.globals.PropertiesService.getScriptProperties();
+      expect(getPastPressureFromSheet_(props)).toBeNull();
+    });
+
+    test('getPastPressureFromSheet_: 例外発生時は安全に null を返す', () => {
+      const env = createGasMockEnvironment();
+      Object.assign(global, env.globals);
+      const savedSpreadsheetApp = global.SpreadsheetApp;
+      try {
+        global.SpreadsheetApp = {
+          openById: () => { throw new Error('Database connection failed'); }
+        };
+        const props = env.globals.PropertiesService.getScriptProperties();
+        expect(getPastPressureFromSheet_(props)).toBeNull();
+      } finally {
+        global.SpreadsheetApp = savedSpreadsheetApp;
+      }
+    });
+  });
 });

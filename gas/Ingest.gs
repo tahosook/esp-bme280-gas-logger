@@ -1,15 +1,33 @@
-function handleSensorPost_(e) {
-  let payload;
-
+function parseSensorRequest_(e) {
+  if (!e || !e.postData || typeof e.postData.contents !== 'string') {
+    return { success: false, error: 'invalid_json' };
+  }
   try {
-    if (!e || !e.postData || typeof e.postData.contents !== 'string') {
-      return errorResponse_('invalid_json');
-    }
-    payload = JSON.parse(e.postData.contents);
+    const payload = JSON.parse(e.postData.contents);
+    return { success: true, payload };
   } catch (error) {
-    return errorResponse_('invalid_json');
+    return { success: false, error: 'invalid_json' };
+  }
+}
+
+function authenticateSensorToken_(payload, properties) {
+  if (!payload || typeof payload.token !== 'string' || !properties) {
+    return false;
+  }
+  const apiTokenKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.apiToken) || 'API_TOKEN';
+  const apiToken = typeof properties.getProperty === 'function'
+    ? properties.getProperty(apiTokenKey)
+    : properties[apiTokenKey];
+  return typeof apiToken === 'string' && payload.token === apiToken;
+}
+
+function handleSensorPost_(e) {
+  const parsed = parseSensorRequest_(e);
+  if (!parsed.success) {
+    return errorResponse_(parsed.error);
   }
 
+  const payload = parsed.payload;
   const validationError = validateSensorPayload_(payload);
   if (validationError) {
     return errorResponse_(validationError);
@@ -17,9 +35,7 @@ function handleSensorPost_(e) {
 
   try {
     const properties = PropertiesService.getScriptProperties();
-    const apiTokenKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.apiToken) || 'API_TOKEN';
-    const apiToken = properties.getProperty(apiTokenKey);
-    if (typeof apiToken !== 'string' || payload.token !== apiToken) {
+    if (!authenticateSensorToken_(payload, properties)) {
       return errorResponse_('invalid_token');
     }
 
@@ -191,6 +207,8 @@ function checkAndAppendMeasurement_(payload, properties) {
 
 if (typeof module !== 'undefined') {
   module.exports = {
+    parseSensorRequest_,
+    authenticateSensorToken_,
     handleSensorPost_,
     validateMeasurementLimits_,
     validateSensorPayload_,

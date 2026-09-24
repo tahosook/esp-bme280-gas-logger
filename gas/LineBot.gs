@@ -270,22 +270,37 @@ function buildGraphMessage_() {
   ];
 }
 
+function isValidPressureValue_(p) {
+  const minPress = (typeof LIMITS !== 'undefined' && LIMITS.press && LIMITS.press.min) || 300.0;
+  const maxPress = (typeof LIMITS !== 'undefined' && LIMITS.press && LIMITS.press.max) || 1100.0;
+  return typeof p === 'number' && !isNaN(p) && isFinite(p) && p >= minPress && p <= maxPress;
+}
+
 function getPastPressureFromSheet_(properties) {
+  if (!properties || typeof SpreadsheetApp === 'undefined') {
+    return null;
+  }
   try {
-    const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-    const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+    const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId)
+      ? SCRIPT_PROPERTY_KEYS.spreadsheetId
+      : 'SPREADSHEET_ID';
+    const spreadsheetId = typeof properties.getProperty === 'function'
+      ? properties.getProperty(spreadsheetIdKey)
+      : properties[spreadsheetIdKey];
     if (!spreadsheetId) {
       return null;
     }
     const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-    const sheet = getRawDataSheet_(spreadsheet, properties) || spreadsheet.getActiveSheet();
-    if (!sheet || sheet.getLastRow() < 2) {
+    const sheet = (typeof getRawDataSheet_ === 'function')
+      ? getRawDataSheet_(spreadsheet, properties)
+      : spreadsheet.getActiveSheet();
+    if (!sheet || sheet.getLastRow() < 8) {
       return null;
     }
     const targetRow = Math.max(2, sheet.getLastRow() - 36);
     const rowValues = sheet.getRange(targetRow, 1, 1, 4).getValues()[0];
     const p = Number(rowValues[2]);
-    return (!isNaN(p) && isFinite(p)) ? p : null;
+    return isValidPressureValue_(p) ? p : null;
   } catch (e) {
     return null;
   }
@@ -775,6 +790,7 @@ if (typeof module !== 'undefined') {
     getGraphTargetSheet_,
     fetchGraphChartUrl_,
     buildGraphMessage_,
+    isValidPressureValue_,
     getPastPressureFromSheet_,
     formatStatusTimeString_,
     formatStatusDiscomfortIndex_,
