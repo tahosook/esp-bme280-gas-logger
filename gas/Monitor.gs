@@ -144,7 +144,7 @@ function getAlertDateString_(decision, nowMs) {
 }
 
 function commitMonitorUpdates_(properties, pendingUpdates) {
-  if (!properties || !pendingUpdates) {
+  if (!properties || !pendingUpdates || Object.keys(pendingUpdates).length === 0) {
     return;
   }
   if (typeof properties.setProperties === 'function') {
@@ -493,7 +493,7 @@ function getMonitorStateForTest_() {
   return loadMonitorStates_(PropertiesService.getScriptProperties());
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
 
     getWatchdogDataSheet_,

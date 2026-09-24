@@ -285,8 +285,11 @@ function getReferenceTimestampMs_(rows, explicitRefMs) {
   }
   for (let i = rows.length - 1; i >= 0; i--) {
     const ts = rows[i] && rows[i][0];
+    if (!ts) {
+      continue;
+    }
     const t = ts instanceof Date ? ts.getTime() : new Date(ts).getTime();
-    if (!isNaN(t)) {
+    if (!isNaN(t) && t > 0) {
       return t;
     }
   }
@@ -307,6 +310,9 @@ function findPastPressureFromRows_(rows, targetMinutes, minMinutes, maxMinutes, 
 
   for (let i = 0; i < rows.length; i++) {
     const ts = rows[i][0];
+    if (!ts) {
+      continue;
+    }
     const t = ts instanceof Date ? ts.getTime() : new Date(ts).getTime();
     const elapsedMin = (refMs - t) / 60000;
     if (elapsedMin < minMin || elapsedMin > maxMin) {
@@ -825,7 +831,7 @@ function sendLineApiRequest_(endpoint, payload, channelAccessToken, operation) {
   }
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     LINE_BOT_PROPERTIES,
     getSnoozeUntilProperty_,

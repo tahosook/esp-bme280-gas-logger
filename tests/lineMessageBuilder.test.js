@@ -321,6 +321,14 @@ describe('Metrics & Indicators Calculation (各種指標の計算)', () => {
       const baseTime = 1700000000000;
       expect(getReferenceTimestampMs_([[new Date(baseTime), 25, 1013, 50]])).toBe(baseTime);
 
+      // 最新行が null や空文字の場合でも、遡って有効なタイムスタンプを取得できる（new Date(null) === 0 の罠防止）
+      const rowsWithNullTrailing = [
+        [new Date(baseTime), 25, 1013, 50],
+        [null, 25, 1013, 50],
+        ['', 25, 1013, 50]
+      ];
+      expect(getReferenceTimestampMs_(rowsWithNullTrailing)).toBe(baseTime);
+
       // findPastPressureFromRows_: 空または異常引数
       expect(findPastPressureFromRows_(null)).toBeNull();
       expect(findPastPressureFromRows_([])).toBeNull();

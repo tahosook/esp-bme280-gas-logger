@@ -487,5 +487,18 @@ describe('Watchdog (死活監視)', () => {
     };
     saveMonitorStates_(legacyProps, newStates);
     expect(JSON.parse(legacyStore['MONITOR_STATE_temp']).alert).toBe(true);
+
+    // commitMonitorUpdates_: 空更新の場合は setProperties/setProperty を呼ばない
+    let setPropsCalled = false;
+    const trackingProps = {
+      setProperties: () => { setPropsCalled = true; },
+      setProperty: () => { setPropsCalled = true; }
+    };
+    commitMonitorUpdates_(null, null);
+    commitMonitorUpdates_(trackingProps, {});
+    expect(setPropsCalled).toBe(false);
+
+    commitMonitorUpdates_(trackingProps, { testKey: 'val' });
+    expect(setPropsCalled).toBe(true);
   });
 });

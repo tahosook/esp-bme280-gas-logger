@@ -205,7 +205,7 @@ function checkAndAppendMeasurement_(payload, properties) {
   }
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     parseSensorRequest_,
     authenticateSensorToken_,
