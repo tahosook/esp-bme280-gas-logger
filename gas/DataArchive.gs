@@ -1,12 +1,10 @@
 /**
  * 生データアーカイブ処理を手動または個別トリガーで実行する公開エントリポイント。
  * GAS エディタの関数一覧から直接実行可能です。
- * @param {Function} [runnerFn] テスト注入用アーカイブ実行関数（省略時は runDataArchive_）
  * @return {Object} アーカイブ結果オブジェクト
  */
-function archiveOldData(runnerFn) {
-  const runner = (typeof runnerFn === 'function') ? runnerFn : runDataArchive_;
-  return runner();
+function archiveOldData() {
+  return runDataArchive_();
 }
 
 function writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths) {

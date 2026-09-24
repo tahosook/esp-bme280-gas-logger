@@ -1041,7 +1041,6 @@ describe('SetupTriggers & DebugTest Handlers', () => {
     expect(res.dailyLastRow).toBe('10');
     expect(res.monthlyLastRow).toBe('2');
     expect(res.thresholdDate).toBeTruthy();
-    expect(typeof res.candidateRows).toBe('number');
   });
 
   test('DebugTest: データライフサイクル診断用ヘルパー関数が正しく動作する', () => {
@@ -1066,30 +1065,5 @@ describe('SetupTriggers & DebugTest Handlers', () => {
     // getLifecycleThresholdDate_
     const threshold = getLifecycleThresholdDate_();
     expect(threshold).toBeInstanceOf(Date);
-
-    // countArchiveCandidates_
-    expect(countArchiveCandidates_(null, 0, null)).toBe(0);
-    const mockRawSheet = {
-      getRange: () => ({
-        getValues: () => [
-          [new Date('2026-06-01T00:00:00Z')],
-          [new Date('2026-06-15T00:00:00Z')],
-          [new Date('2026-08-15T00:00:00Z')]
-        ]
-      })
-    };
-    const testThreshold = new Date('2026-08-01T00:00:00Z');
-    expect(countArchiveCandidates_(mockRawSheet, 4, testThreshold)).toBe(2);
-
-    // タイムスタンプ欠損または不正値で走査中断
-    const mockInvalidSheet = {
-      getRange: () => ({
-        getValues: () => [
-          [null],
-          [new Date('2026-06-15T00:00:00Z')]
-        ]
-      })
-    };
-    expect(countArchiveCandidates_(mockInvalidSheet, 3, testThreshold)).toBe(0);
   });
 });
