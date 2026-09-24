@@ -187,7 +187,7 @@ curl -L -sS -i -X POST "$GAS_URL" \
 
 ### 5.2 時間主導型トリガー設定
 
-GAS の時間主導型トリガーは、`SetupTriggers.gs` のワンクリック関数 `setupAllTriggers()` を実行するか、手動で登録します。設定後は `checkTriggerStatus()` を実行することで、登録済みトリガー一覧と稼働状態をログで即座に確認できます。
+GAS の時間主導型トリガーは、`SetupTriggers.gs` のワンクリック関数 `setupAllTriggers()` を実行するか、手動で登録します。設定後は `checkTriggerStatus()` を実行することで、登録済みプロジェクトトリガー一覧と設定状態をログで即座に確認できます。
 
 | 関数名 | 実行周期（正本仕様） | 概要 |
 | :--- | :--- | :--- |

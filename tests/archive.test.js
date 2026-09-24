@@ -416,10 +416,24 @@ describe('updateDailyLastRowAfterPurge_', () => {
 });
 
 describe('archiveOldData', () => {
-  it('should be a public function that delegates to runDataArchive_', () => {
+  it('should be a public function that delegates to runDataArchive_ by default', () => {
     expect(typeof archiveOldData).toBe('function');
     const result = archiveOldData();
     expect(result).toHaveProperty('status');
+  });
+
+  it('should explicitly call injected runnerFn when provided', () => {
+    const mockRunner = jest.fn().mockReturnValue({ status: 'mock_delegated', archivedRows: 42 });
+    const result = archiveOldData(mockRunner);
+    expect(mockRunner).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ status: 'mock_delegated', archivedRows: 42 });
+  });
+
+  it('should propagate exceptions thrown by the underlying runner', () => {
+    const errorRunner = jest.fn().mockImplementation(() => {
+      throw new Error('archive failure');
+    });
+    expect(() => archiveOldData(errorRunner)).toThrow('archive failure');
   });
 });
 

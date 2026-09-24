@@ -444,14 +444,43 @@ function getLifecycleThresholdDate_() {
   return typeof getArchiveThresholdDate_ === 'function' ? getArchiveThresholdDate_(new Date(), retentionMonths) : null;
 }
 
-function logLifecycleProperties_(properties, thresholdDate) {
+/**
+ * 生データシート内で次回アーカイブ対象となる行数をカウントする補助関数。
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} rawSheet
+ * @param {number} rawRows
+ * @param {Date|null} thresholdDate
+ * @return {number}
+ */
+function countArchiveCandidates_(rawSheet, rawRows, thresholdDate) {
+  if (!rawSheet || rawRows < 2 || !thresholdDate) {
+    return 0;
+  }
+  const values = rawSheet.getRange(2, 1, rawRows - 1, 1).getValues();
+  let count = 0;
+  for (let i = 0; i < values.length; i += 1) {
+    const ts = values[i][0];
+    if (!ts) {
+      break;
+    }
+    const d = (Object.prototype.toString.call(ts) === '[object Date]') ? ts : new Date(ts);
+    const t = d.getTime();
+    if (isNaN(t) || t >= thresholdDate.getTime()) {
+      break;
+    }
+    count += 1;
+  }
+  return count;
+}
+
+function logLifecycleProperties_(properties, thresholdDate, candidateRows) {
   Logger.log('【スクリプトプロパティ】');
   Logger.log(` - DAILY_LAST_ROW: ${properties.getProperty('DAILY_LAST_ROW') || '未設定'}`);
   Logger.log(` - MONTHLY_LAST_ROW: ${properties.getProperty('MONTHLY_LAST_ROW') || '未設定'}`);
   Logger.log(` - ARCHIVE_RETENTION_MONTHS: ${properties.getProperty('ARCHIVE_RETENTION_MONTHS') || '2 (既定)'}`);
   Logger.log(` - ARCHIVE_SPREADSHEET_ID: ${properties.getProperty('ARCHIVE_SPREADSHEET_ID') || 'メインと同一'}`);
   if (thresholdDate) {
-    Logger.log(` - 次回アーカイブ対象閾値: ${thresholdDate.toISOString()} 以前のデータ`);
+    const candidateInfo = (typeof candidateRows === 'number') ? ` (退避対象候補: ${candidateRows} 件)` : '';
+    Logger.log(` - 次回アーカイブ対象閾値: ${thresholdDate.toISOString()} 以前のデータ${candidateInfo}`);
   }
 }
 
@@ -478,19 +507,23 @@ function debugTest_showDataLifecycleStatus() {
     const rawSheetName = rawSheet ? rawSheet.getName() : '未検出';
     const { oldest, latest } = getRawSheetTimestampRange_(rawSheet, rawRows);
 
-    const dailyRows = getSheetRowCount_(spreadsheet, 'Daily');
-    const monthlyRows = getSheetRowCount_(spreadsheet, 'Monthly');
+    const dailySheetName = (typeof DAILY_SHEET_NAME !== 'undefined') ? DAILY_SHEET_NAME : 'Daily';
+    const monthlySheetName = (typeof MONTHLY_TARGET_SHEET_NAME !== 'undefined') ? MONTHLY_TARGET_SHEET_NAME : 'Monthly';
+
+    const dailyRows = getSheetRowCount_(spreadsheet, dailySheetName);
+    const monthlyRows = getSheetRowCount_(spreadsheet, monthlySheetName);
     const thresholdDate = getLifecycleThresholdDate_();
+    const candidateRows = countArchiveCandidates_(rawSheet, rawRows, thresholdDate);
 
     Logger.log(`【生データシート (${rawSheetName})】`);
     Logger.log(` - 総行数: ${rawRows} 行 (データ: ${Math.max(0, rawRows - 1)} 件)`);
     Logger.log(` - 最古データ日時: ${oldest}`);
     Logger.log(` - 最新データ日時: ${latest}`);
 
-    Logger.log(`【日次集計シート (Daily)】総行数: ${dailyRows} 行 (集計日: ${Math.max(0, dailyRows - 1)} 日分)`);
-    Logger.log(`【月次集計シート (Monthly)】総行数: ${monthlyRows} 行 (集計月: ${Math.max(0, monthlyRows - 1)} ヶ月分)`);
+    Logger.log(`【日次集計シート (${dailySheetName})】総行数: ${dailyRows} 行 (集計日: ${Math.max(0, dailyRows - 1)} 日分)`);
+    Logger.log(`【月次集計シート (${monthlySheetName})】総行数: ${monthlyRows} 行 (集計月: ${Math.max(0, monthlyRows - 1)} ヶ月分)`);
 
-    logLifecycleProperties_(properties, thresholdDate);
+    logLifecycleProperties_(properties, thresholdDate, candidateRows);
 
     return {
       rawRows,
@@ -498,7 +531,8 @@ function debugTest_showDataLifecycleStatus() {
       monthlyRows,
       dailyLastRow: properties.getProperty('DAILY_LAST_ROW'),
       monthlyLastRow: properties.getProperty('MONTHLY_LAST_ROW'),
-      thresholdDate: thresholdDate ? thresholdDate.toISOString() : null
+      thresholdDate: thresholdDate ? thresholdDate.toISOString() : null,
+      candidateRows
     };
   } catch (err) {
     logDebugTestError_('debugTest_showDataLifecycleStatus', err);
@@ -515,6 +549,7 @@ if (typeof module !== 'undefined' && module.exports) {
     getRawSheetTimestampRange_,
     getSheetRowCount_,
     getLifecycleThresholdDate_,
+    countArchiveCandidates_,
     logLifecycleProperties_,
     debugTest_checkAlertLogic,
     debugTest_buildQuickChartUrl,
