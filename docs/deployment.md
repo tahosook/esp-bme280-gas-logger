@@ -187,7 +187,7 @@ curl -L -sS -i -X POST "$GAS_URL" \
 
 ### 5.2 時間主導型トリガー設定
 
-GAS の時間主導型トリガーは、`SetupTriggers.gs` のワンクリック関数 `setupAllTriggers()` を実行するか、手動で登録します。
+GAS の時間主導型トリガーは、`SetupTriggers.gs` のワンクリック関数 `setupAllTriggers()` を実行するか、手動で登録します。設定後は `checkTriggerStatus()` を実行することで、登録済みプロジェクトトリガー一覧と設定状態をログで即座に確認できます。
 
 | 関数名 | 実行周期（正本仕様） | 概要 |
 | :--- | :--- | :--- |
@@ -226,3 +226,7 @@ GAS の時間主導型トリガーは、`SetupTriggers.gs` のワンクリック
    - 有効な `API_TOKEN` とテスト測定値（24.5℃, 1012.3hPa, 55.8%）を用いて `checkAndAppendMeasurement_` を実行し、スプレッドシートへの行追記および監視状態の更新を手動検証。エラー発生時は詳細スタックトレースをログ出力。
 7. **生データアーカイブ月次バッチのドライラン (`debugTest_runDataArchiveDryRun`)**:
    - 実際のデータ削除を行わずに、アーカイブ対象となる年月と行数をシミュレート算出。
+8. **データライフサイクル稼働状態の一括診断 (`debugTest_showDataLifecycleStatus`)**:
+   - 生データ・日次・月次シートの行数、最古・最新日時、ポインタ値（`DAILY_LAST_ROW`, `MONTHLY_LAST_ROW`）、保持期間設定、および次回アーカイブ対象閾値を一括診断ログ出力。
+9. **生データアーカイブの手動実行 (`archiveOldData`)**:
+   - `gas/DataArchive.gs` の公開エントリポイント。月次集計トリガーを待たずに、保持期間を超過した確定生データの退避・パージ・ポインタ調整を即時実行。

@@ -322,7 +322,7 @@ function buildDailyRowData_(dateStr, bucket) {
   ];
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DAILY_AGGREGATION_PROPERTIES,
     DAILY_SHEET_NAME,

@@ -138,12 +138,42 @@ function authorizeUrlFetch() {
   Logger.log('✅ UrlFetchApp の権限が正常に承認されました。');
 }
 
-if (typeof module !== 'undefined') {
+/**
+ * 登録されているすべてのプロジェクトトリガー一覧と設定状態を確認・ログ出力する。
+ * GAS エディタから手動実行してトリガー登録状況を検証可能です。
+ * （※本関数はトリガーの登録有無とスケジュール設定を確認するものであり、過去の実行履歴や成否を判定するものではありません）
+ * @return {Array<Object>}
+ */
+function checkTriggerStatus() {
+  const triggers = ScriptApp.getProjectTriggers();
+  Logger.log(`=== 登録済みトリガー一覧 (合計: ${triggers.length}件) ===`);
+  if (triggers.length === 0) {
+    Logger.log('⚠️ 登録されているトリガーはありません。setupAllTriggers() を実行してください。');
+    return [];
+  }
+  const result = [];
+  for (let i = 0; i < triggers.length; i += 1) {
+    const t = triggers[i];
+    const eventType = typeof t.getEventType === 'function' ? String(t.getEventType()) : 'CLOCK';
+    const triggerSource = typeof t.getTriggerSource === 'function' ? String(t.getTriggerSource()) : 'TIME_DRIVEN';
+    const info = {
+      handler: t.getHandlerFunction(),
+      eventType: eventType,
+      triggerSource: triggerSource
+    };
+    result.push(info);
+    Logger.log(` - 関数: ${info.handler} | イベント: ${info.eventType} | ソース: ${info.triggerSource}`);
+  }
+  return result;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     setupAllTriggers,
     setupMonthlyAggregationTrigger,
     setupDailyAggregationTrigger,
     setupWatchdogTrigger,
+    checkTriggerStatus,
     triggerExists_,
     testLineBotConnection,
     authorizeUrlFetch

@@ -413,18 +413,119 @@ function debugTest_simulateSensorPost() {
   }
 }
 
-if (typeof module !== 'undefined') {
+/**
+ * 生データシートの最古・最新日時を取得する補助関数。
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} rawSheet
+ * @param {number} rawRows
+ * @return {{oldest: string, latest: string}}
+ */
+function getRawSheetTimestampRange_(rawSheet, rawRows) {
+  if (!rawSheet || rawRows < 2) {
+    return { oldest: 'なし', latest: 'なし' };
+  }
+  const firstValues = rawSheet.getRange(2, 1, 1, 1).getValues();
+  const lastValues = rawSheet.getRange(rawRows, 1, 1, 1).getValues();
+  const firstTs = (firstValues && firstValues[0]) ? firstValues[0][0] : null;
+  const lastTs = (lastValues && lastValues[0]) ? lastValues[0][0] : null;
+  return {
+    oldest: firstTs ? String(firstTs) : 'なし',
+    latest: lastTs ? String(lastTs) : 'なし'
+  };
+}
+
+function getSheetRowCount_(spreadsheet, sheetName) {
+  const sheet = spreadsheet.getSheetByName(sheetName);
+  return sheet ? sheet.getLastRow() : 0;
+}
+
+function getLifecycleThresholdDate_() {
+  const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : null;
+  const retentionMonths = (config && typeof config.ARCHIVE_RETENTION_MONTHS === 'number') ? config.ARCHIVE_RETENTION_MONTHS : 2;
+  return typeof getArchiveThresholdDate_ === 'function' ? getArchiveThresholdDate_(new Date(), retentionMonths) : null;
+}
+
+function logLifecycleProperties_(properties, thresholdDate) {
+  Logger.log('【スクリプトプロパティ】');
+  Logger.log(` - DAILY_LAST_ROW: ${properties.getProperty('DAILY_LAST_ROW') || '未設定'}`);
+  Logger.log(` - MONTHLY_LAST_ROW: ${properties.getProperty('MONTHLY_LAST_ROW') || '未設定'}`);
+  Logger.log(` - ARCHIVE_RETENTION_MONTHS: ${properties.getProperty('ARCHIVE_RETENTION_MONTHS') || '2 (既定)'}`);
+  Logger.log(` - ARCHIVE_SPREADSHEET_ID: ${properties.getProperty('ARCHIVE_SPREADSHEET_ID') || 'メインと同一'}`);
+  if (thresholdDate) {
+    Logger.log(` - 次回アーカイブ対象閾値: ${thresholdDate.toISOString()} 以前のデータ`);
+  }
+}
+
+/**
+ * データライフサイクルの稼働状態（各シートの行数・期間、プロパティ、次回アーカイブ閾値日時）
+ * を一括診断・ログ出力するデバッグ関数。
+ * GAS エディタで本関数を選択して「実行」をクリックしてください。
+ * @return {Object|null}
+ */
+function debugTest_showDataLifecycleStatus() {
+  Logger.log('=== [DEBUG TEST] showDataLifecycleStatus 開始 ===');
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
+    const spreadsheetId = properties.getProperty(spreadsheetIdKey);
+    if (!spreadsheetId) {
+      Logger.log('❌ スクリプトプロパティ SPREADSHEET_ID が未設定です。');
+      return null;
+    }
+
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    const rawSheet = getRawDataSheet_(spreadsheet, properties);
+    const rawRows = rawSheet ? rawSheet.getLastRow() : 0;
+    const rawSheetName = rawSheet ? rawSheet.getName() : '未検出';
+    const { oldest, latest } = getRawSheetTimestampRange_(rawSheet, rawRows);
+
+    const dailySheetName = (typeof DAILY_SHEET_NAME !== 'undefined') ? DAILY_SHEET_NAME : 'Daily';
+    const monthlySheetName = (typeof MONTHLY_TARGET_SHEET_NAME !== 'undefined') ? MONTHLY_TARGET_SHEET_NAME : 'Monthly';
+
+    const dailyRows = getSheetRowCount_(spreadsheet, dailySheetName);
+    const monthlyRows = getSheetRowCount_(spreadsheet, monthlySheetName);
+    const thresholdDate = getLifecycleThresholdDate_();
+
+    Logger.log(`【生データシート (${rawSheetName})】`);
+    Logger.log(` - 総行数: ${rawRows} 行 (データ: ${Math.max(0, rawRows - 1)} 件)`);
+    Logger.log(` - 最古データ日時: ${oldest}`);
+    Logger.log(` - 最新データ日時: ${latest}`);
+
+    Logger.log(`【日次集計シート (${dailySheetName})】総行数: ${dailyRows} 行 (集計日: ${Math.max(0, dailyRows - 1)} 日分)`);
+    Logger.log(`【月次集計シート (${monthlySheetName})】総行数: ${monthlyRows} 行 (集計月: ${Math.max(0, monthlyRows - 1)} ヶ月分)`);
+
+    logLifecycleProperties_(properties, thresholdDate);
+
+    return {
+      rawRows,
+      dailyRows,
+      monthlyRows,
+      dailyLastRow: properties.getProperty('DAILY_LAST_ROW'),
+      monthlyLastRow: properties.getProperty('MONTHLY_LAST_ROW'),
+      thresholdDate: thresholdDate ? thresholdDate.toISOString() : null
+    };
+  } catch (err) {
+    logDebugTestError_('debugTest_showDataLifecycleStatus', err);
+    return null;
+  }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     getTestTargetSheet_,
     logDebugTestError_,
     getDebugChartTargetSheet_,
     getDebugArchiveSourceSheet_,
+    getRawSheetTimestampRange_,
+    getSheetRowCount_,
+    getLifecycleThresholdDate_,
+    logLifecycleProperties_,
     debugTest_checkAlertLogic,
     debugTest_buildQuickChartUrl,
     debugTest_handleLineWebhook_Trends,
     debugTest_runDataArchiveDryRun,
     debugTest_showErrorLogs,
     debugTest_clearErrorLogs,
-    debugTest_simulateSensorPost
+    debugTest_simulateSensorPost,
+    debugTest_showDataLifecycleStatus
   };
 }
