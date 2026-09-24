@@ -456,4 +456,51 @@ describe('Watchdog (死活監視)', () => {
       global.pushMonitorNotification_ = origPush;
     }
   });
+
+  test('Monitor: readPropertyHelper_ および saveMonitorStates_ の一括処理・フォールバック', () => {
+    // readPropertyHelper_
+    expect(readPropertyHelper_(null, 'test')).toBeNull();
+    expect(readPropertyHelper_({}, 'test')).toBeNull();
+    expect(readPropertyHelper_({ test: 'hello' }, 'test')).toBe('hello');
+    const props = env.globals.PropertiesService.getScriptProperties();
+    props.setProperty('testKey', 'testVal');
+    expect(readPropertyHelper_(props, 'testKey')).toBe('testVal');
+
+    // saveMonitorStates_: null 引数
+    expect(() => saveMonitorStates_(null, null)).not.toThrow();
+    expect(() => saveMonitorStates_(props, null)).not.toThrow();
+
+    // saveMonitorStates_: setProperties を持つ場合
+    const newStates = {
+      temp: { consecutive: 2, alert: true },
+      hum: { consecutive: 0, alert: false },
+      discomfortIndex: { consecutive: 1, alert: false }
+    };
+    saveMonitorStates_(props, newStates);
+    const loaded = loadMonitorStates_(props);
+    expect(loaded.temp.alert).toBe(true);
+    expect(loaded.temp.consecutive).toBe(2);
+
+    // saveMonitorStates_: setProperty しか持たないフォールバックオブジェクトの場合
+    const legacyStore = {};
+    const legacyProps = {
+      setProperty: (k, v) => { legacyStore[k] = String(v); },
+      getProperty: (k) => legacyStore[k] || null
+    };
+    saveMonitorStates_(legacyProps, newStates);
+    expect(JSON.parse(legacyStore['MONITOR_STATE_temp']).alert).toBe(true);
+
+    // commitMonitorUpdates_: 空更新の場合は setProperties/setProperty を呼ばない
+    let setPropsCalled = false;
+    const trackingProps = {
+      setProperties: () => { setPropsCalled = true; },
+      setProperty: () => { setPropsCalled = true; }
+    };
+    commitMonitorUpdates_(null, null);
+    commitMonitorUpdates_(trackingProps, {});
+    expect(setPropsCalled).toBe(false);
+
+    commitMonitorUpdates_(trackingProps, { testKey: 'val' });
+    expect(setPropsCalled).toBe(true);
+  });
 });

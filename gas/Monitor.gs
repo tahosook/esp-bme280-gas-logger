@@ -123,18 +123,68 @@ function resolveAlertDecision_(conditions, isOverThreshold, currentStates, prope
   });
 }
 
-function recordAlertNotification_(properties, decision, conditions, dailyAlertInfo) {
+function readPropertyHelper_(properties, key) {
+  if (!properties) {
+    return null;
+  }
+  if (typeof properties.getProperty === 'function') {
+    return properties.getProperty(key);
+  }
+  return Object.prototype.hasOwnProperty.call(properties, key) ? properties[key] : null;
+}
+
+function getAlertDateString_(decision, nowMs) {
+  if (decision && decision.todayJst) {
+    return decision.todayJst;
+  }
+  if (typeof getJstDateString_ === 'function') {
+    return getJstDateString_(nowMs);
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
+function commitMonitorUpdates_(properties, pendingUpdates) {
+  if (!properties || !pendingUpdates || Object.keys(pendingUpdates).length === 0) {
+    return;
+  }
+  if (typeof properties.setProperties === 'function') {
+    properties.setProperties(pendingUpdates);
+  } else if (typeof properties.setProperty === 'function') {
+    for (const [key, value] of Object.entries(pendingUpdates)) {
+      properties.setProperty(key, value);
+    }
+  }
+}
+
+function recordAlertNotification_(properties, decision, conditions, dailyAlertInfo, updates) {
   if (!decision || !decision.shouldAlert) {
     return null;
   }
 
   const notification = buildMonitorNotification_(conditions);
   const nowMs = Date.now();
-  saveAlertLastSentTime_(properties, nowMs);
+  const alertTimeKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.alertLastSentTime)
+    ? SCRIPT_PROPERTY_KEYS.alertLastSentTime
+    : 'ALERT_LAST_SENT_TIME';
+  const alertCountKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.alertCountToday)
+    ? SCRIPT_PROPERTY_KEYS.alertCountToday
+    : 'ALERT_COUNT_TODAY';
 
-  const todayJst = decision.todayJst || (typeof getJstDateString_ === 'function' ? getJstDateString_(nowMs) : new Date().toISOString().slice(0, 10));
-  const newCount = (dailyAlertInfo && dailyAlertInfo.date === todayJst) ? (dailyAlertInfo.count + 1) : 1;
-  saveDailyAlertInfo_(properties, { date: todayJst, count: newCount });
+  const todayJst = getAlertDateString_(decision, nowMs);
+  const isSameDay = Boolean(dailyAlertInfo && dailyAlertInfo.date === todayJst);
+  const newCount = isSameDay ? (dailyAlertInfo.count + 1) : 1;
+  const countPayload = JSON.stringify({ date: todayJst, count: newCount });
+
+  if (updates) {
+    updates[alertTimeKey] = String(nowMs);
+    updates[alertCountKey] = countPayload;
+    return notification;
+  }
+
+  if (properties) {
+    saveAlertLastSentTime_(properties, nowMs);
+    saveDailyAlertInfo_(properties, { date: todayJst, count: newCount });
+  }
 
   return notification;
 }
@@ -142,17 +192,23 @@ function recordAlertNotification_(properties, decision, conditions, dailyAlertIn
 function updateMonitorState_(measurement) {
   const conditions = evaluateMonitorConditions_(measurement);
   const properties = PropertiesService.getScriptProperties();
+  const allProps = (properties && typeof properties.getProperties === 'function')
+    ? properties.getProperties()
+    : (properties || {});
+
   const monitorConfig = getMonitorConfig_();
   const thresholds = monitorConfig.thresholds;
   const smoothing = monitorConfig.smoothing;
   const mergedConfig = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : {};
 
-  const currentStates = loadMonitorStates_(properties);
-  const lastValid = loadLastValidMeasurement_(properties);
+  const currentStates = loadMonitorStates_(allProps);
+  const lastValid = loadLastValidMeasurement_(allProps);
   const anomaly = detectAnomaly_(conditions, lastValid, getAnomalyLimits_());
 
+  const pendingUpdates = {};
+
   if (!anomaly) {
-    saveLastValidMeasurement_(properties, conditions);
+    pendingUpdates[MONITOR_PROPERTIES.lastValidPrefix + 'payload'] = JSON.stringify(conditions);
   }
 
   const states = {
@@ -168,12 +224,16 @@ function updateMonitorState_(measurement) {
     states.hum.consecutive = 0;
   }
 
-  const isOverThreshold = states.temp.alert || states.hum.alert || states.discomfortIndex.alert;
-  const dailyAlertInfo = loadDailyAlertInfo_(properties);
-  const decision = resolveAlertDecision_(conditions, isOverThreshold, currentStates, properties, mergedConfig);
-  const notification = recordAlertNotification_(properties, decision, conditions, dailyAlertInfo);
+  for (const [key, value] of Object.entries(states)) {
+    pendingUpdates[MONITOR_PROPERTIES.statePrefix + key] = JSON.stringify(value);
+  }
 
-  saveMonitorStates_(properties, states);
+  const isOverThreshold = Boolean(states.temp.alert || states.hum.alert || states.discomfortIndex.alert);
+  const dailyAlertInfo = loadDailyAlertInfo_(allProps);
+  const decision = resolveAlertDecision_(conditions, isOverThreshold, currentStates, allProps, mergedConfig);
+  const notification = recordAlertNotification_(properties, decision, conditions, dailyAlertInfo, pendingUpdates);
+
+  commitMonitorUpdates_(properties, pendingUpdates);
 
   return {
     states,
@@ -185,7 +245,7 @@ function updateMonitorState_(measurement) {
 
 function loadDailyAlertInfo_(properties) {
   const propKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.alertCountToday) || 'ALERT_COUNT_TODAY';
-  const raw = properties.getProperty(propKey);
+  const raw = readPropertyHelper_(properties, propKey);
   if (!raw) return null;
   try {
     return JSON.parse(raw);
@@ -201,7 +261,7 @@ function saveDailyAlertInfo_(properties, info) {
 
 function loadAlertLastSentTime_(properties) {
   const propKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.alertLastSentTime) || 'ALERT_LAST_SENT_TIME';
-  return properties.getProperty(propKey);
+  return readPropertyHelper_(properties, propKey);
 }
 
 function saveAlertLastSentTime_(properties, timestampMs) {
@@ -211,7 +271,7 @@ function saveAlertLastSentTime_(properties, timestampMs) {
 
 function loadAlertSnoozeUntil_(properties) {
   const primaryKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.alertSnoozeUntil) || 'ALERT_SNOOZE_UNTIL';
-  return properties.getProperty(primaryKey) || properties.getProperty('MONITOR_SKIP_UNTIL');
+  return readPropertyHelper_(properties, primaryKey) || readPropertyHelper_(properties, 'MONITOR_SKIP_UNTIL');
 }
 
 function getAnomalyLimits_() {
@@ -264,7 +324,7 @@ function loadMonitorStates_(properties) {
   };
 
   for (const key of Object.keys(result)) {
-    const raw = properties.getProperty(MONITOR_PROPERTIES.statePrefix + key);
+    const raw = readPropertyHelper_(properties, MONITOR_PROPERTIES.statePrefix + key);
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
@@ -279,13 +339,24 @@ function loadMonitorStates_(properties) {
 }
 
 function saveMonitorStates_(properties, states) {
+  if (!properties || !states) {
+    return;
+  }
+  const updates = {};
   for (const [key, value] of Object.entries(states)) {
-    properties.setProperty(MONITOR_PROPERTIES.statePrefix + key, JSON.stringify(value));
+    updates[MONITOR_PROPERTIES.statePrefix + key] = JSON.stringify(value);
+  }
+  if (typeof properties.setProperties === 'function') {
+    properties.setProperties(updates);
+  } else if (typeof properties.setProperty === 'function') {
+    for (const [key, value] of Object.entries(updates)) {
+      properties.setProperty(key, value);
+    }
   }
 }
 
 function loadLastValidMeasurement_(properties) {
-  const raw = properties.getProperty(MONITOR_PROPERTIES.lastValidPrefix + 'payload');
+  const raw = readPropertyHelper_(properties, MONITOR_PROPERTIES.lastValidPrefix + 'payload');
   if (!raw) {
     return null;
   }
@@ -422,7 +493,7 @@ function getMonitorStateForTest_() {
   return loadMonitorStates_(PropertiesService.getScriptProperties());
 }
 
-if (typeof module !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
 
     getWatchdogDataSheet_,
@@ -454,6 +525,9 @@ if (typeof module !== 'undefined') {
     checkWatchdog,
     runWatchdogCheck_,
     resetWatchdogState_,
-    getMonitorStateForTest_
+    getMonitorStateForTest_,
+    readPropertyHelper_,
+    getAlertDateString_,
+    commitMonitorUpdates_
   };
 }
