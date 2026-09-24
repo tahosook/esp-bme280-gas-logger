@@ -338,16 +338,10 @@ describe('Metrics & Indicators Calculation (各種指標の計算)', () => {
       const oneMinuteRows = [];
       for (let m = 200; m >= 0; m--) {
         const rowTime = new Date(baseTime - m * 60 * 1000);
-        oneMinuteRows.push([rowTime, 25.0, 1000.0 + m, 50.0]); // 180分前は 1000 + 180 = 1180 -> 範囲外にならないよう調整
-      }
-      // 気圧は 1013.0 + m * 0.1 とする
-      const validOneMinRows = [];
-      for (let m = 200; m >= 0; m--) {
-        const rowTime = new Date(baseTime - m * 60 * 1000);
-        validOneMinRows.push([rowTime, 25.0, 1000.0 + (m * 0.1), 50.0]);
+        oneMinuteRows.push([rowTime, 25.0, 1000.0 + (m * 0.1), 50.0]);
       }
       // 180分前の気圧は 1000.0 + 18.0 = 1018.0
-      const pastFrom1Min = findPastPressureFromRows_(validOneMinRows, 180, 90, 270, baseTime);
+      const pastFrom1Min = findPastPressureFromRows_(oneMinuteRows, 180, 90, 270, baseTime);
       expect(pastFrom1Min).toBe(1018.0);
 
       // 5分間隔データ（48行: 0〜240分前）
