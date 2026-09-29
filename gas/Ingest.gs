@@ -10,15 +10,37 @@ function parseSensorRequest_(e) {
   }
 }
 
+function getApiToken_(properties) {
+  const apiTokenKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.apiToken) || 'API_TOKEN';
+  return typeof properties.getProperty === 'function'
+    ? properties.getProperty(apiTokenKey)
+    : properties[apiTokenKey];
+}
+
 function authenticateSensorToken_(payload, properties) {
   if (!payload || typeof payload.token !== 'string' || !properties) {
     return false;
   }
-  const apiTokenKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.apiToken) || 'API_TOKEN';
-  const apiToken = typeof properties.getProperty === 'function'
-    ? properties.getProperty(apiTokenKey)
-    : properties[apiTokenKey];
+  const apiToken = getApiToken_(properties);
   return typeof apiToken === 'string' && payload.token === apiToken;
+}
+
+function handleSensorPostInternalError_(error) {
+  if (typeof logError_ === 'function') {
+    logError_('ingest', 'sensor_post', 'internal_error', error);
+  } else {
+    console.error('internal_error');
+  }
+  return errorResponse_('internal_error');
+}
+
+function processSensorPayload_(payload) {
+  const properties = PropertiesService.getScriptProperties();
+  if (!authenticateSensorToken_(payload, properties)) {
+    return errorResponse_('invalid_token');
+  }
+  checkAndAppendMeasurement_(payload, properties);
+  return successResponse_();
 }
 
 function handleSensorPost_(e) {
@@ -34,20 +56,9 @@ function handleSensorPost_(e) {
   }
 
   try {
-    const properties = PropertiesService.getScriptProperties();
-    if (!authenticateSensorToken_(payload, properties)) {
-      return errorResponse_('invalid_token');
-    }
-
-    checkAndAppendMeasurement_(payload, properties);
-    return successResponse_();
+    return processSensorPayload_(payload);
   } catch (error) {
-    if (typeof logError_ === 'function') {
-      logError_('ingest', 'sensor_post', 'internal_error', error);
-    } else {
-      console.error('internal_error');
-    }
-    return errorResponse_('internal_error');
+    return handleSensorPostInternalError_(error);
   }
 }
 
@@ -65,17 +76,28 @@ function validateMeasurementLimits_(payload) {
   return true;
 }
 
+function isValidApiVersion_(version) {
+  return typeof version === 'number' && isFinite(version) && version === 1;
+}
+
+function isValidTokenFormat_(token) {
+  return typeof token === 'string' && token.length > 0;
+}
+
+function isBasicPayloadObjectValid_(payload) {
+  return payload && typeof payload === 'object' && !Array.isArray(payload);
+}
+
 function validateSensorPayload_(payload) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+  if (!isBasicPayloadObjectValid_(payload)) {
     return 'invalid_payload';
   }
 
-  if (typeof payload.api_version !== 'number' ||
-      !isFinite(payload.api_version) || payload.api_version !== 1) {
+  if (!isValidApiVersion_(payload.api_version)) {
     return 'invalid_api_version';
   }
 
-  if (typeof payload.token !== 'string' || payload.token.length === 0) {
+  if (!isValidTokenFormat_(payload.token)) {
     return 'invalid_token';
   }
 
@@ -86,6 +108,21 @@ function validateSensorPayload_(payload) {
   return null;
 }
 
+function isValidTimestampObject_(timestamp) {
+  return Object.prototype.toString.call(timestamp) === '[object Date]' && !isNaN(timestamp.getTime());
+}
+
+function isRecentDuplicateMeasurement_(elapsedSec, dupWindowSec, lastValues, payload) {
+  const lastTemp = lastValues[1];
+  const lastPress = lastValues[2];
+  const lastHum = lastValues[3];
+  return elapsedSec >= 0 &&
+      elapsedSec <= dupWindowSec &&
+      lastTemp === payload.temp &&
+      lastPress === payload.press &&
+      lastHum === payload.hum;
+}
+
 function isDuplicateMeasurement_(sheet, payload, dupWindowSec, now) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 1) {
@@ -94,23 +131,40 @@ function isDuplicateMeasurement_(sheet, payload, dupWindowSec, now) {
 
   const lastValues = sheet.getRange(lastRow, 1, 1, 5).getValues()[0];
   const lastTimestamp = lastValues[0];
-  const lastTemp = lastValues[1];
-  const lastPress = lastValues[2];
-  const lastHum = lastValues[3];
 
-  const hasValidTimestamp = Object.prototype.toString.call(lastTimestamp) === '[object Date]' &&
-      !isNaN(lastTimestamp.getTime());
-
-  if (!hasValidTimestamp) {
+  if (!isValidTimestampObject_(lastTimestamp)) {
     return false;
   }
 
   const elapsedSec = (now.getTime() - lastTimestamp.getTime()) / 1000;
-  return elapsedSec >= 0 &&
-      elapsedSec <= dupWindowSec &&
-      lastTemp === payload.temp &&
-      lastPress === payload.press &&
-      lastHum === payload.hum;
+  return isRecentDuplicateMeasurement_(elapsedSec, dupWindowSec, lastValues, payload);
+}
+
+function handleMonitorNotification_(notification) {
+  if (!notification || typeof pushMonitorNotification_ !== 'function') {
+    return;
+  }
+  try {
+    pushMonitorNotification_(notification.text);
+  } catch (err) {
+    if (typeof logError_ === 'function') {
+      logError_('ingest', 'line_push', 'push_failed', err);
+    }
+  }
+}
+
+function processMonitorResult_(sheet, lastAppendedRow, monitorResult) {
+  if (!monitorResult) {
+    return;
+  }
+
+  if (monitorResult.anomaly) {
+    sheet.getRange(lastAppendedRow, 5).setValue('anomaly');
+  } else if (monitorResult.notification) {
+    sheet.getRange(lastAppendedRow, 5).setValue('alert');
+  }
+
+  handleMonitorNotification_(monitorResult.notification);
 }
 
 function applyMonitorStateSafely_(sheet, lastAppendedRow, payload) {
@@ -119,25 +173,7 @@ function applyMonitorStateSafely_(sheet, lastAppendedRow, payload) {
   }
   try {
     const monitorResult = updateMonitorState_(payload);
-    if (!monitorResult) {
-      return;
-    }
-
-    if (monitorResult.anomaly) {
-      sheet.getRange(lastAppendedRow, 5).setValue('anomaly');
-    } else if (monitorResult.notification) {
-      sheet.getRange(lastAppendedRow, 5).setValue('alert');
-    }
-
-    if (monitorResult.notification && typeof pushMonitorNotification_ === 'function') {
-      try {
-        pushMonitorNotification_(monitorResult.notification.text);
-      } catch (err) {
-        if (typeof logError_ === 'function') {
-          logError_('ingest', 'line_push', 'push_failed', err);
-        }
-      }
-    }
+    processMonitorResult_(sheet, lastAppendedRow, monitorResult);
   } catch (error) {
     if (typeof logError_ === 'function') {
       logError_('ingest', 'monitor', 'monitor_update_failed', error);
@@ -162,6 +198,31 @@ function getIngestSheet_(properties) {
   return sheet;
 }
 
+function appendAndFormatMeasurement_(sheet, payload, now) {
+  sheet.appendRow([now, payload.temp, payload.press, payload.hum, '']);
+  const lastAppendedRow = sheet.getLastRow();
+  try {
+    sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+  } catch (formatError) {
+    if (typeof logError_ === 'function') {
+      logError_('ingest', 'sheet_format', 'typed_column_format_skipped', formatError);
+    }
+  }
+  return lastAppendedRow;
+}
+
+function safeResetWatchdogState_() {
+  if (typeof resetWatchdogState_ === 'function') {
+    try {
+      resetWatchdogState_();
+    } catch (error) {
+      if (typeof logError_ === 'function') {
+        logError_('ingest', 'watchdog', 'watchdog_reset_failed', error);
+      }
+    }
+  }
+}
+
 function checkAndAppendMeasurement_(payload, properties) {
   const sheet = getIngestSheet_(properties);
   const config = typeof getMergedConfig_ === 'function' ? getMergedConfig_() : (typeof DEFAULT_CONFIG !== 'undefined' ? DEFAULT_CONFIG : {});
@@ -177,26 +238,8 @@ function checkAndAppendMeasurement_(payload, properties) {
       return false;
     }
 
-    sheet.appendRow([now, payload.temp, payload.press, payload.hum, '']);
-    const lastAppendedRow = sheet.getLastRow();
-    try {
-      sheet.getRange(lastAppendedRow, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
-    } catch (formatError) {
-      if (typeof logError_ === 'function') {
-        logError_('ingest', 'sheet_format', 'typed_column_format_skipped', formatError);
-      }
-    }
-
-    if (typeof resetWatchdogState_ === 'function') {
-      try {
-        resetWatchdogState_();
-      } catch (error) {
-        if (typeof logError_ === 'function') {
-          logError_('ingest', 'watchdog', 'watchdog_reset_failed', error);
-        }
-      }
-    }
-
+    const lastAppendedRow = appendAndFormatMeasurement_(sheet, payload, now);
+    safeResetWatchdogState_();
     applyMonitorStateSafely_(sheet, lastAppendedRow, payload);
 
     return true;
