@@ -259,13 +259,13 @@ function createGasMockEnvironment(options = {}) {
     newTrigger(fnName) {
       const triggerObj = { handlerFunction: fnName };
       return {
-        timeBased() { return this; },
-        onMonthDay(day) { return this; },
-        atHour(hour) { return this; },
-        nearMinute(min) { return this; },
-        everyDays(days) { return this; },
-        everyHours(hours) { return this; },
-        inTimezone(tz) { return this; },
+        timeBased() { triggerObj.timeBased = true; return this; },
+        onMonthDay(day) { triggerObj.monthDay = day; return this; },
+        atHour(hour) { triggerObj.hour = hour; return this; },
+        nearMinute(min) { triggerObj.nearMinute = min; return this; },
+        everyDays(days) { triggerObj.everyDays = days; return this; },
+        everyHours(hours) { triggerObj.everyHours = hours; return this; },
+        inTimezone(tz) { triggerObj.timezone = tz; return this; },
         create() {
           triggers.push(triggerObj);
           return triggerObj;

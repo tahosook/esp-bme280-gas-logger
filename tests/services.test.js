@@ -938,6 +938,47 @@ describe('SetupTriggers & DebugTest Handlers', () => {
     expect(env.triggers.length).toBe(3);
   });
 
+  test('setupMonthlyAggregationTrigger: パラメータ付きで正しく登録され重複登録を防止する', () => {
+    setupMonthlyAggregationTrigger();
+    expect(env.triggers.length).toBe(1);
+
+    const trigger = env.triggers[0];
+    expect(trigger.handlerFunction).toBe('aggregateMonthly');
+    expect(trigger.timeBased).toBe(true);
+    expect(trigger.monthDay).toBe(1);
+    expect(trigger.hour).toBe(1);
+    expect(trigger.nearMinute).toBe(0);
+    expect(trigger.timezone).toBe('Asia/Tokyo');
+
+    // 再実行しても重複しない
+    setupMonthlyAggregationTrigger();
+    expect(env.triggers.length).toBe(1);
+  });
+
+  test('setupDailyAggregationTrigger & setupWatchdogTrigger: パラメータ付きで正しく登録され重複登録を防止する', () => {
+    setupDailyAggregationTrigger();
+    setupWatchdogTrigger();
+    expect(env.triggers.length).toBe(2);
+
+    const dailyTrigger = env.triggers.find(t => t.handlerFunction === 'aggregateDaily');
+    expect(dailyTrigger).toBeTruthy();
+    expect(dailyTrigger.timeBased).toBe(true);
+    expect(dailyTrigger.everyDays).toBe(1);
+    expect(dailyTrigger.hour).toBe(2);
+    expect(dailyTrigger.nearMinute).toBe(0);
+    expect(dailyTrigger.timezone).toBe('Asia/Tokyo');
+
+    const watchdogTrigger = env.triggers.find(t => t.handlerFunction === 'checkWatchdog');
+    expect(watchdogTrigger).toBeTruthy();
+    expect(watchdogTrigger.timeBased).toBe(true);
+    expect(watchdogTrigger.everyHours).toBe(1);
+
+    // 再実行しても重複しない
+    setupDailyAggregationTrigger();
+    setupWatchdogTrigger();
+    expect(env.triggers.length).toBe(2);
+  });
+
   test('DebugTest: debugTest_checkAlertLogic / buildQuickChartUrl / handleLineWebhook_Trends が正常終了する', () => {
     for (let i = 0; i < 50; i++) {
       env.dataRows.push([new Date(Date.now() - (50 - i) * 5 * 60 * 1000), 24.0, 1012.0, 55.0, '']);
@@ -1002,6 +1043,40 @@ describe('SetupTriggers & DebugTest Handlers', () => {
 
     expect(() => testLineBotConnection()).not.toThrow();
     expect(() => authorizeUrlFetch()).not.toThrow();
+  });
+
+  test('SetupTriggers: testLineBotConnection の異常系（トークン未設定、ユーザーID未設定、Push失敗）を正しくハンドリングする', () => {
+    const origPushMessage = global.pushMessage_;
+    try {
+      // 1. トークン未設定
+      env.propertiesStore.set('LINE_CHANNEL_SECRET', 'test-sec');
+      env.propertiesStore.delete('LINE_CHANNEL_ACCESS_TOKEN');
+      env.propertiesStore.set('LINE_USER_ID', 'user-123');
+      expect(() => testLineBotConnection()).not.toThrow();
+      expect(env.logEntries.some(l => typeof l === 'string' && l.includes('LINE_CHANNEL_ACCESS_TOKEN がスクリプトプロパティに設定されていません'))).toBe(true);
+
+      // 2. ユーザーID未設定
+      env.propertiesStore.set('LINE_CHANNEL_ACCESS_TOKEN', 'test-tok');
+      env.propertiesStore.delete('LINE_USER_ID');
+      expect(() => testLineBotConnection()).not.toThrow();
+      expect(env.logEntries.some(l => typeof l === 'string' && l.includes('LINE_USER_ID がスクリプトプロパティに設定されていません'))).toBe(true);
+
+      // 3. Push失敗、エラーログあり
+      env.propertiesStore.set('LINE_USER_ID', 'user-123');
+      global.pushMessage_ = () => false; // モックして失敗させる
+
+      // 事前にエラーログを追加
+      suppressConsoleError(() => {
+        logError_('test_op', 'test_target', 'test_code', new Error('test_message'));
+      });
+
+      expect(() => testLineBotConnection()).not.toThrow();
+      expect(env.logEntries.some(l => typeof l === 'string' && l.includes('LINE Push 通知の送信に失敗しました'))).toBe(true);
+      expect(env.logEntries.some(l => typeof l === 'string' && l.includes('エラー詳細:') && l.includes('test_message'))).toBe(true);
+
+    } finally {
+      global.pushMessage_ = origPushMessage;
+    }
   });
 
   test('SetupTriggers: checkTriggerStatus が登録済みトリガー一覧を正しく返却・ログ出力する', () => {

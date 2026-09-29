@@ -5,7 +5,7 @@ module.exports = {
   testMatch: ['<rootDir>/tests/**/*.test.js'],
   collectCoverageFrom: [
     'gas/**/*.gs',
-    '!gas/SetupTriggers.gs',
+
     '!gas/DebugTest.gs'
   ],
   coverageThreshold: {
