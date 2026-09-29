@@ -1066,4 +1066,125 @@ describe('SetupTriggers & DebugTest Handlers', () => {
     const threshold = getLifecycleThresholdDate_();
     expect(threshold).toBeInstanceOf(Date);
   });
+
+
+    describe('handleTextMessageError_', () => {
+    let originalConsoleError;
+    let originalLogError;
+    let env;
+
+    beforeEach(() => {
+      originalConsoleError = console.error;
+      originalLogError = global.logError_;
+      env = createGasMockEnvironment({
+        initialProperties: {
+          LINE_CHANNEL_SECRET: 'test-secret',
+          LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+          LINE_USER_ID: 'user-123'
+        }
+      });
+      Object.assign(global, env.globals);
+    });
+
+    afterEach(() => {
+      console.error = originalConsoleError;
+      global.logError_ = originalLogError;
+    });
+
+    test('should handle standard Error and call logError_ and replyMessage_ correctly', () => {
+      const mockConsoleError = jest.fn();
+      console.error = mockConsoleError;
+
+      const mockLogError = jest.fn();
+      global.logError_ = mockLogError;
+
+      const err = new Error('Test error');
+      const replyToken = 'dummy-token';
+
+      handleTextMessageError_(err, replyToken);
+
+      expect(mockConsoleError).toHaveBeenCalledWith('LINE Webhook Error:', err.toString(), err.stack);
+      expect(mockLogError).toHaveBeenCalledWith('linebot', 'webhook', 'unhandled_error', err);
+
+      expect(env.fetchedRequests.length).toBe(1);
+      const reqUrl = env.fetchedRequests[0].url;
+      const reqPayload = JSON.parse(env.fetchedRequests[0].options.payload);
+
+      expect(reqUrl).toContain('reply');
+      expect(reqPayload.replyToken).toBe(replyToken);
+      expect(reqPayload.messages[0].text).toContain('⚠️ GAS処理エラー: Test error');
+    });
+
+    test('should handle string error without stack and no replyToken', () => {
+      const mockConsoleError = jest.fn();
+      console.error = mockConsoleError;
+
+      const mockLogError = jest.fn();
+      global.logError_ = mockLogError;
+
+      const err = 'String error';
+
+      handleTextMessageError_(err, null);
+
+      expect(mockConsoleError).toHaveBeenCalledWith('LINE Webhook Error:', 'String error', '');
+      expect(mockLogError).toHaveBeenCalledWith('linebot', 'webhook', 'unhandled_error', err);
+      expect(env.fetchedRequests.length).toBe(0);
+    });
+
+    test('should catch and log error if replyMessage_ throws', () => {
+      const mockConsoleError = jest.fn();
+      console.error = mockConsoleError;
+
+      const mockLogError = jest.fn();
+      global.logError_ = mockLogError;
+
+      const replyErr = new Error('Reply failed');
+
+      const origGlobalProp = global.PropertiesService;
+      const origEnvProp = env.globals.PropertiesService;
+
+      const throwingPropService = {
+        getScriptProperties: () => {
+          throw replyErr;
+        }
+      };
+
+      global.PropertiesService = throwingPropService;
+      env.globals.PropertiesService = throwingPropService;
+
+      const err = new Error('Initial error');
+      const replyToken = 'dummy-token';
+
+      try {
+        handleTextMessageError_(err, replyToken);
+
+        expect(mockConsoleError).toHaveBeenCalledWith('LINE Webhook Error:', err.toString(), err.stack);
+        expect(mockConsoleError).toHaveBeenCalledWith('Failed to reply error message to LINE:', replyErr);
+      } finally {
+        global.PropertiesService = origGlobalProp;
+        env.globals.PropertiesService = origEnvProp;
+      }
+    });
+
+    test('should handle null error object gracefully', () => {
+      const mockConsoleError = jest.fn();
+      console.error = mockConsoleError;
+
+      const mockLogError = jest.fn();
+      global.logError_ = mockLogError;
+
+      const err = null;
+      const replyToken = 'dummy-token';
+
+      handleTextMessageError_(err, replyToken);
+
+      expect(mockConsoleError).toHaveBeenCalledWith('LINE Webhook Error:', 'null', '');
+      expect(mockLogError).toHaveBeenCalledWith('linebot', 'webhook', 'unhandled_error', err);
+
+      expect(env.fetchedRequests.length).toBe(1);
+      const reqPayload = JSON.parse(env.fetchedRequests[0].options.payload);
+      expect(reqPayload.messages[0].text).toContain('⚠️ GAS処理エラー: null');
+    });
+  });
+
 });
