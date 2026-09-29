@@ -15,15 +15,14 @@ ESP8266 board package.
 
 ## HTTPS certificate verification
 
-This sketch uses `WiFiClientSecure::setInsecure()` and skips certificate
-verification. This is a deliberate choice for this personal hobby project:
+This sketch uses `WiFiClientSecure::setTrustAnchors()` with a root CA certificate
+list included in `certs.h`. This ensures TLS/SSL verification to prevent MITM
+(Man-In-The-Middle) attacks.
 
-- GAS Web Apps redirect from `script.google.com` to
-  `script.googleusercontent.com`, which makes certificate pinning fragile
-  against Google's certificate rotation.
-- The payload is non-sensitive environmental data.
-- The token is only for accidental-access prevention, not strong
-  authentication.
+Because GAS Web Apps redirect from `script.google.com` to
+`script.googleusercontent.com`, pinning the leaf certificate is fragile against
+Google's certificate rotation. Therefore, this project pins the **Google Trust Services
+Root CA** (GTS Root R1), which has a much longer validity period (until 2036).
 
 ## Local setup
 

@@ -1,4 +1,8 @@
 #include <ESP8266WiFi.h>
+#include "certs.h"
+
+// グローバルな証明書リスト（HTTPS通信用）
+BearSSL::X509List cert(root_ca);
 
 // 送信結果の分類（リトライ制御用）
 enum GasSendResult {

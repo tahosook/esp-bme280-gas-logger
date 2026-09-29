@@ -9,6 +9,8 @@
 WiFiClientSecure client;
 HTTPClient http;
 
+extern BearSSL::X509List cert;
+
 void initGAS()
 {
     // Wi-Fi接続に失敗しても無限ループせず、ディープスリープへ進む。
@@ -18,12 +20,11 @@ void initGAS()
         return;
     }
 
-    // 個人用・簡易構成のため、HTTPS証明書検証を省略する。
+    // TLS/SSL証明書の検証を有効化し、MITM（中間者攻撃）を防止する。
     // GAS Web Appはscript.google.comからscript.googleusercontent.comへ
-    // 302リダイレクトするため、証明書検証を有効にするとGoogleの証明書
-    // ローテーションで壊れやすい。送信データは非機密の環境測定値で、
-    // トークンは偶発的アクセス防止用であり強固な認証ではない。
-    client.setInsecure();
+    // 302リダイレクトするため、Google Trust ServicesのルートCA証明書を
+    // certs.h で定義してトラストアンカーとして設定する。
+    client.setTrustAnchors(&cert);
 }
 
 bool initWifi()
