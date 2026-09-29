@@ -938,6 +938,40 @@ describe('SetupTriggers & DebugTest Handlers', () => {
     expect(env.triggers.length).toBe(3);
   });
 
+  test('setupDailyAggregationTrigger: 毎日実行のトリガーを正しく登録し重複登録を防止する', () => {
+    const builderMock = {
+      timeBased: jest.fn().mockReturnThis(),
+      everyDays: jest.fn().mockReturnThis(),
+      atHour: jest.fn().mockReturnThis(),
+      nearMinute: jest.fn().mockReturnThis(),
+      inTimezone: jest.fn().mockReturnThis(),
+      create: jest.fn().mockImplementation(() => {
+        env.triggers.push({ handlerFunction: 'aggregateDaily' });
+        return {};
+      })
+    };
+    const spy = jest.spyOn(global.ScriptApp, 'newTrigger').mockReturnValue(builderMock);
+
+    setupDailyAggregationTrigger();
+
+    expect(spy).toHaveBeenCalledWith('aggregateDaily');
+    expect(builderMock.timeBased).toHaveBeenCalled();
+    expect(builderMock.everyDays).toHaveBeenCalledWith(1);
+    expect(builderMock.atHour).toHaveBeenCalledWith(2);
+    expect(builderMock.nearMinute).toHaveBeenCalledWith(0);
+    expect(builderMock.inTimezone).toHaveBeenCalledWith('Asia/Tokyo');
+    expect(builderMock.create).toHaveBeenCalled();
+    expect(env.triggers.length).toBe(1);
+
+    // 再実行時はスキップされること
+    builderMock.create.mockClear();
+    setupDailyAggregationTrigger();
+    expect(builderMock.create).not.toHaveBeenCalled();
+    expect(env.triggers.length).toBe(1);
+
+    spy.mockRestore();
+  });
+
   test('DebugTest: debugTest_checkAlertLogic / buildQuickChartUrl / handleLineWebhook_Trends が正常終了する', () => {
     for (let i = 0; i < 50; i++) {
       env.dataRows.push([new Date(Date.now() - (50 - i) * 5 * 60 * 1000), 24.0, 1012.0, 55.0, '']);
