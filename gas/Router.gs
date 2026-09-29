@@ -24,15 +24,17 @@ function doPost(e) {
 }
 
 function isLineWebhookRequest_(e, payload) {
-  const headers = (e && e.headers) || {};
-  const params = (e && e.parameter) || {};
+  const { headers = {}, parameter = {} } = e || {};
   const hasLineHeader = Boolean(
     headers['X-Line-Signature'] ||
     headers['x-line-signature'] ||
-    params['X-Line-Signature'] ||
-    params['x-line-signature']
+    parameter['X-Line-Signature'] ||
+    parameter['x-line-signature']
   );
-  const isLinePayload = Boolean(payload && (Array.isArray(payload.events) || typeof payload.destination === 'string'));
+
+  const { events, destination } = payload || {};
+  const isLinePayload = Boolean(Array.isArray(events) || typeof destination === 'string');
+
   return hasLineHeader || isLinePayload;
 }
 
