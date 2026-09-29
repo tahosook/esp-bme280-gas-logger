@@ -113,12 +113,12 @@ function isDuplicateMeasurement_(sheet, payload, dupWindowSec, now) {
       lastHum === payload.hum;
 }
 
-function applyMonitorStateSafely_(sheet, lastAppendedRow, payload) {
+function applyMonitorStateSafely_(sheet, lastAppendedRow, payload, properties) {
   if (typeof updateMonitorState_ !== 'function') {
     return;
   }
   try {
-    const monitorResult = updateMonitorState_(payload);
+    const monitorResult = updateMonitorState_(payload, properties);
     if (!monitorResult) {
       return;
     }
@@ -197,7 +197,7 @@ function checkAndAppendMeasurement_(payload, properties) {
       }
     }
 
-    applyMonitorStateSafely_(sheet, lastAppendedRow, payload);
+    applyMonitorStateSafely_(sheet, lastAppendedRow, payload, properties);
 
     return true;
   } finally {

@@ -189,9 +189,9 @@ function recordAlertNotification_(properties, decision, conditions, dailyAlertIn
   return notification;
 }
 
-function updateMonitorState_(measurement) {
+function updateMonitorState_(measurement, properties) {
   const conditions = evaluateMonitorConditions_(measurement);
-  const properties = PropertiesService.getScriptProperties();
+  properties = properties || PropertiesService.getScriptProperties();
   const allProps = (properties && typeof properties.getProperties === 'function')
     ? properties.getProperties()
     : (properties || {});
