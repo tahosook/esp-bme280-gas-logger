@@ -194,6 +194,65 @@ describe('Flex Message Builders (LINE メッセージ構築)', () => {
   });
 });
 
+describe('formatStatusTimeString_', () => {
+  let originalFormatDateTokyo;
+  let originalUtilities;
+
+  beforeEach(() => {
+    originalFormatDateTokyo = global.formatDateTokyo_;
+    originalUtilities = global.Utilities;
+  });
+
+  afterEach(() => {
+    global.formatDateTokyo_ = originalFormatDateTokyo;
+    global.Utilities = originalUtilities;
+  });
+
+  test('should return "データなし" for falsy timestamps', () => {
+    expect(formatStatusTimeString_(null)).toBe('データなし');
+    expect(formatStatusTimeString_(undefined)).toBe('データなし');
+    expect(formatStatusTimeString_('')).toBe('データなし');
+    expect(formatStatusTimeString_(0)).toBe('データなし');
+  });
+
+  test('should use formatDateTokyo_ when available', () => {
+    global.formatDateTokyo_ = jest.fn().mockReturnValue('09/15 12:30');
+
+    const result = formatStatusTimeString_(1694748600000);
+
+    expect(global.formatDateTokyo_).toHaveBeenCalledWith(1694748600000, 'MM/dd HH:mm');
+    expect(result).toBe('09/15 12:30 測定');
+  });
+
+  test('should use Utilities.formatDate when formatDateTokyo_ is not available', () => {
+    global.formatDateTokyo_ = undefined;
+    global.Utilities = {
+      formatDate: jest.fn().mockReturnValue('10/20 14:45')
+    };
+
+    const result = formatStatusTimeString_(1697780700000);
+
+    expect(global.Utilities.formatDate).toHaveBeenCalledWith(new Date(1697780700000), 'Asia/Tokyo', 'MM/dd HH:mm');
+    expect(result).toBe('10/20 14:45 測定');
+  });
+
+  test('should fallback to manual JST conversion when neither helper is available', () => {
+    global.formatDateTokyo_ = undefined;
+    global.Utilities = undefined;
+
+    // 2023-11-25T15:30:00.000Z
+    const timestamp = Date.UTC(2023, 10, 25, 15, 30, 0); // 10 is November
+
+    const result = formatStatusTimeString_(timestamp);
+
+    // The implementation in gas/LineBot.gs does:
+    // const jst = new Date(new Date(timestamp).getTime() + 9 * 60 * 60 * 1000);
+    // and then uses getUTCMonth(), getUTCDate(), etc.
+    // So for 2023-11-25T15:30:00.000Z + 9 hours = 2023-11-26T00:30:00.000Z
+    expect(result).toBe('11/26 00:30 測定');
+  });
+});
+
 describe('Metrics & Indicators Calculation (各種指標の計算)', () => {
   test('不快指数（DI）計算', () => {
     const di1 = calculateDiscomfortIndex_(25, 50);
