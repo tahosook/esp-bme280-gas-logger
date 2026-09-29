@@ -38,14 +38,11 @@ function isLineWebhookRequest_(e, payload) {
 
 function doGet() {
   try {
-    const properties = PropertiesService.getScriptProperties();
-    const spreadsheetIdKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.spreadsheetId) || 'SPREADSHEET_ID';
-    const apiTokenKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.apiToken) || 'API_TOKEN';
-    const sheetNameKey = (typeof SCRIPT_PROPERTY_KEYS !== 'undefined' && SCRIPT_PROPERTY_KEYS.sheetName) || 'SHEET_NAME';
+    const config = getSpreadsheetConfig_();
 
-    const spreadsheetId = properties.getProperty(spreadsheetIdKey);
-    const apiToken = properties.getProperty(apiTokenKey);
-    const sheetName = properties.getProperty(sheetNameKey) || 'RawData';
+    const spreadsheetId = config.spreadsheetId;
+    const apiToken = config.apiToken;
+    const sheetName = config.sheetName;
 
     if (!spreadsheetId || !apiToken) {
       return readinessResponse_(false);
