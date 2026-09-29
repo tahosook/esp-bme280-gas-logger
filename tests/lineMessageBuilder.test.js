@@ -296,6 +296,46 @@ describe('Metrics & Indicators Calculation (各種指標の計算)', () => {
     expect(parseJstDatetimepicker_(null, mockNow)).toBeNull();
   });
 
+
+  describe('getGraphTargetSheet_', () => {
+    test('SPREADSHEET_ID が存在しない場合は null を返す', () => {
+      const mockPropsEmpty = { getProperty: () => null };
+      expect(getGraphTargetSheet_(mockPropsEmpty)).toBeNull();
+    });
+
+    test('正常にシートを取得できる', () => {
+      const env = createGasMockEnvironment();
+      Object.assign(global, env.globals);
+      const props = env.globals.PropertiesService.getScriptProperties();
+
+      const sheet = getGraphTargetSheet_(props);
+      expect(sheet).not.toBeNull();
+      // デフォルトでは 'DATA' または 'RawData' などが返るはずなのでオブジェクトであることを確認
+      expect(typeof sheet.getName).toBe('function');
+    });
+
+    test('SpreadsheetApp.openById が例外を投げた場合は null を返す', () => {
+      const env = createGasMockEnvironment();
+      Object.assign(global, env.globals);
+      const savedSpreadsheetApp = global.SpreadsheetApp;
+      try {
+        global.SpreadsheetApp = {
+          openById: () => { throw new Error('Mock open error'); }
+        };
+        const props = env.globals.PropertiesService.getScriptProperties();
+
+        let result;
+        suppressConsoleError(() => {
+          result = getGraphTargetSheet_(props);
+        });
+
+        expect(result).toBeNull();
+      } finally {
+        global.SpreadsheetApp = savedSpreadsheetApp;
+      }
+    });
+  });
+
   describe('getPastPressureFromSheet_ & isValidPressureValue_', () => {
     test('isValidPressureValue_: 境界値と異常値の判定', () => {
       expect(isValidPressureValue_(1013.2)).toBe(true);
