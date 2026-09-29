@@ -83,6 +83,14 @@ function createGasMockEnvironment(options = {}) {
             if (rowsArray[row - 1]) {
               rowsArray[row - 1][col - 1] = val;
             }
+          },
+          setValues(valuesArray) {
+            if (failAppendFlag && failAppendFlag()) {
+              throw new Error(`Simulated append failure on ${sheetName}`);
+            }
+            for (let i = 0; i < valuesArray.length; i++) {
+              rowsArray.push(valuesArray[i]);
+            }
           }
         };
       },
