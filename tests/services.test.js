@@ -938,6 +938,17 @@ describe('SetupTriggers & DebugTest Handlers', () => {
     expect(env.triggers.length).toBe(3);
   });
 
+  test('setupWatchdogTrigger: checkWatchdog トリガーを毎時1回で正しく登録し重複登録を防止する', () => {
+    setupWatchdogTrigger();
+    expect(env.triggers.length).toBe(1);
+    expect(env.triggers[0].handlerFunction).toBe('checkWatchdog');
+    expect(env.triggers[0].everyHours).toBe(1);
+
+    // 再実行しても重複しない
+    setupWatchdogTrigger();
+    expect(env.triggers.length).toBe(1);
+  });
+
   test('DebugTest: debugTest_checkAlertLogic / buildQuickChartUrl / handleLineWebhook_Trends が正常終了する', () => {
     for (let i = 0; i < 50; i++) {
       env.dataRows.push([new Date(Date.now() - (50 - i) * 5 * 60 * 1000), 24.0, 1012.0, 55.0, '']);

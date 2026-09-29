@@ -264,7 +264,10 @@ function createGasMockEnvironment(options = {}) {
         atHour(hour) { return this; },
         nearMinute(min) { return this; },
         everyDays(days) { return this; },
-        everyHours(hours) { return this; },
+        everyHours(hours) {
+          triggerObj.everyHours = hours;
+          return this;
+        },
         inTimezone(tz) { return this; },
         create() {
           triggers.push(triggerObj);
