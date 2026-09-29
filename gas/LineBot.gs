@@ -83,8 +83,8 @@ function handleSnoozeCustomPostback_(event) {
     const properties = PropertiesService.getScriptProperties();
     properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(targetMs));
     properties.setProperty(LINE_BOT_PROPERTIES.legacySkipUntil, String(targetMs));
-    const messages = buildSkipFlexMessage_(targetMs);
-    replyMessageObjects_(replyToken, messages);
+    const messages = buildSkipFlexMessage_(targetMs, properties);
+    replyMessageObjects_(replyToken, messages, properties);
   } finally {
     lock.releaseLock();
   }
@@ -122,8 +122,8 @@ function handleSnoozeCommand_(replyToken) {
     const properties = PropertiesService.getScriptProperties();
     properties.setProperty(LINE_BOT_PROPERTIES.skipUntil, String(skipUntil));
     properties.setProperty(LINE_BOT_PROPERTIES.legacySkipUntil, String(skipUntil));
-    const messages = buildSkipFlexMessage_(skipUntil);
-    replyMessageObjects_(replyToken, messages);
+    const messages = buildSkipFlexMessage_(skipUntil, properties);
+    replyMessageObjects_(replyToken, messages, properties);
   } finally {
     lock.releaseLock();
   }
@@ -154,13 +154,15 @@ function dispatchTextMessageCommand_(normalized, replyToken) {
   const clearCommands = ['clear', 'クリア', '解除'];
 
   if (nowCommands.indexOf(normalized) !== -1) {
-    const messages = buildStatusFlexMessage_();
-    replyMessageObjects_(replyToken, messages);
+    const properties = PropertiesService.getScriptProperties();
+    const messages = buildStatusFlexMessage_(properties);
+    replyMessageObjects_(replyToken, messages, properties);
   } else if (trendsCommands.indexOf(normalized) !== -1) {
-    const messages = buildGraphMessage_();
-    replyMessageObjects_(replyToken, messages);
+    const properties = PropertiesService.getScriptProperties();
+    const messages = buildGraphMessage_(properties);
+    replyMessageObjects_(replyToken, messages, properties);
   } else if (snoozeCommands.indexOf(normalized) !== -1) {
-    handleSnoozeCommand_(replyToken);
+    handleSnoozeCommand_(replyToken); // Properties fetch deferred or passed
   } else if (clearCommands.indexOf(normalized) !== -1) {
     handleClearCommand_(replyToken);
   } else {
@@ -253,8 +255,8 @@ function fetchGraphChartUrl_(properties) {
   return null;
 }
 
-function buildGraphMessage_() {
-  const properties = PropertiesService.getScriptProperties();
+function buildGraphMessage_(properties) {
+  properties = properties || PropertiesService.getScriptProperties();
   const chartUrl = fetchGraphChartUrl_(properties);
 
   if (!chartUrl) {
@@ -451,8 +453,8 @@ function formatStatusMeasurements_(lastValid, states, pastPress) {
 /* eslint-enable complexity */
 
 /* eslint-disable complexity -- Keep Flex Message construction cohesive to avoid unnecessary helper/call-chain fragmentation. */
-function buildStatusFlexMessage_() {
-  const properties = PropertiesService.getScriptProperties();
+function buildStatusFlexMessage_(properties) {
+  properties = properties || PropertiesService.getScriptProperties();
   const skipUntil = typeof getSnoozeUntilProperty_ === 'function'
     ? getSnoozeUntilProperty_(properties)
     : (properties.getProperty(LINE_BOT_PROPERTIES.skipUntil) || properties.getProperty('MONITOR_SKIP_UNTIL'));
@@ -609,8 +611,8 @@ function buildStatusFlexMessage_() {
 }
 /* eslint-enable complexity */
 
-function buildSkipFlexMessage_(skipUntil) {
-  const properties = PropertiesService.getScriptProperties();
+function buildSkipFlexMessage_(skipUntil, properties) {
+  properties = properties || PropertiesService.getScriptProperties();
   const untilVal = skipUntil || (typeof getSnoozeUntilProperty_ === 'function' ? getSnoozeUntilProperty_(properties) : properties.getProperty(LINE_BOT_PROPERTIES.skipUntil));
   const snoozeTimeStr = typeof formatSnoozeUntilJst_ === 'function' ? formatSnoozeUntilJst_(untilVal) : '';
 
@@ -732,11 +734,11 @@ function replyMessage_(replyToken, text) {
   return replyMessageObjects_(replyToken, [{ type: 'text', text: text }]);
 }
 
-function replyMessageObjects_(replyToken, messagesArray) {
+function replyMessageObjects_(replyToken, messagesArray, properties) {
   if (!replyToken || typeof replyToken !== 'string') {
     return false;
   }
-  const properties = PropertiesService.getScriptProperties();
+  properties = properties || PropertiesService.getScriptProperties();
   const channelAccessToken = properties.getProperty(SCRIPT_PROPERTY_KEYS.lineChannelAccessToken);
   const payload = {
     replyToken: replyToken,
