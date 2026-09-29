@@ -155,6 +155,42 @@ describe('LineBot Webhook & Commands (LINE Bot サービス)', () => {
     Object.assign(global, env.globals);
   });
 
+  describe('extractLineSignature_', () => {
+    test('eがnullまたはundefinedの場合はnullを返す', () => {
+      expect(extractLineSignature_(null)).toBeNull();
+      expect(extractLineSignature_(undefined)).toBeNull();
+    });
+
+    test('headersのX-Line-Signatureから取得できる', () => {
+      const e = { headers: { 'X-Line-Signature': 'header-signature-1' } };
+      expect(extractLineSignature_(e)).toBe('header-signature-1');
+    });
+
+    test('headersのx-line-signatureから取得できる', () => {
+      const e = { headers: { 'x-line-signature': 'header-signature-2' } };
+      expect(extractLineSignature_(e)).toBe('header-signature-2');
+    });
+
+    test('parameterのX-Line-Signatureから取得できる', () => {
+      const e = { parameter: { 'X-Line-Signature': 'param-signature-1' } };
+      expect(extractLineSignature_(e)).toBe('param-signature-1');
+    });
+
+    test('parameterのx-line-signatureから取得できる', () => {
+      const e = { parameter: { 'x-line-signature': 'param-signature-2' } };
+      expect(extractLineSignature_(e)).toBe('param-signature-2');
+    });
+
+    test('headersにもparameterにも対象キーがない場合はnullを返す', () => {
+      const e = { headers: { 'other-key': 'val' }, parameter: { 'other-key2': 'val2' } };
+      expect(extractLineSignature_(e)).toBeNull();
+    });
+
+    test('eが空オブジェクトの場合はnullを返す', () => {
+      expect(extractLineSignature_({})).toBeNull();
+    });
+  });
+
   function createSignedLineWebhookRequest(events, secret = channelSecret) {
     const body = JSON.stringify({ events });
     const hmac = crypto.createHmac('sha256', secret).update(body).digest('base64');
