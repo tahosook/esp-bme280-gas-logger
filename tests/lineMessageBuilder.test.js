@@ -296,6 +296,35 @@ describe('Metrics & Indicators Calculation (各種指標の計算)', () => {
     expect(parseJstDatetimepicker_(null, mockNow)).toBeNull();
   });
 
+  describe('formatStatusDiscomfortIndex_', () => {
+    test('tempVal, humValが有効な場合、計算された不快指数と分類が返される', () => {
+      const result = formatStatusDiscomfortIndex_(26.5, 55.0, null);
+      // Metrics.gsの calculateDiscomfortIndex_(26.5, 55.0) は約 74.3 になる
+      // classifyDiscomfortIndex_(74.3) は 快適(#27ae60)
+      expect(result.diText).toMatch(/^74\.\d（快適）$/);
+      expect(result.diColor).toBe('#27ae60');
+    });
+
+    test('tempVal または humVal が null だが lastValidDi が数値の場合、その値が使われる', () => {
+      const result = formatStatusDiscomfortIndex_(null, 55.0, 78.5);
+      // classifyDiscomfortIndex_(78.5) は やや暑い(#e67e22)
+      expect(result.diText).toBe('78.5（やや暑い）');
+      expect(result.diColor).toBe('#e67e22');
+    });
+
+    test('すべてが null の場合、算出不可として代替テキストと色が返される', () => {
+      const result = formatStatusDiscomfortIndex_(null, null, null);
+      expect(result.diText).toBe('-');
+      expect(result.diColor).toBe('#27ae60');
+    });
+
+    test('lastValidDi が文字列などの非数値の場合、適切にフォールバックされる', () => {
+      const result = formatStatusDiscomfortIndex_(null, null, '78.5');
+      expect(result.diText).toBe('-');
+      expect(result.diColor).toBe('#27ae60');
+    });
+  });
+
   describe('getPastPressureFromSheet_ & isValidPressureValue_', () => {
     test('isValidPressureValue_: 境界値と異常値の判定', () => {
       expect(isValidPressureValue_(1013.2)).toBe(true);
