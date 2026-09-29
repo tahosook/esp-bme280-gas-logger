@@ -152,6 +152,99 @@ describe('Flex Message Builders (LINE メッセージ構築)', () => {
     });
   });
 
+  describe('formatStatusMeasurements_ (各種測定値のテキストフォーマット)', () => {
+    test('Case 1 (No data): lastValid がない場合はプレースホルダーを返す', () => {
+      const result = formatStatusMeasurements_(null, null, null);
+      expect(result.tempText).toBe('-');
+      expect(result.humText).toBe('-');
+      expect(result.pressText).toBe('-');
+      expect(result.diText).toBe('-');
+      expect(result.timeStr).toBe('データなし');
+      expect(result.diColor).toBe('#27ae60');
+      expect(result.isTempAlert).toBe(false);
+      expect(result.isHumAlert).toBe(false);
+    });
+
+    test('Case 2 (Normal data): 通常の測定値とアラートなし状態', () => {
+      const lastValid = {
+        temp: 25.4,
+        hum: 50.1,
+        press: 1013.2,
+        timestamp: 1690858800000,
+        discomfortIndex: 74.5
+      };
+      const states = {
+        temp: { alert: false },
+        hum: { alert: false }
+      };
+      const pastPress = 1013.2;
+
+      const result = formatStatusMeasurements_(lastValid, states, pastPress);
+      expect(result.tempText).toBe('25.4 ℃ (正常)');
+      expect(result.humText).toBe('50 % (正常)');
+      expect(result.pressText).toBe('1013.2 hPa (安定)');
+      expect(result.isTempAlert).toBe(false);
+      expect(result.isHumAlert).toBe(false);
+      expect(result.diText).toContain('72.3'); // it uses mocked calculateDiscomfortIndex_ // DI text check depending on classifyDiscomfortIndex_
+    });
+
+    test('Case 3 (Alert data): アラート状態の場合は警告マークが付与される', () => {
+      const lastValid = {
+        temp: 35.5,
+        hum: 80.0,
+        press: 1000.0,
+        timestamp: 1690858800000,
+        discomfortIndex: 90.0
+      };
+      const states = {
+        temp: { alert: true },
+        hum: { alert: true }
+      };
+      const pastPress = 1000.0;
+
+      const result = formatStatusMeasurements_(lastValid, states, pastPress);
+      expect(result.tempText).toBe('35.5 ℃ (⚠️ 超過)');
+      expect(result.humText).toBe('80 % (⚠️ 多湿)');
+      expect(result.isTempAlert).toBe(true);
+      expect(result.isHumAlert).toBe(true);
+    });
+
+    test('Case 4 (Pressure trend calculation): 過去の気圧との差分でトレンドが計算される', () => {
+      const lastValid = {
+        temp: 20.0,
+        hum: 40.0,
+        press: 1015.0, // current
+        timestamp: 1690858800000,
+        discomfortIndex: 65.0
+      };
+      const states = { temp: { alert: false }, hum: { alert: false } };
+
+      // -2.0 drop should result in ↘
+      const pastPress = 1017.0;
+      const result = formatStatusMeasurements_(lastValid, states, pastPress);
+
+      expect(result.pressText).toBe('1015.0 hPa (↘ -2.0/3h)');
+    });
+
+    test('Case 5 (Missing sensor values): センサー値が欠損している場合はハイフン表示になる', () => {
+      const lastValid = {
+        temp: null, // missing
+        hum: undefined, // missing
+        press: null, // missing/invalid
+        timestamp: 1690858800000,
+        discomfortIndex: null
+      };
+      const states = { temp: { alert: false }, hum: { alert: false } };
+      const pastPress = null;
+
+      const result = formatStatusMeasurements_(lastValid, states, pastPress);
+      expect(result.tempText).toBe('-');
+      expect(result.humText).toBe('-');
+      expect(result.pressText).toBe('-');
+      expect(result.diText).toBe('-');
+    });
+  });
+
   describe('buildSkipFlexMessage_ (SNOOZE コマンド完了)', () => {
     test('スキップ完了カードが正しく生成され、kiloサイズでdatetimepickerとCLEARボタンを含む', () => {
       const futureMs = Date.now() + 8 * 3600000;
