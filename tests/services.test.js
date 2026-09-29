@@ -816,6 +816,47 @@ describe('LineBot & Ingest Edge Cases', () => {
     // SNOOZE期限が過去のもので上書きされないこと (1000か直前のexpectedMsか)
     expect(testEnv.propertiesStore.get('ALERT_SNOOZE_UNTIL')).toBe(String(expectedMs));
     expect(testEnv.fetchedRequests[testEnv.fetchedRequests.length-1].options.payload).toContain('無効な日時');
+
+    // 3. 異常系 (datetimeパラメータなし: paramsがない場合、またはdatetimeがない場合)
+    const missingParamsEvent = {
+      type: 'postback',
+      replyToken: 'tok-no-params',
+      postback: {
+        data: 'action=snooze_custom'
+      }
+    };
+    handleLineWebhook_({ postData: { contents: JSON.stringify({ events: [missingParamsEvent] }) } });
+    const missingDatetimeEvent = {
+      type: 'postback',
+      replyToken: 'tok-no-datetime',
+      postback: {
+        data: 'action=snooze_custom',
+        params: {}
+      }
+    };
+    handleLineWebhook_({ postData: { contents: JSON.stringify({ events: [missingDatetimeEvent] }) } });
+    // ALERT_SNOOZE_UNTIL が変更されないことを確認
+    expect(testEnv.propertiesStore.get('ALERT_SNOOZE_UNTIL')).toBe(String(expectedMs));
+
+    // 4. 異常系 (postback.data が action=snooze_custom でない場合)
+    const otherActionEvent = {
+      type: 'postback',
+      replyToken: 'tok-other',
+      postback: {
+        data: 'action=other'
+      }
+    };
+    handleLineWebhook_({ postData: { contents: JSON.stringify({ events: [otherActionEvent] }) } });
+    expect(testEnv.propertiesStore.get('ALERT_SNOOZE_UNTIL')).toBe(String(expectedMs));
+
+    // 5. 異常系 (postback.data がない場合)
+    const noDataEvent = {
+      type: 'postback',
+      replyToken: 'tok-no-data',
+      postback: {}
+    };
+    handleLineWebhook_({ postData: { contents: JSON.stringify({ events: [noDataEvent] }) } });
+    expect(testEnv.propertiesStore.get('ALERT_SNOOZE_UNTIL')).toBe(String(expectedMs));
   });
 
   test('LineBot: handleLineWebhook_ の異常系（無効ボディ・例外発生時のエラー返信）', () => {
