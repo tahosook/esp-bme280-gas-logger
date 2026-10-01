@@ -103,7 +103,16 @@ function verifyLineSignature_(body, signature, channelSecret) {
   try {
     const hmac = Utilities.computeHmacSha256Signature(body, channelSecret);
     const computedSignature = Utilities.base64Encode(hmac);
-    return signature === computedSignature;
+
+    if (typeof signature !== 'string' || signature.length !== computedSignature.length) {
+      return false;
+    }
+
+    let result = 0;
+    for (let i = 0; i < computedSignature.length; i++) {
+      result |= signature.charCodeAt(i) ^ computedSignature.charCodeAt(i);
+    }
+    return result === 0;
   } catch (error) {
     return false;
   }
