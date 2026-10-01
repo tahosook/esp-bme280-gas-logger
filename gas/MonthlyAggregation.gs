@@ -45,6 +45,7 @@ function getMonthlyAggregationSheets_(properties) {
 
 function appendMonthlyDataRows_(monthlySheet, monthlyBuckets, existingMonthlyDates) {
   const sortedYearMonths = Array.from(monthlyBuckets.keys()).sort();
+  const rowsToAppend = [];
   let appendedCount = 0;
 
   for (let j = 0; j < sortedYearMonths.length; j += 1) {
@@ -60,9 +61,16 @@ function appendMonthlyDataRows_(monthlySheet, monthlyBuckets, existingMonthlyDat
       continue;
     }
 
-    monthlySheet.appendRow(rowData);
-    appendedCount += 1;
+    rowsToAppend.push(rowData);
     existingMonthlyDates.add(yearMonth);
+  }
+
+  if (rowsToAppend.length > 0) {
+    const startRow = monthlySheet.getLastRow() + 1;
+    const numRows = rowsToAppend.length;
+    const numCols = rowsToAppend[0].length;
+    monthlySheet.getRange(startRow, 1, numRows, numCols).setValues(rowsToAppend);
+    appendedCount = numRows;
   }
 
   return { sortedYearMonths, appendedCount };
