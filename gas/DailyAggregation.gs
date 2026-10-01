@@ -46,6 +46,7 @@ function getDailyAggregationSheets_(properties) {
 function appendDailyDataRows_(dailySheet, dailyBuckets, existingDailyDates) {
   const sortedDates = Array.from(dailyBuckets.keys()).sort();
   let appendedCount = 0;
+  const rowsToAppend = [];
 
   for (let j = 0; j < sortedDates.length; j += 1) {
     const dateStr = sortedDates[j];
@@ -61,9 +62,14 @@ function appendDailyDataRows_(dailySheet, dailyBuckets, existingDailyDates) {
       continue;
     }
 
-    dailySheet.appendRow(rowData);
-    appendedCount += 1;
+    rowsToAppend.push(rowData);
     existingDailyDates.add(dateStr);
+  }
+
+  if (rowsToAppend.length > 0) {
+    const startRow = dailySheet.getLastRow() + 1;
+    dailySheet.getRange(startRow, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
+    appendedCount = rowsToAppend.length;
   }
 
   return { sortedDates, appendedCount };
