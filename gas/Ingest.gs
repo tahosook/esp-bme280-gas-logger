@@ -10,6 +10,18 @@ function parseSensorRequest_(e) {
   }
 }
 
+function secureCompare_(given, secret) {
+  if (typeof given !== 'string' || typeof secret !== 'string') {
+    return false;
+  }
+  let mismatch = given.length === secret.length ? 0 : 1;
+  const a = mismatch === 1 ? secret : given;
+  for (let i = 0; i < secret.length; i += 1) {
+    mismatch |= a.charCodeAt(i) ^ secret.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
 function authenticateSensorToken_(payload, properties) {
   if (!payload || typeof payload.token !== 'string' || !properties) {
     return false;
@@ -18,7 +30,7 @@ function authenticateSensorToken_(payload, properties) {
   const apiToken = typeof properties.getProperty === 'function'
     ? properties.getProperty(apiTokenKey)
     : properties[apiTokenKey];
-  return typeof apiToken === 'string' && payload.token === apiToken;
+  return typeof apiToken === 'string' && secureCompare_(payload.token, apiToken);
 }
 
 function handleSensorPost_(e) {
@@ -208,6 +220,7 @@ function checkAndAppendMeasurement_(payload, properties) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     parseSensorRequest_,
+    secureCompare_,
     authenticateSensorToken_,
     handleSensorPost_,
     validateMeasurementLimits_,

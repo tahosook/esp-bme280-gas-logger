@@ -113,6 +113,12 @@ describe('Router & Ingest Service (doGet / doPost / Sensor Ingestion)', () => {
   });
 
   test('parseSensorRequest_ および authenticateSensorToken_ の単体テスト', () => {
+    // secureCompare_ test
+    expect(secureCompare_('abc', 'abc')).toBe(true);
+    expect(secureCompare_('abc', 'abd')).toBe(false);
+    expect(secureCompare_('abc', 'abcd')).toBe(false);
+    expect(secureCompare_(123, '123')).toBe(false);
+
     // parseSensorRequest_: 異常系
     expect(parseSensorRequest_(null)).toEqual({ success: false, error: 'invalid_json' });
     expect(parseSensorRequest_({})).toEqual({ success: false, error: 'invalid_json' });
