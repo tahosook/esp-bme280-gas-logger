@@ -8,41 +8,47 @@ function archiveOldData() {
 }
 
 function writeToArchiveSheets_(archiveSpreadsheet, groupedData, sortedYearMonths) {
-  let totalArchived = 0;
-
-  for (let i = 0; i < sortedYearMonths.length; i++) {
-    const yearMonth = sortedYearMonths[i];
-    const rows = groupedData.get(yearMonth);
-
+  const sheetsToProcess = sortedYearMonths.map(yearMonth => {
     const targetSheetName = 'Raw_' + yearMonth.replace('-', '');
-    let targetSheet = archiveSpreadsheet.getSheetByName(targetSheetName);
+    const targetSheet = archiveSpreadsheet.getSheetByName(targetSheetName);
+    return {
+      yearMonth,
+      rows: groupedData.get(yearMonth),
+      targetSheetName,
+      targetSheet,
+      isNewSheet: !targetSheet,
+      startRow: targetSheet ? targetSheet.getLastRow() + 1 : 2,
+      currentMax: (targetSheet && typeof targetSheet.getMaxRows === 'function') ? targetSheet.getMaxRows() : 1000
+    };
+  });
 
-    if (!targetSheet) {
-      targetSheet = archiveSpreadsheet.insertSheet(targetSheetName);
-      targetSheet.appendRow(['timestamp', 'temp', 'press', 'hum', 'flag']);
+  // Phase 2: Writes
+  for (const op of sheetsToProcess) {
+    if (op.isNewSheet) {
+      op.targetSheet = archiveSpreadsheet.insertSheet(op.targetSheetName);
+      op.targetSheet.appendRow(['timestamp', 'temp', 'press', 'hum', 'flag']);
+      op.currentMax = (typeof op.targetSheet.getMaxRows === 'function') ? op.targetSheet.getMaxRows() : 1000;
     }
 
-    const startRow = targetSheet.getLastRow() + 1;
-    if (typeof targetSheet.getMaxRows === 'function' && typeof targetSheet.insertRowsAfter === 'function') {
-      const currentMax = targetSheet.getMaxRows();
-      const requiredRows = startRow + rows.length - 1;
-      if (currentMax < requiredRows) {
-        targetSheet.insertRowsAfter(currentMax, requiredRows - currentMax);
-      }
+    const requiredRows = op.startRow + op.rows.length - 1;
+    if (typeof op.targetSheet.insertRowsAfter === 'function' && op.currentMax < requiredRows) {
+      op.targetSheet.insertRowsAfter(op.currentMax, requiredRows - op.currentMax);
     }
-    targetSheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
+    op.targetSheet.getRange(op.startRow, 1, op.rows.length, op.rows[0].length).setValues(op.rows);
+  }
 
-    // Verify
-    const verifyRange = targetSheet.getRange(startRow, 1, rows.length, 1).getValues();
-    if (verifyRange.length !== rows.length) {
-      const error = new Error(`Verification failed for ${yearMonth}. Expected ${rows.length} rows, got ${verifyRange.length}`);
+  // Phase 3: Verifies (Reads)
+  let totalArchived = 0;
+  for (const op of sheetsToProcess) {
+    const verifyRange = op.targetSheet.getRange(op.startRow, 1, op.rows.length, 1).getValues();
+    if (verifyRange.length !== op.rows.length) {
+      const error = new Error(`Verification failed for ${op.yearMonth}. Expected ${op.rows.length} rows, got ${verifyRange.length}`);
       if (typeof logError_ === 'function') {
-        logError_('data_archive', targetSheetName, 'verify_failed', error);
+        logError_('data_archive', op.targetSheetName, 'verify_failed', error);
       }
       throw error;
     }
-
-    totalArchived += rows.length;
+    totalArchived += op.rows.length;
   }
 
   return totalArchived;
