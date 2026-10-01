@@ -6,6 +6,7 @@ const {
   updateDailyLastRowAfterPurge_,
   writeToArchiveSheets_
 } = require('../gas/DataArchive.gs');
+const { fixedDate } = require('./helpers/mockGasEnvironment');
 
 describe('Data Archive Logic', () => {
   describe('getArchiveThresholdDate_', () => {
@@ -85,8 +86,12 @@ describe('Data Archive Logic', () => {
     let mockSpreadsheet;
     let mockSourceSheet;
     let mockTargetSheet;
+    let originalDate;
 
     beforeEach(() => {
+      originalDate = global.Date;
+      global.Date = fixedDate('2026-08-15T00:00:00Z');
+
       mockTargetSheet = {
         getLastRow: jest.fn().mockReturnValue(0),
         getRange: jest.fn().mockImplementation((r, c, numRows) => ({
@@ -268,6 +273,10 @@ describe('Data Archive Logic', () => {
       suppressConsoleError(() => {
         expect(() => runDataArchive_()).toThrow(/Verification failed/);
       });
+    });
+
+    afterEach(() => {
+      global.Date = originalDate;
     });
   });
 });
