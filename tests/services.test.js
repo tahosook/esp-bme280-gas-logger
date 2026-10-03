@@ -914,59 +914,61 @@ describe('LineBot & Ingest Edge Cases', () => {
     });
     Object.assign(global, testEnv.globals);
 
+    const origLogError = global.logError_;
+    const origFetch = testEnv.globals.UrlFetchApp.fetch;
     const logs = [];
     global.logError_ = (app, cat, type, err) => {
       logs.push({ app, cat, type, err });
     };
 
-    suppressConsoleError(() => {
-      // 1. err is an Error object
-      const errObj = new Error('test error');
-      handleTextMessageError_(errObj, 'tok-1');
-      expect(logs.length).toBe(1);
-      expect(logs[0].err).toBe(errObj);
-      expect(testEnv.fetchedRequests.length).toBe(1);
-      expect(JSON.parse(testEnv.fetchedRequests[0].options.payload).messages[0].text).toContain('test error');
+    try {
+      suppressConsoleError(() => {
+        // 1. err is an Error object
+        const errObj = new Error('test error');
+        handleTextMessageError_(errObj, 'tok-1');
+        expect(logs.length).toBe(1);
+        expect(logs[0].err).toBe(errObj);
+        expect(testEnv.fetchedRequests.length).toBe(1);
+        expect(JSON.parse(testEnv.fetchedRequests[0].options.payload).messages[0].text).toContain('test error');
 
-      // 2. err is a string
-      handleTextMessageError_('string error', 'tok-2');
-      expect(logs.length).toBe(2);
-      expect(logs[1].err).toBe('string error');
-      expect(testEnv.fetchedRequests.length).toBe(2);
-      expect(JSON.parse(testEnv.fetchedRequests[1].options.payload).messages[0].text).toContain('string error');
+        // 2. err is a string
+        handleTextMessageError_('string error', 'tok-2');
+        expect(logs.length).toBe(2);
+        expect(logs[1].err).toBe('string error');
+        expect(testEnv.fetchedRequests.length).toBe(2);
+        expect(JSON.parse(testEnv.fetchedRequests[1].options.payload).messages[0].text).toContain('string error');
 
-      // 3. err is null
-      handleTextMessageError_(null, 'tok-3');
-      expect(logs.length).toBe(3);
-      expect(logs[2].err).toBeNull();
-      expect(testEnv.fetchedRequests.length).toBe(3);
-      expect(JSON.parse(testEnv.fetchedRequests[2].options.payload).messages[0].text).toContain('null');
+        // 3. err is null
+        handleTextMessageError_(null, 'tok-3');
+        expect(logs.length).toBe(3);
+        expect(logs[2].err).toBeNull();
+        expect(testEnv.fetchedRequests.length).toBe(3);
+        expect(JSON.parse(testEnv.fetchedRequests[2].options.payload).messages[0].text).toContain('null');
 
-      // 4. err is an object without toString/stack/message
-      const emptyObj = Object.create(null);
-      // Because String(Object.create(null)) throws TypeError in Node.js, we expect an internal error.
-      // The implementation uses String(err), which can throw. Let's make sure it handles it if we are testing it.
-      // Wait, the implementation is `const errStr = err && err.toString ? err.toString() : String(err);`
-      // If `err` is emptyObj, `err.toString` is undefined. `String(emptyObj)` will throw TypeError.
-      // So let's test a plain object instead, which doesn't throw on String().
-      const plainObj = {};
-      handleTextMessageError_(plainObj, 'tok-4');
-      expect(logs.length).toBe(4);
-      expect(testEnv.fetchedRequests.length).toBe(4);
+        // 4. err is a plain object without custom toString/message
+        const plainObj = {};
+        handleTextMessageError_(plainObj, 'tok-4');
+        expect(logs.length).toBe(4);
+        expect(testEnv.fetchedRequests.length).toBe(4);
+        expect(JSON.parse(testEnv.fetchedRequests[3].options.payload).messages[0].text).toContain('[object Object]');
 
-      // 5. replyToken is missing
-      handleTextMessageError_('no token', null);
-      expect(logs.length).toBe(5);
-      expect(testEnv.fetchedRequests.length).toBe(4); // No new request made
+        // 5. replyToken is missing
+        handleTextMessageError_('no token', null);
+        expect(logs.length).toBe(5);
+        expect(testEnv.fetchedRequests.length).toBe(4); // No new request made
 
-      // 6. replyMessage_ throws (simulated via UrlFetchApp.fetch failure)
-      testEnv.globals.UrlFetchApp.fetch = () => {
-        throw new Error('fetch failed');
-      };
-      expect(() => {
-        handleTextMessageError_('reply fail', 'tok-err');
-      }).not.toThrow();
-    });
+        // 6. replyMessage_ throws (simulated via UrlFetchApp.fetch failure)
+        testEnv.globals.UrlFetchApp.fetch = () => {
+          throw new Error('fetch failed');
+        };
+        expect(() => {
+          handleTextMessageError_('reply fail', 'tok-err');
+        }).not.toThrow();
+      });
+    } finally {
+      global.logError_ = origLogError;
+      testEnv.globals.UrlFetchApp.fetch = origFetch;
+    }
   });
 
   test('LineBot: buildStatusFlexMessage_ の Utilities / formatDateTokyo_ 未定義フォールバック', () => {
