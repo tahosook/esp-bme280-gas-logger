@@ -904,6 +904,75 @@ describe('LineBot & Ingest Edge Cases', () => {
     expect(reqPayload.messages[0].text).toContain('GAS処理エラー');
   });
 
+  test('LineBot: handleTextMessageError_ parameter checks and edge cases', () => {
+    const testEnv = createGasMockEnvironment({
+      initialProperties: {
+        LINE_CHANNEL_SECRET: 'test-secret',
+        LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+        LINE_USER_ID: 'user-123'
+      }
+    });
+    Object.assign(global, testEnv.globals);
+
+    const origLogError = global.logError_;
+    const origFetch = testEnv.globals.UrlFetchApp.fetch;
+    const logs = [];
+    global.logError_ = (app, cat, type, err) => {
+      logs.push({ app, cat, type, err });
+    };
+
+    try {
+      suppressConsoleError(() => {
+        // 1. err is an Error object
+        const errObj = new Error('test error');
+        handleTextMessageError_(errObj, 'tok-1');
+        expect(logs.length).toBe(1);
+        expect(logs[0].err).toBe(errObj);
+        expect(testEnv.fetchedRequests.length).toBe(1);
+        expect(JSON.parse(testEnv.fetchedRequests[0].options.payload).messages[0].text).toContain('test error');
+
+        // 2. err is a string
+        handleTextMessageError_('string error', 'tok-2');
+        expect(logs.length).toBe(2);
+        expect(logs[1].err).toBe('string error');
+        expect(testEnv.fetchedRequests.length).toBe(2);
+        expect(JSON.parse(testEnv.fetchedRequests[1].options.payload).messages[0].text).toContain('string error');
+
+        // 3. err is null
+        handleTextMessageError_(null, 'tok-3');
+        expect(logs.length).toBe(3);
+        expect(logs[2].err).toBeNull();
+        expect(testEnv.fetchedRequests.length).toBe(3);
+        expect(JSON.parse(testEnv.fetchedRequests[2].options.payload).messages[0].text).toContain('null');
+
+        // 4. err is a plain object without custom toString/message
+        const plainObj = {};
+        handleTextMessageError_(plainObj, 'tok-4');
+        expect(logs.length).toBe(4);
+        expect(testEnv.fetchedRequests.length).toBe(4);
+        expect(JSON.parse(testEnv.fetchedRequests[3].options.payload).messages[0].text).toContain('[object Object]');
+
+        // 5. replyToken is missing
+        handleTextMessageError_('no token', null);
+        expect(logs.length).toBe(5);
+        expect(testEnv.fetchedRequests.length).toBe(4); // No new request made
+
+        // 6. replyMessage_ throws (simulated via UrlFetchApp.fetch failure)
+        testEnv.globals.UrlFetchApp.fetch = () => {
+          throw new Error('fetch failed');
+        };
+        expect(() => {
+          handleTextMessageError_('reply fail', 'tok-err');
+        }).not.toThrow();
+        expect(logs.length).toBe(7);                      // handleTextMessageError_ と sendLineApiRequest_ の両方で logError_ が呼ばれる
+        expect(testEnv.fetchedRequests.length).toBe(4);   // 返信自体は失敗している
+      });
+    } finally {
+      global.logError_ = origLogError;
+      testEnv.globals.UrlFetchApp.fetch = origFetch;
+    }
+  });
+
   test('LineBot: buildStatusFlexMessage_ の Utilities / formatDateTokyo_ 未定義フォールバック', () => {
     const savedUtils = global.Utilities;
     const savedFormat = global.formatDateTokyo_;
