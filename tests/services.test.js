@@ -964,6 +964,8 @@ describe('LineBot & Ingest Edge Cases', () => {
         expect(() => {
           handleTextMessageError_('reply fail', 'tok-err');
         }).not.toThrow();
+        expect(logs.length).toBe(7);                      // handleTextMessageError_ と sendLineApiRequest_ の両方で logError_ が呼ばれる
+        expect(testEnv.fetchedRequests.length).toBe(4);   // 返信自体は失敗している
       });
     } finally {
       global.logError_ = origLogError;
